@@ -77,6 +77,13 @@ Vocabulary: **Initiative** (multi-task group) / **Task** (1 plan + 1 report = th
 **Mode tiering** (rules/80 §F): `quick-fix` (1–3 low-criticality files) / `standard` (default) /
 `heavy` (50+ files or 3+ domains) auto-detected from plan scope; every mode requires a CHANGELOG entry.
 
+**Product milestones drive task selection.** Don't invent tasks ad-hoc. The product backbone is
+`docs/explanation/roadmap.md` (why/ordering) + `docs/reference/milestones.md` (M0–M5 goals + exit
+criteria). **Every `/task-start` advances a specific exit criterion of the *active* milestone** —
+state which (e.g. "M1-EC1") in the plan; pull tasks only from the active milestone until its EC are
+met, then gate to the next. (Product roadmap ≠ `docs/harness/.../master-plan.md`, which is the
+*harness* adoption plan.)
+
 ## Harness mechanics that will BLOCK you
 Hooks are wired in `.claude/settings.json` and enforce the rules deterministically. Key blockers:
 - **`harness-task-start-guard.py`** (PreToolUse Write|Edit): editing **`src/**` or `tests/**`
