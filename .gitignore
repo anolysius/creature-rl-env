@@ -20,6 +20,9 @@ checkpoints/
 *.ckpt
 wandb/
 
+# Harness session state (per-session, not shared)
+.claude/.session-state/
+
 # OS / editor
 .DS_Store
 *.swp
