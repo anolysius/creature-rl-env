@@ -1,6 +1,9 @@
 # Initiative: env-core
 
 > CritterGym 제품 코어 (Gymnasium env) 의 단계적 구축. DESIGN.md §6 로드맵 Phase 1~ 를 담는 멀티-task 묶음.
+>
+> **마일스톤 SSOT**: [roadmap.md](../../explanation/roadmap.md) (왜) · [milestones.md](../../reference/milestones.md) (사실).
+> **활성 마일스톤: M1** (고정월드 full subgoal chain). 매 task 는 활성 M 의 미충족 EC 에서 내려온다.
 
 ## 목표
 DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "dumbest-possible playable env"
@@ -22,7 +25,7 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 
 (이후 task 는 /task-start 로 append)
 
-## 후속 후보 (report 인계)
-- `subgoal-chain` — evolve / gym boss verifiable subgoal 체인 (DESIGN §3.5)
-- `procgen-typechart` — 시드별 내부정합 type 매트릭스 (DESIGN §3.1)
-- 벡터화/JAX 핫패스 (DESIGN §4, throughput gate)
+## 다음 task
+활성 마일스톤 **M1** 의 미충족 exit criterion 에서 내려온다 — 구성 task 목록·EC 는
+[milestones.md](../../reference/milestones.md) §M1 참조 (중복 유지 금지, SSOT 단일화).
+권장 시작점: `battle-system` (M1-EC1, 진화·보스의 선행).
