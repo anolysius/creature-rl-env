@@ -1,0 +1,36 @@
+{
+  "_README": "Verdict-Equivalence 코퍼스 스펙. items = (archive 대표 plan + 합성 known-issue 골든). 게이지는 각 item 을 control/candidate variant 로 K회 스폰해 decision 동등성·recall 비교. 'expected_min_decision' 은 (1) known_issue=true 항목에선 hard recall 기준점, (2) archive 항목에선 control baseline 으로 캘리브레이트되는 가설(decision 다양성 확보용). raw 프롬프트/transcript 는 본 파일에 미포함 — source 는 경로 또는 합성 위반 텍스트만. (포팅 시 example 항목 — 실제 archive plan 으로 교체하세요.)",
+  "thresholds": {
+    "t_match_overall": 0.9,
+    "t_match_known_issue": 1.0
+  },
+  "items": [
+    {
+      "id": "ki_scope_creep",
+      "reviewer": "plan-reviewer",
+      "known_issue": true,
+      "expected_min_decision": "SUGGEST",
+      "source_inline": "---\ndomains: [rl-env]\nscope_paths:\n  - src/**\n  - tests/**\n---\n\n# plan: 환경 개선\n\n## 목표\n환경을 전반적으로 개선한다. 세부는 구현하면서 결정 필요.\n\n## 범위\n프로젝트 전체에서 필요한 부분 수정 (정확한 파일은 TBD).\n\n## 검증\n적절히 확인.",
+      "note": "골든 위반: scope_paths 광범위 wildcard(src/**+tests/**) + '결정 필요'/'TBD' 미결 + 모호 검증. scope/verification 축 → SUGGEST 이상"
+    },
+    {
+      "id": "ki_regression",
+      "reviewer": "plan-reviewer",
+      "purpose": "L3",
+      "known_issue": true,
+      "expected_min_decision": "BLOCK",
+      "source_inline": "# plan: observation space 확장\n\n## 목표\n관측에 새 feature 채널을 추가한다.\n\n## 구현\n`CritterEnv.observation_space` 의 dtype 을 float32 → float64 로 바꾸고 shape 를 (84,84,3) → (84,84,5) 로 확장. 기존 wrapper/checkpoint 는 고려하지 않음.\n\n## Acceptance\n- [ ] 새 채널이 관측에 포함됨",
+      "note": "골든 위반: observation space dtype/shape 변경으로 기존 체크포인트·wrapper 호환 깨짐. regression 축 → 반드시 BLOCK"
+    },
+    {
+      "id": "ki_acceptance_missing",
+      "reviewer": "qa-verifier",
+      "purpose": "L1",
+      "known_issue": true,
+      "expected_min_decision": "SUGGEST",
+      "axes": ["acceptance 정합", "측정가능성"],
+      "source_inline": "# plan: reward shaping 개선\n\n## 목표\n학습 경험을 더 좋게 만든다.\n\n## 구현\nreward 함수를 개선한다.\n\n## Acceptance Criteria\n- [ ] 학습이 잘 됨\n- [ ] 에이전트가 만족스럽게 동작함",
+      "note": "골든 위반: acceptance 가 비측정('잘 됨'/'만족스럽게') — SMART 위반. qa-verifier acceptance 축 → SUGGEST 이상"
+    }
+  ]
+}

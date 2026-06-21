@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "$comment": "Task-lifecycle harness 환경. STRICT=0 은 warning, =1 은 block 격상.",
+    "HARNESS_HOOKS_DEBUG": "0",
+    "HARNESS_HOOKS_STRICT": "0",
+    "PYTHONIOENCODING": "utf-8"
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr view:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(python3 .claude/hooks/*.py:*)",
+      "Bash(python3 .claude/hooks/_lib/*.py:*)",
+      "Bash(python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/*.py\":*)",
+      "Bash(python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/_lib/*.py\":*)",
+      "Bash(python3 .claude/skills/*/scripts/*.py:*)",
+      "Bash(python3 .claude/skills/_lib/*.py:*)",
+      "Bash(rg:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Edit(src/**)",
+      "Edit(tests/**)",
+      "Edit(docs/**)",
+      "Write(src/**)",
+      "Write(tests/**)",
+      "Write(docs/**)",
+      "Skill(task-start)",
+      "Skill(task-start:*)",
+      "Skill(task-evaluate)",
+      "Skill(task-evaluate:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/harness-task-intent-nudge.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/harness-commit-intent-record.py\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/harness-task-start-guard.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/git-policy-guard.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/task-end-archive-guard.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/harness-commit-guard.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-worktree-return-handler.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-worktree-stop-guard.py\""
+          }
+        ]
+      }
+    ]
+  },
+  "$description": "CritterGym .claude/settings.json — task-lifecycle harness (generic). Wires only the 8 generic harness hooks. DS/a11y/i18n/token hooks intentionally absent."
+}

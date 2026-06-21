@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Path Criticality SSOT",
+  "description": "Schema for .claude/data/path-criticality.json — used by detect-task-mode.py for harness mode tiering (rules/80 §F).",
+  "type": "object",
+  "required": ["version", "critical", "low"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "description": { "type": "string" },
+    "critical": {
+      "type": "array",
+      "description": "Glob patterns for critical paths — strict standard mode minimum (file count irrelevant).",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "low": {
+      "type": "array",
+      "description": "Glob patterns for low-criticality paths — quick-fix mode eligible (combined with file count <= 3).",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "comments": {
+      "type": "object",
+      "description": "Free-form documentation. Schema does not enforce keys.",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "./path-criticality.schema.json",
+  "version": "1.0.0",
+  "description": "Path criticality SSOT for harness mode tiering (rules/80 §F). Used by detect-task-mode.py to classify scope_paths into critical/medium/low and determine mode (quick-fix/standard/heavy).",
+  "critical": [
+    "src/critter_gym/envs/**",
+    "src/critter_gym/registration.py",
+    "src/critter_gym/spaces/**",
+    "src/critter_gym/wrappers/**",
+    "pyproject.toml",
+    "scripts/**"
+  ],
+  "low": [
+    "docs/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "tests/**",
+    "**/*.md",
+    ".claude/context/decisions/**"
+  ],
+  "comments": {
+    "default": "Anything outside the two lists = medium (default).",
+    "matching": "glob fnmatch matching. If a path matches both critical and low, critical wins (regression risk first).",
+    "extension_policy": "Adding a new path pattern is per-PR — changing this SSOT is equivalent in weight to a rules/80 §F intent change."
+  }
+}

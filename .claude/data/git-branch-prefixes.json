@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "description": "Git branch prefix allowlist SSOT (rules/85-git-policy.md). Referenced by git-policy-guard.py.",
+  "source": [
+    "feature",
+    "fix",
+    "hotfix",
+    "chore",
+    "docs"
+  ],
+  "sink": [],
+  "trunk": [
+    "main"
+  ],
+  "special": [
+    "backup",
+    "renovate",
+    "archive"
+  ],
+  "forbidden_patterns": [
+    "^dev$"
+  ],
+  "comments": {
+    "matching": "A branch name is split on the first '/'; the prefix must appear in source/sink/trunk/special, otherwise (or on a forbidden_patterns match) it is a violation. main is the sole trunk (no slash).",
+    "source_semantics": "Can be a merge source and can flow toward main.",
+    "sink_semantics": "Merge target only. Using a sink branch as a source is a violation. (Empty by default for solo projects — add e.g. 'qa' if you introduce a one-way integration branch.)",
+    "trunk_semantics": "Merge target (via PR) plus a sync source that can flow to feature branches.",
+    "special_semantics": "Validation skipped — backup/rollback, renovate bot, archive are out-of-policy special purposes.",
+    "forbidden_examples": "dev (trunk-based flow not used).",
+    "extension_policy": "Adding a new category changes hook behavior = equivalent in weight to a rules/85 change. Review per PR."
+  }
+}
