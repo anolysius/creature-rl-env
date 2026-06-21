@@ -23,6 +23,11 @@ dev = [
     "pytest>=8.0",
     "build>=1.0",
 ]
+# Optional — only needed for the PPO learning demo (scripts/train_ppo.py).
+# Deliberately kept out of `dev`/core so the default test suite + CI stay numpy-only.
+rl = [
+    "stable-baselines3>=2.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/critter_gym"]
