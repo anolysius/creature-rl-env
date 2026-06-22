@@ -57,7 +57,8 @@
 - [ ] EC4: arXiv writeup 초안
 - [ ] EC5: OSS 공개 (MIT) + Prime Intellect Environments Hub 등록
 - [ ] EC6: **킬러 데모** — "같은 에이전트 → unseen held-out 시드(새 맵+새 타입표) → 보스 격파" GIF
-- 구성 task: `baseline-suite` ✅, `leaderboard` ✅, `metrics-viz` ✅ / 예정: `killer-demo`, `arxiv-draft`, `oss-release`
+  - 🟡 토대 done (`world-render`): 월드 상태→픽셀 프레임 render API (`env.render()` rgb_array + `critter_gym.render.save_gif`, render 도메인). **충족은 후속 `killer-demo`**(보스격파 에이전트 학습 + 녹화→GIF 조립; `[rl]`+`[render]`, CI 비검증).
+- 구성 task: `baseline-suite` ✅, `leaderboard` ✅, `metrics-viz` ✅, `world-render` ✅(EC6 토대) / 예정: `killer-demo`, `arxiv-draft`, `oss-release`
 
 ### M4 — Throughput (JAX) ⬜
 - [ ] EC1: 핫패스 JAX 포팅 (spec 안정 *후* — DESIGN §4)
