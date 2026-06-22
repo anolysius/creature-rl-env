@@ -50,7 +50,7 @@
 - 구성 task: `procgen-region` ✅, `procgen-typechart` ✅, `generalization-harness` ✅
 
 ### M3 — 벤치마크 신뢰성 + 런치 ⬜
-- [ ] EC1: 베이스라인 4종(random/scripted/PPO/recurrent) 점수표 (train+test 분리)
+- [x] EC1: 베이스라인 4종(random/scripted/PPO/recurrent) 점수표 (train+test 분리) *(`baseline-suite` — numpy-only `critter_gym.scoreboard`; PPO/recurrent 는 `[rl]` 격리)*
 - [ ] EC2: 리더보드 포맷 + 재현 가능 configs (seeded, pinned)
   - ⚠ forward-note (`generalization-harness` L3): `GapReport.to_dict()` 키 `train_mean` 은 실제로
     held-in **eval** 평균 → "training-set 점수" 오독 소지. 리더보드 스키마 **공개 동결 전**
@@ -59,7 +59,7 @@
 - [ ] EC4: arXiv writeup 초안
 - [ ] EC5: OSS 공개 (MIT) + Prime Intellect Environments Hub 등록
 - [ ] EC6: **킬러 데모** — "같은 에이전트 → unseen held-out 시드(새 맵+새 타입표) → 보스 격파" GIF
-- 구성 task(예정): `baseline-suite`, `metrics-viz`, `killer-demo`, `arxiv-draft`, `oss-release`
+- 구성 task: `baseline-suite` ✅ / 예정: `metrics-viz`, `killer-demo`, `arxiv-draft`, `oss-release`
 
 ### M4 — Throughput (JAX) ⬜
 - [ ] EC1: 핫패스 JAX 포팅 (spec 안정 *후* — DESIGN §4)
