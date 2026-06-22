@@ -29,6 +29,11 @@ rl = [
     "stable-baselines3>=2.0",
     "sb3-contrib>=2.0",  # RecurrentPPO (recurrent baseline, M3-EC1)
 ]
+# Optional — only needed to render the measurement plots (critter_gym.viz, M3-EC3).
+# Kept out of core/dev so the default test suite + CI stay numpy-only.
+viz = [
+    "matplotlib>=3.7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/critter_gym"]
@@ -52,7 +57,7 @@ warn_redundant_casts = true
 no_implicit_optional = true
 
 [[tool.mypy.overrides]]
-module = ["gymnasium.*"]
+module = ["gymnasium.*", "matplotlib.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

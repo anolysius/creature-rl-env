@@ -28,6 +28,7 @@ from critter_gym.baselines import random_policy
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.generalization import format_report, measure_generalization, split_train_pool
 from critter_gym.region import heldout_seeds, train_seeds
+from critter_gym.viz import LearningCurve
 
 # Easy, fully-observed config so learning is visible in a short run.
 CFG = dict(grid_size=5, num_creatures=8, num_gyms=2, max_steps=50, patch_radius=4)
@@ -62,6 +63,7 @@ class _SeededReset(gym.Wrapper):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timesteps", type=int, default=40_000)
+    parser.add_argument("--plot", metavar="PATH", help="save the learning curve PNG ([viz] extra)")
     args = parser.parse_args()
 
     try:
@@ -97,16 +99,38 @@ def main() -> int:
     print(f"{'steps':>10} | {'held-in':>8} | {'held-out':>8} | {'gap':>7}")
     print("-" * 42)
     report = random_report
+    steps_axis: list[int] = []
+    heldin_curve: list[float] = []
+    heldout_curve: list[float] = []
     for k in range(5):
         model.learn(chunk, reset_num_timesteps=False, progress_bar=False)
         report = measure_generalization(make_env, ppo_policy, heldin, heldout)
         d = report.to_dict()
+        steps_axis.append((k + 1) * chunk)
+        heldin_curve.append(d["heldin_mean"])
+        heldout_curve.append(d["heldout_mean"])
         print(
             f"{(k + 1) * chunk:>10,} | {d['heldin_mean']:>8.2f} | "
             f"{d['heldout_mean']:>8.2f} | {d['gap']:>7.2f}"
         )
 
     print("\n" + format_report(report))
+
+    if args.plot:
+        from critter_gym.viz import plot_learning_curve  # lazy matplotlib inside
+
+        curve = LearningCurve(
+            timesteps=tuple(steps_axis),
+            heldin_means=tuple(heldin_curve),
+            heldout_means=tuple(heldout_curve),
+        )
+        try:
+            fig = plot_learning_curve(curve)
+        except ImportError:
+            print('  (--plot skipped — install the [viz] extra: pip install -e ".[viz]")')
+        else:
+            fig.savefig(args.plot, dpi=100, bbox_inches="tight")
+            print(f"saved learning curve -> {args.plot}")
     ok = report.test.mean >= random_report.test.mean + MARGIN
     print(
         f"\ntrained held-out {report.test.mean:.2f} vs random {random_report.test.mean:.2f} "

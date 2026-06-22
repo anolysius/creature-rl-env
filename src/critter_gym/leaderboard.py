@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.generalization import PolicyFn
 from critter_gym.region import heldout_seeds, train_seeds
-from critter_gym.scoreboard import score_baselines
+from critter_gym.scoreboard import ScoreTable, score_baselines
 
 
 @dataclass(frozen=True)
@@ -98,6 +98,29 @@ class Leaderboard:
     spec: BenchmarkSpec
     entries: tuple[LeaderboardEntry, ...]
 
+    @classmethod
+    def from_score_table(cls, spec: BenchmarkSpec, table: ScoreTable) -> Leaderboard:
+        """Rank an already-scored :class:`ScoreTable` by held-out mean (descending).
+
+        Splitting this out from :func:`run_benchmark` lets a caller score once and
+        reuse the same table for both the leaderboard and the per-seed plots (the
+        :class:`ScoreTable` carries per-seed returns that the ranked entries drop).
+        Ties break deterministically (smaller gap, then name) so the order never
+        depends on the insertion order of the baselines.
+        """
+        ranked = sorted(table.rows, key=lambda r: (-r.report.test.mean, r.report.gap, r.name))
+        entries = tuple(
+            LeaderboardEntry(
+                rank=i + 1,
+                name=row.name,
+                heldin_mean=row.report.train.mean,
+                heldout_mean=row.report.test.mean,
+                gap=row.report.gap,
+            )
+            for i, row in enumerate(ranked)
+        )
+        return cls(spec=spec, entries=entries)
+
     def to_dict(self) -> dict[str, object]:
         """Canonical, reproducible result: pinned spec + ranked entries."""
         return {
@@ -136,15 +159,4 @@ def run_benchmark(spec: BenchmarkSpec, policies: Mapping[str, PolicyFn]) -> Lead
     table = score_baselines(
         spec.env_factory(), policies, spec.heldin_eval_seeds(), spec.heldout_eval_seeds()
     )
-    ranked = sorted(table.rows, key=lambda r: (-r.report.test.mean, r.report.gap, r.name))
-    entries = tuple(
-        LeaderboardEntry(
-            rank=i + 1,
-            name=row.name,
-            heldin_mean=row.report.train.mean,
-            heldout_mean=row.report.test.mean,
-            gap=row.report.gap,
-        )
-        for i, row in enumerate(ranked)
-    )
-    return Leaderboard(spec=spec, entries=entries)
+    return Leaderboard.from_score_table(spec, table)
