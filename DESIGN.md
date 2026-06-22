@@ -37,7 +37,7 @@ A frontier-agent benchmark ideally tests, **simultaneously and in one episode**:
 | Capability            | Pokémon Red | Crafter/Craftax | Procgen | NetHack | **CritterGym** |
 |-----------------------|:-----------:|:---------------:|:-------:|:-------:|:--------------:|
 | Long horizon (10k+)   | ✅          | ◐ (med)         | ❌      | ✅      | ✅             |
-| Generalization (procgen) | ❌       | ✅              | ✅      | ◐       | ✅             |
+| Generalization (procgen) | ❌       | ✅              | ✅      | ◐       | ✅ *(instance-level — §3.1.1)* |
 | Strategic/adversarial | ◐ (battles) | ❌              | ❌      | ◐       | ✅ (type meta) |
 | Verifiable subgoals   | shaped/brittle | ◐           | ❌      | ❌      | ✅ (RLVR)      |
 | Memory / inventory mgmt | ✅        | ✅              | ❌      | ✅      | ✅             |
@@ -47,7 +47,8 @@ The thesis: the **creature-collection loop** (explore → catch → build a team
 defeat escalating bosses) *naturally* produces long-horizon planning, resource/inventory
 management, memory, and **strategic** decision-making (team composition vs. a type meta) —
 the exact bundle frontier labs want, but with the procedural-generation knob that lets you
-split train vs. held-out test seeds and **actually measure generalization**.
+split train vs. held-out test seeds and **actually measure generalization** (instance-level
+today; genre-level generalization is a deliberate roadmap target — see §3.1.1).
 
 ---
 
@@ -60,7 +61,37 @@ split train vs. held-out test seeds and **actually measure generalization**.
   rock-paper-scissors matrix over K elemental types per seed. → prevents memorizing a fixed
   type chart; forces the agent to **infer the meta** from experience.
 - **Train seeds** vs **held-out test seeds**: the generalization benchmark. Report train and
-  test scores separately (Procgen convention).
+  test scores separately (Procgen convention). **Scope caveat: this is *instance*-level
+  generalization — see §3.1.1 before claiming "it generalizes".**
+
+### 3.1.1 Generalization: the honest scope (read before claiming "it generalizes")
+
+What the train/test **seed** split proves — and does *not* prove — stated plainly so we never overclaim:
+
+- **(A) Instance generalization — what we measure today.** Held-out *seeds* vary the map layout and the
+  type-chart *values*, but every seed shares one fixed **structure**: same obs/action space, same
+  mechanics, same *form* of type chart. So "gap ≈ 0 across held-out seeds" proves the agent **didn't
+  memorize specific maps/charts of this one generator** — a real result (most benchmarks fail even this)
+  and a *necessary floor*. It sits one notch above Procgen (we randomize rule *values*, not just layout).
+- **(B) Genre generalization — what we do NOT yet measure.** Working across *structurally distinct*
+  collection-RPGs (different battle systems, collection/progression mechanics, rule *systems*) under an
+  **environment-level** held-out split (train on env families {A,B,C} → test on an unseen family D).
+  That is the claim that would justify "generalizes within the collection-RPG genre." We have **one**
+  generator today, so we **cannot** measure (B) yet. *(This is also exactly why a CritterGym-trained
+  agent can't play Pokémon: Pokémon is a held-out **environment** it has never seen — not a held-out
+  seed.)*
+
+**Positioning consequence.** Pokémon is a **plain-language metaphor** (creatures + type matchups + gyms →
+the task is instantly legible), **not a competitive claim**. "We do what Pokémon-RL can't" overreaches:
+we traded Pokémon's *difficulty* for *measurability*, and our headline mechanic (infer the hidden type
+chart) is not even a Pokémon challenge (its chart is fixed and public). Benchmark us honestly against
+**Procgen / Craftax / XLand-MiniGrid** (procedural-generalization peers), not against Pokémon.
+
+**Roadmap consequence.** A credible generality claim requires (B): build **multiple structurally-distinct**
+environments and split at the *environment* level — which is precisely the **M5 "custom/harder
+environments"** surface. So custom environments are not merely a revenue add-on; they are the **test set
+for the generality claim**. Until then, scale difficulty *while keeping the seed split*, so (A) becomes
+"hard-and-gap≈0" rather than "toy-and-gap≈0" — a gap≈0 on a trivial env predicts little about capability.
 
 ### 3.2 Observation space
 - **v1: structured/symbolic** (NOT pixels first): agent position, local tile patch, party
