@@ -176,6 +176,62 @@ This is **not** a game-sales business — the customer is RL researchers and lab
 
 ---
 
+## 9. Moat — what's actually defensible (differentiation ≠ moat)
+
+- **Differentiation** = why we're better *now*: long-horizon strategy + **infer-the-meta** (hidden
+  per-seed rules) + verifiable generalization. Real, but these are **copyable ideas** — once published,
+  a competitor reimplements them.
+- **Moat** = why nobody catches up. It is **not** any single mechanic (procgen, train/test split,
+  infer-the-meta are all table-stakes methodology). The moat is a *property* + *accumulation* + *trust*:
+
+> **"The eval that doesn't rot."** Static benchmarks (MMLU, SWE-bench, a Pokémon ROM) leak into training
+> data and saturate → they die. Ours mints a **freshly-generated, never-seen world per evaluation**
+> (ultimately a never-seen *game*), **verified by construction (RLVR)** → **un-gameable and infinitely
+> regenerable** as models improve.
+
+Three compounding layers (only layer 1 exists today; 2–3 must be *earned*):
+
+1. **Regenerable private held-out** — un-gameable *by construction* (can't train on a world that's
+   minted at eval time). This is built into today's design — the hardest seed.
+2. **A corpus of structurally-distinct, RLVR-verified, calibrated environments** — an *accumulation*
+   moat (a competitor must rebuild the whole library + calibration to match). This is the
+   **environment-level / genre generalization** surface (§3.1.1, M5) — the form that makes the moat
+   matter at the level frontier labs care about.
+3. **Standard / trust** — being *the* benchmark labs report on (network effect). Earned by being first,
+   credible, and reproducible.
+
+**Honest status:** today we have layer 1's *property* but not a *realized* moat (one toy env, no
+adoption). The moat is prospective; the roadmap is the plan to earn layers 2–3. (This restates §8's
+"scarce parts" as a defensibility argument, not just a revenue line.)
+
+## 10. What you can do with CritterGym (use cases)
+
+The product is a **measuring instrument**, not an agent. Jobs it is hired for:
+
+**For frontier labs / agent builders** *(monetization surface — private held-out)*:
+- **Prove generalization, not memorization.** Drop your trained agent → get train vs **held-out** score +
+  the generalization gap. A small gap on a *freshly-minted* world is a trustworthy "it learned a skill"
+  claim for a model card / paper (un-gameable, so the number can't be inflated by contamination).
+- **Stress-test online rule-inference / adaptation.** The infer-the-meta mechanic = "dropped into a world
+  with *unknown rules*, experiment, deduce them, exploit" — a clean proxy for agents that must adapt to
+  novel tools / APIs / environments.
+- **Capability diagnosis, not just a score.** RLVR boolean subgoals (explore / catch / team-build /
+  type-meta / boss) expose *which* capability is missing (e.g., explores fine but can't infer the meta).
+- *(roadmap, §3.1.1-B)* **Measure cross-*game* generality** — does your agent generalize to *games it
+  never trained on*? The strongest generality signal, on a held-out **environment** split.
+
+**For RL researchers** *(free OSS env — adoption surface)*:
+- **A research sandbox** for long-horizon / meta-RL algorithms with a **built-in generalization metric**
+  (train/test split) and verifiable rewards — fast & vectorizable (numpy → JAX).
+- **Reproducible, seeded, pinned configs** → comparable results across papers.
+- **Curriculum / sample-efficiency / scaling-of-generalization** studies via the difficulty knobs (§3.6).
+
+**Reproduce the demo:** `pip install -e ".[rl,render]" && python scripts/killer_demo.py` → trains on
+train seeds, drops the agent on an unseen held-out seed, records the boss-defeat GIF, and reports the
+held-in vs held-out defeat rate (the generalization signal).
+
+---
+
 *Prior art referenced: Pokémon Red RL (arXiv 2502.19920; PWhiddy/PokemonRedExperiments),
 Crafter (danijar/crafter), Craftax (arXiv 2402.16801), Procgen (arXiv 1912.01588),
 NetHack Learning Environment (nethackchallenge.com). Market context: Anthropic as largest
