@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from critter_gym.types import ElementType
+from critter_gym.types import ElementType, TypeChart, generate_typechart
 
 # Boss type sequence used in fixed (non-vary) mode — matches M1 behavior.
 FIXED_BOSS_TYPES: list[ElementType] = [ElementType.GRASS, ElementType.GRASS, ElementType.WATER]
@@ -40,6 +40,7 @@ class Region:
     creatures: list[tuple[int, int]]
     gyms: list[tuple[tuple[int, int], ElementType]]  # (position, boss type)
     agent_start: tuple[int, int]
+    chart: TypeChart  # per-seed type-effectiveness table (hidden from obs)
 
 
 def generate_region(
@@ -76,7 +77,8 @@ def generate_region(
     gym_coords = coords[n_creatures : n_creatures + n_gyms]
     gyms = list(zip(gym_coords, boss_types))
     agent_start = coords[-1]
-    return Region(grid_size, creatures, gyms, agent_start)
+    chart = generate_typechart(seed, vary=vary)
+    return Region(grid_size, creatures, gyms, agent_start, chart)
 
 
 # -- train/test split ---------------------------------------------------------

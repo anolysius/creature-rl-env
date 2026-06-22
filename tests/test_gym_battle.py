@@ -316,6 +316,42 @@ def test_m1_mechanics_work_in_procgen_regions() -> None:
     assert cleared_some  # a scripted policy can defeat a gym in some procgen region
 
 
+# --- procgen type chart integration (M2-EC2: AC4/AC5) -------------------------
+
+def test_env_uses_per_seed_chart_and_damage_reflects_it() -> None:
+    """AC5: a vary env adopts the seed's chart; fixed env uses FIXED_CHART; and a
+    chart that flips a matchup changes battle damage."""
+    from critter_gym.battle import Battle, BattleState
+    from critter_gym.creatures import Creature, Move
+    from critter_gym.types import FIXED_CHART, ElementType, generate_typechart
+
+    F, G = ElementType.FIRE, ElementType.GRASS
+
+    fixed_env = CritterEnv()
+    fixed_env.reset(seed=0)
+    assert fixed_env._region_chart == FIXED_CHART  # vary=False keeps M1 chart
+
+    pro = CritterEnv(vary=True)
+    pro.reset(seed=0)
+    assert pro._region_chart == generate_typechart(0, vary=True)  # adopts seed chart
+
+    # seed 0's chart flips FIRE-vs-GRASS to not-very, so the same attack hits softer.
+    attacker = Creature("A", (F,), 50, 12, 10, 10, [Move("flare", F, 30)])
+    defender = Creature("B", (G,), 50, 12, 10, 10, [Move("vine", G, 30)])
+    st = BattleState(party_a=[attacker], party_b=[defender])
+    fixed_dmg = Battle(st, chart=FIXED_CHART).damage(attacker, defender, 0)
+    seed0_dmg = Battle(st, chart=pro._region_chart).damage(attacker, defender, 0)
+    assert seed0_dmg < fixed_dmg  # the per-seed chart actually changes outcomes
+
+
+def test_obs_does_not_leak_the_chart() -> None:
+    """AC4: the effectiveness table is never in the observation — only type ids."""
+    fixed_keys = set(CritterEnv().reset(seed=0)[0].keys())
+    pro_obs, _ = CritterEnv(vary=True).reset(seed=0)
+    assert set(pro_obs.keys()) == fixed_keys  # no extra chart-revealing field
+    assert "chart" not in pro_obs and "effectiveness" not in pro_obs
+
+
 # catching still works alongside gyms (AC4 catch subgoal preserved)
 def test_catch_still_rewards() -> None:
     env = CritterEnv()
