@@ -1,12 +1,19 @@
-"""Minimal catch-only CritterGym environment (Phase 1 scaffolding).
+"""CritterGym environment — catch + gym-boss battle chain (M1).
 
-A 10x10 grid world with seeded creature placement. The agent moves on the grid
-and catches creatures. Reward is RLVR-style: a verifiable boolean subgoal
-(`caught` increments) yields +1; nothing else is rewarded (no dense shaping).
+A grid world (DESIGN.md §3.2, structured/symbolic obs) with two interleaved
+modes:
 
-This is the deliberately "dumbest-possible playable env" of DESIGN.md Phase 1 —
-the stable skeleton that later tasks (subgoal chain, procgen type meta, battle)
-build on. Observations are structured/symbolic (DESIGN.md §3.2), not pixels.
+- **OVERWORLD**: the agent moves, catches creatures, and walks onto gym tiles.
+- **BATTLE**: stepping onto an undefeated gym tile starts a turn-based battle
+  (the sub-MDP of `battle.py`); each env step resolves one battle turn against a
+  scripted boss. Winning marks the gym defeated.
+
+Rewards are RLVR-style boolean subgoals — catching a creature (+1) and defeating
+a gym boss (+1); movement, battle turns, and losses earn nothing (no dense
+shaping). The episode terminates when every gym is defeated.
+
+The action space stays ``Discrete(6)`` and is reinterpreted by mode; the
+observation's ``in_battle`` flag tells the agent which interpretation is live.
 """
 
 from __future__ import annotations
@@ -16,10 +23,22 @@ from typing import Any
 import numpy as np
 from gymnasium import Env, spaces
 
-# Action indices (a minimal subset of DESIGN.md §3.3).
+from critter_gym.battle import (
+    ActionKind,
+    Battle,
+    BattleAction,
+    BattleState,
+    Side,
+    scripted_opponent,
+)
+from critter_gym.creatures import Creature
+from critter_gym.party import gym_boss, starter_party
+from critter_gym.types import ElementType
+
+# Action indices (a minimal subset of DESIGN.md §3.3). Reinterpreted in battle:
+#   0-3 -> use battle move (clamped), 4 -> switch to next alive, 5 -> pass.
 MOVE_N, MOVE_S, MOVE_E, MOVE_W, CATCH, NOOP = range(6)
 
-# (row, col) deltas for the four move actions.
 _MOVE_DELTAS: dict[int, tuple[int, int]] = {
     MOVE_N: (-1, 0),
     MOVE_S: (1, 0),
@@ -27,23 +46,14 @@ _MOVE_DELTAS: dict[int, tuple[int, int]] = {
     MOVE_W: (0, -1),
 }
 
+_PATCH_EMPTY, _PATCH_CREATURE, _PATCH_GYM = 0, 1, 2
+_HP_MAX = 10_000  # generous obs upper bound for hp fields
+_NUM_TYPES = len(ElementType)
+_TYPE_TO_INT: dict[ElementType, int] = {t: i for i, t in enumerate(ElementType)}
+
 
 class CritterEnv(Env[dict[str, np.ndarray], int]):
-    """Catch-only grid environment with verifiable subgoal rewards.
-
-    Parameters
-    ----------
-    grid_size:
-        Side length of the square grid.
-    num_creatures:
-        How many creatures are spawned per episode (seeded placement).
-    target_catches:
-        Episode terminates once this many distinct creatures are caught.
-    max_steps:
-        Step budget; exceeding it truncates the episode.
-    patch_radius:
-        Radius of the square local observation patch centered on the agent.
-    """
+    """Grid env with catch + gym-boss battle subgoals (verifiable rewards)."""
 
     metadata: dict[str, Any] = {"render_modes": []}
 
@@ -51,20 +61,17 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self,
         grid_size: int = 10,
         num_creatures: int = 5,
-        target_catches: int = 3,
-        max_steps: int = 100,
+        num_gyms: int = 2,
+        max_steps: int = 200,
         patch_radius: int = 2,
     ) -> None:
         super().__init__()
-        if target_catches > num_creatures:
-            raise ValueError("target_catches cannot exceed num_creatures")
-        # Need at least one free tile for the agent's start, else reset() would
-        # loop forever searching for a non-creature tile.
-        if num_creatures >= grid_size * grid_size:
-            raise ValueError("num_creatures must be < grid_size * grid_size")
+        occupied = num_creatures + num_gyms + 1  # +1 for the agent's start tile
+        if occupied > grid_size * grid_size:
+            raise ValueError("too many creatures/gyms for the grid")
         self.grid_size = grid_size
         self.num_creatures = num_creatures
-        self.target_catches = target_catches
+        self.num_gyms = num_gyms
         self.max_steps = max_steps
         self.patch_radius = patch_radius
 
@@ -74,45 +81,54 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.action_space = spaces.Discrete(6)  # type: ignore[assignment]
         self.observation_space = spaces.Dict(
             {
-                "agent_pos": spaces.Box(
-                    low=0, high=grid_size - 1, shape=(2,), dtype=np.int64
-                ),
+                "agent_pos": spaces.Box(0, grid_size - 1, shape=(2,), dtype=np.int64),
                 "local_patch": spaces.Box(
-                    low=0, high=1, shape=(patch_side, patch_side), dtype=np.int8
+                    0, _PATCH_GYM, shape=(patch_side, patch_side), dtype=np.int8
                 ),
-                "caught": spaces.Box(
-                    low=0, high=target_catches, shape=(1,), dtype=np.int64
-                ),
+                "caught": spaces.Box(0, num_creatures, shape=(1,), dtype=np.int64),
+                "gyms_defeated": spaces.Box(0, num_gyms, shape=(1,), dtype=np.int64),
+                "in_battle": spaces.Box(0, 1, shape=(1,), dtype=np.int8),
+                "player_hp": spaces.Box(0, _HP_MAX, shape=(1,), dtype=np.int64),
+                "player_type": spaces.Box(0, _NUM_TYPES - 1, shape=(1,), dtype=np.int64),
+                "enemy_hp": spaces.Box(0, _HP_MAX, shape=(1,), dtype=np.int64),
+                "enemy_type": spaces.Box(0, _NUM_TYPES - 1, shape=(1,), dtype=np.int64),
             }
         )
 
         # Episode state (populated by reset).
         self._agent_pos: np.ndarray = np.zeros(2, dtype=np.int64)
         self._creatures: set[tuple[int, int]] = set()
-        self._caught: int = 0
-        self._steps: int = 0
-
-    def reset(
-        self,
-        *,
-        seed: int | None = None,
-        options: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
-        super().reset(seed=seed)
-        # Seeded, reproducible region: same seed -> identical placement.
-        cells = self.grid_size * self.grid_size
-        chosen = self.np_random.choice(cells, size=self.num_creatures, replace=False)
-        self._creatures = {
-            (int(c // self.grid_size), int(c % self.grid_size)) for c in chosen
-        }
-        # Agent starts on a non-creature tile, also seeded.
-        while True:
-            start = self.np_random.integers(0, self.grid_size, size=2)
-            if (int(start[0]), int(start[1])) not in self._creatures:
-                break
-        self._agent_pos = start.astype(np.int64)
+        self._gym_tiles: dict[tuple[int, int], int] = {}
+        self._gym_defeated: list[bool] = []
         self._caught = 0
         self._steps = 0
+        self._party: list[Creature] = []
+        self._mode = "overworld"
+        self._battle: Battle | None = None
+        self._battle_gym_idx = -1
+
+    # -- gym API ------------------------------------------------------------
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        super().reset(seed=seed)
+        cells = self.grid_size * self.grid_size
+        need = self.num_creatures + self.num_gyms + 1
+        chosen = self.np_random.choice(cells, size=need, replace=False)
+        coords = [(int(c // self.grid_size), int(c % self.grid_size)) for c in chosen]
+
+        self._creatures = set(coords[: self.num_creatures])
+        gym_coords = coords[self.num_creatures : self.num_creatures + self.num_gyms]
+        self._gym_tiles = {pos: i for i, pos in enumerate(gym_coords)}
+        self._gym_defeated = [False] * self.num_gyms
+        self._agent_pos = np.array(coords[-1], dtype=np.int64)
+
+        self._caught = 0
+        self._steps = 0
+        self._party = starter_party()
+        self._mode = "overworld"
+        self._battle = None
         return self._obs(), self._info()
 
     def step(
@@ -121,8 +137,18 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         if not self.action_space.contains(action):
             raise ValueError(f"invalid action: {action!r}")
         self._steps += 1
-        reward = 0.0
+        if self._mode == "battle":
+            reward = self._step_battle(action)
+        else:
+            reward = self._step_overworld(action)
 
+        terminated = self.num_gyms > 0 and all(self._gym_defeated)
+        truncated = self._steps >= self.max_steps
+        return self._obs(), reward, terminated, truncated, self._info()
+
+    # -- overworld ----------------------------------------------------------
+
+    def _step_overworld(self, action: int) -> float:
         if action in _MOVE_DELTAS:
             dr, dc = _MOVE_DELTAS[action]
             self._agent_pos = np.array(
@@ -132,33 +158,113 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
                 ],
                 dtype=np.int64,
             )
-        elif action == CATCH:
+            self._maybe_enter_battle()
+            return 0.0
+        if action == CATCH:
             tile = (int(self._agent_pos[0]), int(self._agent_pos[1]))
             if tile in self._creatures:
                 self._creatures.discard(tile)
                 self._caught += 1
-                reward = 1.0  # RLVR: boolean subgoal completion, not shaping.
+                return 1.0  # RLVR subgoal: a creature caught.
+        return 0.0
 
-        terminated = self._caught >= self.target_catches
-        truncated = self._steps >= self.max_steps
-        return self._obs(), reward, terminated, truncated, self._info()
+    def _maybe_enter_battle(self) -> None:
+        tile = (int(self._agent_pos[0]), int(self._agent_pos[1]))
+        idx = self._gym_tiles.get(tile)
+        if idx is None or self._gym_defeated[idx]:
+            return
+        for c in self._party:  # battle starts with a fully healed party.
+            c.hp = c.max_hp
+        self._battle = Battle(BattleState(party_a=self._party, party_b=gym_boss(idx)))
+        self._battle_gym_idx = idx  # captured at entry — robust to action-space changes
+        self._mode = "battle"
+
+    # -- battle -------------------------------------------------------------
+
+    def _step_battle(self, action: int) -> float:
+        battle = self._battle
+        assert battle is not None
+        result = battle.step(
+            self._to_battle_action(action), scripted_opponent(battle.state, Side.B)
+        )
+
+        reward = 0.0
+        if result.terminated or result.truncated:
+            if result.winner is Side.A:
+                self._gym_defeated[self._battle_gym_idx] = True
+                reward = 1.0  # RLVR subgoal: a gym boss defeated.
+            # win or lose, leave battle; party is re-healed on the next entry.
+            self._mode = "overworld"
+            self._battle = None
+        return reward
+
+    def _to_battle_action(self, action: int) -> BattleAction:
+        battle = self._battle
+        assert battle is not None
+        if action == 4:  # switch to the next alive party member
+            nxt = self._next_alive_player()
+            return BattleAction(ActionKind.SWITCH, nxt)
+        if action == NOOP:  # a true pass: a wasted "item" turn
+            return BattleAction(ActionKind.ITEM, 99)
+        moves = battle.state.active(Side.A).moves
+        return BattleAction(ActionKind.MOVE, min(action, len(moves) - 1))
+
+    def _next_alive_player(self) -> int:
+        battle = self._battle
+        assert battle is not None
+        cur = battle.state.active_a
+        n = len(self._party)
+        for off in range(1, n + 1):
+            i = (cur + off) % n
+            if not self._party[i].is_fainted:
+                return i
+        return cur
+
+    # -- observation --------------------------------------------------------
 
     def _obs(self) -> dict[str, np.ndarray]:
         side = 2 * self.patch_radius + 1
         patch = np.zeros((side, side), dtype=np.int8)
         ar, ac = int(self._agent_pos[0]), int(self._agent_pos[1])
-        for cr, cc in self._creatures:
+        for (cr, cc), val in self._patch_entities():
             pr, pc = cr - ar + self.patch_radius, cc - ac + self.patch_radius
             if 0 <= pr < side and 0 <= pc < side:
-                patch[pr, pc] = 1
+                patch[pr, pc] = val
+
+        in_battle = self._mode == "battle"
+        p_hp = p_ty = e_hp = e_ty = 0
+        if in_battle and self._battle is not None:
+            pa = self._battle.state.active(Side.A)
+            ea = self._battle.state.active(Side.B)
+            p_hp, p_ty = pa.hp, _TYPE_TO_INT[pa.types[0]]
+            e_hp, e_ty = ea.hp, _TYPE_TO_INT[ea.types[0]]
+
         return {
             "agent_pos": self._agent_pos.copy(),
             "local_patch": patch,
             "caught": np.array([self._caught], dtype=np.int64),
+            "gyms_defeated": np.array([sum(self._gym_defeated)], dtype=np.int64),
+            "in_battle": np.array([int(in_battle)], dtype=np.int8),
+            "player_hp": np.array([p_hp], dtype=np.int64),
+            "player_type": np.array([p_ty], dtype=np.int64),
+            "enemy_hp": np.array([e_hp], dtype=np.int64),
+            "enemy_type": np.array([e_ty], dtype=np.int64),
         }
+
+    def _patch_entities(self) -> list[tuple[tuple[int, int], int]]:
+        out: list[tuple[tuple[int, int], int]] = [
+            (pos, _PATCH_CREATURE) for pos in self._creatures
+        ]
+        out += [
+            (pos, _PATCH_GYM)
+            for pos, i in self._gym_tiles.items()
+            if not self._gym_defeated[i]
+        ]
+        return out
 
     def _info(self) -> dict[str, Any]:
         return {
-            "subgoals": {"caught": self._caught},
-            "remaining": len(self._creatures),
+            "subgoals": {"caught": self._caught, "gyms_defeated": sum(self._gym_defeated)},
+            "mode": self._mode,
+            "remaining_gyms": self.num_gyms - sum(self._gym_defeated),
         }

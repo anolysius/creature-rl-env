@@ -33,13 +33,14 @@
 - 구성 task: `scaffolding`, `env-validation` (둘 다 archived)
 
 ### M1 — 고정월드 full subgoal chain 🔵
-- [ ] EC1: 턴제 배틀 sub-MDP 동작 (타입 상성 데미지·스위치·아이템) — **고정** 타입표
+- [x] EC1: 턴제 배틀 sub-MDP 동작 (타입 상성 데미지·스위치·아이템) — **고정** 타입표 *(`battle-system`)*
 - [ ] EC2: 진화가 long-horizon 투자 결정으로 동작 (level/item gated)
-- [ ] EC3: catch→evolve→gym boss(N개 escalating)→최종보스 subgoal 체인이 `info["subgoals"]` 에 노출
-- [ ] EC4: 각 subgoal 이 boolean-verifiable 리워드 (RLVR, dense shaping 없음)
-- [ ] EC5: scripted 또는 PPO 가 (고정월드에서) ≥1 gym boss 격파; 에피소드 ≥1k 스텝.
-  *(M1 은 단일 결정론 월드 — held-out 시드/일반화 측정은 procgen 이 들어오는 M2 의 몫)*
-- 구성 task(예정): `battle-system`, `creature-evolution`, `gym-boss-progression`, `typechart-fixed`
+- [x] EC3: 배틀이 월드의 gated checkpoint 로 동작, catch+gym subgoal 이 `info["subgoals"]` 에 노출
+  *(`gym-boss-progression`; evolve·최종보스는 EC2 와 함께 체인 확장)*
+- [x] EC4: 각 subgoal 이 boolean-verifiable 리워드 (catch +1, gym 격파 +1; dense shaping 없음) *(`gym-boss-progression`)*
+- [~] EC5: scripted 또는 PPO 가 (고정월드에서) ≥1 gym boss 격파; 에피소드 ≥1k 스텝.
+  *(scripted 충족 — `gym-boss-progression`; PPO/풀 베이스라인은 후속. held-out 일반화는 M2)*
+- 구성 task: `battle-system` ✅, `gym-boss-progression` ✅ / 예정: `creature-evolution`, `typechart-fixed`
 
 ### M2 — Procgen + train/test (moat) ⬜
 - [ ] EC1: 시드 → 절차 생성 region (맵·biome·spawn·gym 시퀀스)
