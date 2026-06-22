@@ -3,7 +3,7 @@
 Policy-agnostic and **numpy-only**. Implements the Procgen-style generalization
 protocol: an agent is trained on a pool of *training* seeds, then evaluated on
 both held-in (training-region) and held-out (test-region) seeds. The reported
-``gap = train_mean - test_mean`` quantifies how much performance is lost when the
+``gap = heldin_mean - heldout_mean`` quantifies how much performance is lost when the
 agent meets unseen maps + unseen type charts — the moat this benchmark measures.
 
 This module deliberately carries **no learning dependency** (no torch /
@@ -101,24 +101,24 @@ class GapReport:
 
     @property
     def gap(self) -> float:
-        """Procgen convention: ``train_mean - test_mean`` (positive ⇒ overfits)."""
+        """Procgen convention: ``heldin_mean - heldout_mean`` (positive ⇒ overfits)."""
         return self.train.mean - self.test.mean
 
     def to_dict(self) -> dict[str, float]:
-        """Stable, leaderboard-ready row (M3 forward-hook). Keys are a frozen contract.
+        """Stable, leaderboard-ready row (the public M3-EC2 schema).
 
-        ``train_mean`` is the mean over the **held-in** (training-region) eval seeds,
+        ``heldin_mean`` is the mean over the **held-in** (training-region) eval seeds,
         not a score on the seeds actually learned — by design these are kept disjoint
         (see :func:`split_train_pool`) so the gap reflects distribution shift, not
-        memorization. (Naming is a frozen M2-EC4 contract; revisit before M3 freezes
-        a public leaderboard schema — consider ``heldin_mean``/``heldout_mean``.)
+        memorization. The keys are named for what they measure (held-in / held-out
+        *evaluation*) so a leaderboard consumer can't misread them as training scores.
         """
         return {
-            "train_mean": self.train.mean,
-            "test_mean": self.test.mean,
+            "heldin_mean": self.train.mean,
+            "heldout_mean": self.test.mean,
             "gap": self.gap,
-            "n_train": float(self.train.n),
-            "n_test": float(self.test.n),
+            "n_heldin": float(self.train.n),
+            "n_heldout": float(self.test.n),
         }
 
 
@@ -167,7 +167,7 @@ def format_report(report: GapReport) -> str:
     return (
         "| split | seeds | mean return |\n"
         "|---|---|---|\n"
-        f"| train (held-in) | {report.train.n} | {d['train_mean']:.3f} |\n"
-        f"| test (held-out) | {report.test.n} | {d['test_mean']:.3f} |\n"
-        f"| **gap** (train − test) | | **{d['gap']:.3f}** |\n"
+        f"| held-in (train region) | {report.train.n} | {d['heldin_mean']:.3f} |\n"
+        f"| held-out (test region) | {report.test.n} | {d['heldout_mean']:.3f} |\n"
+        f"| **gap** (held-in − held-out) | | **{d['gap']:.3f}** |\n"
     )

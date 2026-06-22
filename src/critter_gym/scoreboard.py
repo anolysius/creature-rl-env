@@ -42,10 +42,10 @@ class ScoreTable:
     def to_dict(self) -> dict[str, dict[str, float]]:
         """``{baseline_name: GapReport.to_dict()}`` — leaderboard-ready (M3-EC2 hook).
 
-        Per-baseline value keys are the frozen :meth:`GapReport.to_dict` contract
-        (``train_mean``/``test_mean``/``gap``/``n_train``/``n_test``). Any rename of
-        those keys (see the note in ``generalization.GapReport.to_dict``) propagates
-        here automatically — this layer only delegates.
+        Per-baseline value keys are the :meth:`GapReport.to_dict` contract
+        (``heldin_mean``/``heldout_mean``/``gap``/``n_heldin``/``n_heldout``). This
+        layer only delegates, so any change to those keys propagates here from the
+        single source in ``generalization.GapReport.to_dict``.
         """
         return {row.name: row.report.to_dict() for row in self.rows}
 
@@ -58,8 +58,8 @@ class ScoreTable:
         for row in self.rows:
             d = row.report.to_dict()
             lines.append(
-                f"| {row.name} | {d['train_mean']:.3f} | "
-                f"{d['test_mean']:.3f} | {d['gap']:.3f} |"
+                f"| {row.name} | {d['heldin_mean']:.3f} | "
+                f"{d['heldout_mean']:.3f} | {d['gap']:.3f} |"
             )
         return "\n".join(lines) + "\n"
 
