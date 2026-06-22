@@ -57,3 +57,18 @@ def test_train_and_test_regions_do_not_leak() -> None:
     train_regions = {repr(generate_region(s, vary=True)) for s in train_seeds(50)}
     test_regions = {repr(generate_region(s, vary=True)) for s in heldout_seeds(50)}
     assert train_regions.isdisjoint(test_regions)
+
+
+def test_region_carries_deterministic_per_seed_chart() -> None:
+    """AC6: the region holds a per-seed type chart, reproducible by seed."""
+    a = generate_region(11, vary=True)
+    b = generate_region(11, vary=True)
+    assert a.chart == b.chart
+
+
+def test_train_and_heldout_charts_can_differ() -> None:
+    """AC6: train and held-out seed samples each exercise multiple charts
+    (no split collapse to one shared/fixed table)."""
+    train_charts = {generate_region(s, vary=True).chart for s in train_seeds(40)}
+    held_charts = {generate_region(s, vary=True).chart for s in heldout_seeds(40)}
+    assert len(train_charts) > 1 and len(held_charts) > 1

@@ -34,7 +34,7 @@ from critter_gym.battle import (
 from critter_gym.creatures import Creature
 from critter_gym.party import gym_boss, starter_party
 from critter_gym.region import TEST_SEED_OFFSET, generate_region
-from critter_gym.types import ElementType
+from critter_gym.types import FIXED_CHART, ElementType, TypeChart
 
 # Action indices (a minimal subset of DESIGN.md §3.3). Reinterpreted in battle:
 #   0-3 -> use battle move (clamped), 4 -> switch to next alive, 5 -> pass.
@@ -110,6 +110,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._gym_tiles: dict[tuple[int, int], int] = {}
         self._gym_types: list[ElementType] = []
         self._gym_defeated: list[bool] = []
+        self._region_chart: TypeChart = FIXED_CHART
         self._caught = 0
         self._evolved = 0
         self._steps = 0
@@ -138,6 +139,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._gym_tiles = {pos: i for i, (pos, _) in enumerate(region.gyms)}
         self._gym_types = [t for (_, t) in region.gyms]
         self._gym_defeated = [False] * len(region.gyms)
+        self._region_chart = region.chart
         self._agent_pos = np.array(region.agent_start, dtype=np.int64)
 
         self._caught = 0
@@ -194,7 +196,9 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         for c in self._party:  # battle starts with a fully healed party.
             c.hp = c.max_hp
         boss = gym_boss(self._gym_types[idx], idx)
-        self._battle = Battle(BattleState(party_a=self._party, party_b=boss))
+        self._battle = Battle(
+            BattleState(party_a=self._party, party_b=boss), chart=self._region_chart
+        )
         self._battle_gym_idx = idx  # captured at entry — robust to action-space changes
         self._mode = "battle"
 
@@ -204,7 +208,8 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         battle = self._battle
         assert battle is not None
         result = battle.step(
-            self._to_battle_action(action), scripted_opponent(battle.state, Side.B)
+            self._to_battle_action(action),
+            scripted_opponent(battle.state, Side.B, self._region_chart),
         )
 
         reward = 0.0
