@@ -59,6 +59,9 @@ writeup·OSS·viz·킬러 데모를 *한 묶음*으로 런치한다 (DESIGN §6 
 
 ## 현재 위치
 
-M0·**M1 완료**(`battle-system`·`gym-boss-progression`·`creature-evolution` — 탐험→잡기→배틀→보스→진화가
-한 에피소드에서 verifiable subgoal 로 동작). **활성 = M2 (procgen + train/test, 우리 moat).** 다음 task 는
-M2 의 미충족 EC 에서 — 권장 시작점은 `procgen-region`(시드→절차 월드) 또는 `procgen-typechart`(infer-the-meta).
+M0·M1·**M2 완료**. M2(우리 moat)의 4 EC 모두 충족 — `procgen-region`(시드→절차 월드)+
+`procgen-typechart`(infer-the-meta, 새 타입표)+`generalization-harness`(train-vs-test 갭 측정,
+numpy-only `critter_gym.generalization`). **활성 = M3 (벤치마크 신뢰성 + 런치).** 다음 task 는 M3 의
+미충족 EC 에서 — 베이스라인 4종(M3-EC1)·리더보드(M3-EC2)·viz(M3-EC3), 그리고 우리 moat 을 보여주는
+**킬러 데모(M3-EC6)**: 같은 에이전트가 unseen held-out 시드(새 맵+새 타입표)에서도 보스 격파.
+M2 의 갭 측정 하네스가 이 데모·리더보드의 토대다.
