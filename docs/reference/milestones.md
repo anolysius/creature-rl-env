@@ -57,8 +57,9 @@
 - [ ] EC4: arXiv writeup 초안
 - [ ] EC5: OSS 공개 (MIT) + Prime Intellect Environments Hub 등록
 - [ ] EC6: **킬러 데모** — "같은 에이전트 → unseen held-out 시드(새 맵+새 타입표) → 보스 격파" GIF
-  - 🟡 토대 done (`world-render`): 월드 상태→픽셀 프레임 render API (`env.render()` rgb_array + `critter_gym.render.save_gif`, render 도메인). **충족은 후속 `killer-demo`**(보스격파 에이전트 학습 + 녹화→GIF 조립; `[rl]`+`[render]`, CI 비검증).
-- 구성 task: `baseline-suite` ✅, `leaderboard` ✅, `metrics-viz` ✅, `world-render` ✅(EC6 토대) / 예정: `killer-demo`, `arxiv-draft`, `oss-release`
+  - 🟡 토대 done (`world-render`): 월드 상태→픽셀 프레임 render API (`env.render()` rgb_array + `critter_gym.render.save_gif`).
+  - 🟡 수단 done (`killer-demo`): 녹화 파이프라인 `critter_gym.demo.record_episode`(프레임+보스격파 감지, **CI 검증**) + `scripts/killer_demo.py`(train→held-out 녹화→GIF). **여전히 미충족** — CI 가 검증한 건 파이프라인(seed=3 train 영역)이지 *일반화*가 아님. `[x]` 자격 = 실제 학습 에이전트가 **held-out 보스격파** GIF 육안 확인 + 별도 결재(학습 품질 의존, CI 비검증).
+- 구성 task: `baseline-suite` ✅, `leaderboard` ✅, `metrics-viz` ✅, `world-render` ✅(EC6 토대), `killer-demo` ✅(EC6 수단) / 예정: `arxiv-draft`, `oss-release` / EC6 충족 = 실제 held-out GIF 산출·결재
 
 ### M4 — Throughput (JAX) ⬜
 - [ ] EC1: 핫패스 JAX 포팅 (spec 안정 *후* — DESIGN §4)
