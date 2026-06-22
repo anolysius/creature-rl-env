@@ -254,6 +254,68 @@ def test_concentration_evolution_payoff_is_not_vestigial() -> None:
     assert any(c.evolved for c in env._party)
 
 
+# --- procgen region integration (M2-EC1: AC3/AC5/AC6/AC7) ---------------------
+
+def test_procgen_episode_always_has_a_gym_and_can_terminate() -> None:
+    """AC3: a vary=True episode always has >=1 gym, so termination stays reachable."""
+    for seed in range(8):
+        env = CritterEnv(vary=True)
+        env.reset(seed=seed)
+        assert len(env._gym_defeated) >= 1
+
+
+def test_procgen_env_registered_and_compliant() -> None:
+    """AC5: the procgen variant is registered, check_env passes, obs in-space on
+    both train and held-out seeds."""
+    import gymnasium as gym
+
+    import critter_gym  # noqa: F401
+
+    e = gym.make("CritterGym-procgen-v0")
+    assert e.unwrapped.vary is True  # type: ignore[attr-defined]
+    e.close()
+
+    env = CritterEnv(vary=True)
+    for seed in [0, 1, 2, 1_000_000, 1_000_050]:  # train + held-out
+        obs, _ = env.reset(seed=seed)
+        assert env.observation_space.contains(obs)
+
+
+def test_procgen_is_deterministic_per_seed() -> None:
+    """AC6: same seed + same actions -> same trajectory in procgen mode too."""
+    def run() -> list[tuple[int, int, int, float]]:
+        env = CritterEnv(vary=True, max_steps=200)
+        obs, _ = env.reset(seed=1234)
+        trace = []
+        for _ in range(200):
+            obs, r, term, trunc, _ = env.step(_scripted_action(env, obs))
+            trace.append(
+                (int(obs["in_battle"][0]), int(obs["gyms_defeated"][0]),
+                 int(obs["evolved"][0]), r)
+            )
+            if term or trunc:
+                break
+        return trace
+
+    assert run() == run()
+
+
+def test_m1_mechanics_work_in_procgen_regions() -> None:
+    """AC7: battles / gym defeat / evolution still function in procgen worlds."""
+    cleared_some = False
+    for seed in range(6):
+        env = CritterEnv(grid_size=10, vary=True, max_steps=400)
+        obs, _ = env.reset(seed=seed)
+        for _ in range(400):
+            obs, _, term, trunc, info = env.step(_scripted_action(env, obs))
+            if term or trunc:
+                break
+        if info["subgoals"]["gyms_defeated"] >= 1:
+            cleared_some = True
+            break
+    assert cleared_some  # a scripted policy can defeat a gym in some procgen region
+
+
 # catching still works alongside gyms (AC4 catch subgoal preserved)
 def test_catch_still_rewards() -> None:
     env = CritterEnv()

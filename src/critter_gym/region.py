@@ -1,0 +1,108 @@
+"""Procedural region generation + train/test seed split (DESIGN.md §3.1).
+
+A *region* is the per-episode world content — creature positions, gym positions
+and their boss types, and the agent start. ``generate_region`` is a pure function
+of the seed (its own RNG), so the same seed always yields the same region — the
+basis for reproducibility and, crucially, for a **train/test seed split** that
+lets us measure generalization to *unseen* worlds (the project's moat vs. fixed
+ROMs like Pokémon Red).
+
+Only the *content* varies with the seed; obs-space-affecting dimensions
+(``grid_size``) stay fixed and the env's obs bounds use the max counts, so every
+seed's observation stays within a single fixed observation space (Procgen
+convention).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+from critter_gym.types import ElementType
+
+# Boss type sequence used in fixed (non-vary) mode — matches M1 behavior.
+FIXED_BOSS_TYPES: list[ElementType] = [ElementType.GRASS, ElementType.GRASS, ElementType.WATER]
+
+# Test seeds live at/above this offset; train seeds must stay strictly below it,
+# so the two splits are structurally disjoint (no leakage).
+TEST_SEED_OFFSET = 1_000_000
+
+_MIN_CREATURES = 1
+_MIN_GYMS = 1  # >= 1 keeps the env's termination contract valid (never 0 gyms)
+
+
+@dataclass
+class Region:
+    """Per-episode world content produced by ``generate_region``."""
+
+    grid_size: int
+    creatures: list[tuple[int, int]]
+    gyms: list[tuple[tuple[int, int], ElementType]]  # (position, boss type)
+    agent_start: tuple[int, int]
+
+
+def generate_region(
+    seed: int,
+    grid_size: int = 10,
+    max_creatures: int = 5,
+    max_gyms: int = 3,
+    *,
+    vary: bool = False,
+) -> Region:
+    """Deterministically build a region from ``seed``.
+
+    ``vary=False`` reproduces the fixed M1 world (exactly ``max_creatures``
+    creatures and ``max_gyms`` gyms with the fixed boss sequence). ``vary=True``
+    samples the counts in ``[1, max]`` and the boss types per seed.
+    """
+    rng = np.random.default_rng(seed)
+
+    if vary:
+        n_creatures = int(rng.integers(_MIN_CREATURES, max_creatures + 1))
+        n_gyms = int(rng.integers(_MIN_GYMS, max_gyms + 1))
+        all_types = list(ElementType)
+        boss_types = [all_types[int(rng.integers(0, len(all_types)))] for _ in range(n_gyms)]
+    else:
+        n_creatures, n_gyms = max_creatures, max_gyms
+        boss_types = [FIXED_BOSS_TYPES[i % len(FIXED_BOSS_TYPES)] for i in range(n_gyms)]
+
+    cells = grid_size * grid_size
+    need = n_creatures + n_gyms + 1  # +1 for the agent start
+    chosen = rng.choice(cells, size=need, replace=False)
+    coords = [(int(c // grid_size), int(c % grid_size)) for c in chosen]
+
+    creatures = coords[:n_creatures]
+    gym_coords = coords[n_creatures : n_creatures + n_gyms]
+    gyms = list(zip(gym_coords, boss_types))
+    agent_start = coords[-1]
+    return Region(grid_size, creatures, gyms, agent_start)
+
+
+# -- train/test split ---------------------------------------------------------
+
+def train_seeds(n: int, start: int = 0) -> range:
+    """A contiguous block of ``n`` training seeds starting at ``start``.
+
+    Raises if the block would overrun into the held-out range, which would leak
+    test worlds into training.
+    """
+    if start < 0 or start + n > TEST_SEED_OFFSET:
+        raise ValueError(
+            f"train seeds [{start}, {start + n}) overrun TEST_SEED_OFFSET={TEST_SEED_OFFSET}"
+        )
+    return range(start, start + n)
+
+
+def heldout_seeds(n: int) -> range:
+    """A contiguous block of ``n`` held-out (test) seeds, disjoint from train.
+
+    (Named ``heldout_seeds`` rather than ``test_seeds`` so pytest does not try to
+    collect it as a test.)
+    """
+    return range(TEST_SEED_OFFSET, TEST_SEED_OFFSET + n)
+
+
+def is_held_out(seed: int) -> bool:
+    """Whether ``seed`` belongs to the held-out (test) range."""
+    return seed >= TEST_SEED_OFFSET

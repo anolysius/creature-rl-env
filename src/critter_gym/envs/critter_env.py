@@ -33,6 +33,7 @@ from critter_gym.battle import (
 )
 from critter_gym.creatures import Creature
 from critter_gym.party import gym_boss, starter_party
+from critter_gym.region import TEST_SEED_OFFSET, generate_region
 from critter_gym.types import ElementType
 
 # Action indices (a minimal subset of DESIGN.md §3.3). Reinterpreted in battle:
@@ -66,8 +67,11 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         num_gyms: int = 3,
         max_steps: int = 200,
         patch_radius: int = 2,
+        vary: bool = False,
     ) -> None:
         super().__init__()
+        # num_creatures / num_gyms are the *max* counts (obs bounds); with vary=True
+        # the per-episode counts are sampled in [1, max].
         occupied = num_creatures + num_gyms + 1  # +1 for the agent's start tile
         if occupied > grid_size * grid_size:
             raise ValueError("too many creatures/gyms for the grid")
@@ -76,6 +80,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.num_gyms = num_gyms
         self.max_steps = max_steps
         self.patch_radius = patch_radius
+        self.vary = vary
 
         patch_side = 2 * patch_radius + 1
         # gymnasium's Discrete is typed Space[np.int64]; ActType here is int, and
@@ -103,6 +108,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._agent_pos: np.ndarray = np.zeros(2, dtype=np.int64)
         self._creatures: set[tuple[int, int]] = set()
         self._gym_tiles: dict[tuple[int, int], int] = {}
+        self._gym_types: list[ElementType] = []
         self._gym_defeated: list[bool] = []
         self._caught = 0
         self._evolved = 0
@@ -118,16 +124,21 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         super().reset(seed=seed)
-        cells = self.grid_size * self.grid_size
-        need = self.num_creatures + self.num_gyms + 1
-        chosen = self.np_random.choice(cells, size=need, replace=False)
-        coords = [(int(c // self.grid_size), int(c % self.grid_size)) for c in chosen]
+        # generate_region is a pure function of the seed; derive one when reset()
+        # is called without an explicit seed. Stay strictly below TEST_SEED_OFFSET so
+        # an unseeded run can never accidentally sample a held-out world (split-safe).
+        region_seed = (
+            seed if seed is not None else int(self.np_random.integers(0, TEST_SEED_OFFSET))
+        )
+        region = generate_region(
+            region_seed, self.grid_size, self.num_creatures, self.num_gyms, vary=self.vary
+        )
 
-        self._creatures = set(coords[: self.num_creatures])
-        gym_coords = coords[self.num_creatures : self.num_creatures + self.num_gyms]
-        self._gym_tiles = {pos: i for i, pos in enumerate(gym_coords)}
-        self._gym_defeated = [False] * self.num_gyms
-        self._agent_pos = np.array(coords[-1], dtype=np.int64)
+        self._creatures = set(region.creatures)
+        self._gym_tiles = {pos: i for i, (pos, _) in enumerate(region.gyms)}
+        self._gym_types = [t for (_, t) in region.gyms]
+        self._gym_defeated = [False] * len(region.gyms)
+        self._agent_pos = np.array(region.agent_start, dtype=np.int64)
 
         self._caught = 0
         self._evolved = 0
@@ -149,7 +160,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         else:
             reward = self._step_overworld(action)
 
-        terminated = self.num_gyms > 0 and all(self._gym_defeated)
+        terminated = len(self._gym_defeated) > 0 and all(self._gym_defeated)
         truncated = self._steps >= self.max_steps
         return self._obs(), reward, terminated, truncated, self._info()
 
@@ -182,7 +193,8 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             return
         for c in self._party:  # battle starts with a fully healed party.
             c.hp = c.max_hp
-        self._battle = Battle(BattleState(party_a=self._party, party_b=gym_boss(idx)))
+        boss = gym_boss(self._gym_types[idx], idx)
+        self._battle = Battle(BattleState(party_a=self._party, party_b=boss))
         self._battle_gym_idx = idx  # captured at entry — robust to action-space changes
         self._mode = "battle"
 
@@ -288,5 +300,5 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
                 "evolved": self._evolved,
             },
             "mode": self._mode,
-            "remaining_gyms": self.num_gyms - sum(self._gym_defeated),
+            "remaining_gyms": len(self._gym_defeated) - sum(self._gym_defeated),
         }

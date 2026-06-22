@@ -16,4 +16,11 @@ def register_envs() -> None:
         id="CritterGym-v0",
         entry_point="critter_gym.envs.critter_env:CritterEnv",
     )
+    # Procedural variant: seed varies region content; train/test seed split
+    # enables generalization measurement (DESIGN.md §3.1).
+    register(
+        id="CritterGym-procgen-v0",
+        entry_point="critter_gym.envs.critter_env:CritterEnv",
+        kwargs={"vary": True},
+    )
     _REGISTERED = True

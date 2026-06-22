@@ -13,12 +13,6 @@ from critter_gym.types import ElementType
 
 F, W, G = ElementType.FIRE, ElementType.WATER, ElementType.GRASS
 
-# Gym boss types. With FIRE>GRASS>WATER>FIRE, this sequence lets one party member
-# (FIRE) clear the two GRASS gyms — so concentrating wins on FIRE evolves it after
-# gym 0 and it fights gym 1 already evolved (a non-vestigial investment payoff).
-# The WATER gym is the type-switch case (GRASS beats it).
-_BOSS_TYPES: list[ElementType] = [G, G, W]
-
 
 def starter_party() -> list[Creature]:
     """The fixed M1 player party: one creature per element, each with an
@@ -39,7 +33,11 @@ def starter_party() -> list[Creature]:
     ]
 
 
-def gym_boss(index: int) -> list[Creature]:
-    """The boss party for gym ``index`` (single tanky creature)."""
-    t = _BOSS_TYPES[index % len(_BOSS_TYPES)]
-    return [Creature(f"Warden-{index}", (t,), 120, 12, 12, 8, [Move("strike", t, 30)])]
+def gym_boss(boss_type: ElementType, index: int = 0) -> list[Creature]:
+    """The boss party for a gym of ``boss_type`` (single tanky creature)."""
+    return [
+        Creature(
+            f"Warden-{index}", (boss_type,), 120, 12, 12, 8,
+            [Move("strike", boss_type, 30)],
+        )
+    ]
