@@ -19,7 +19,10 @@ HELDOUT = range(50_000, 50_100)
 def _rollout_mean(policy, seeds) -> float:
     totals = []
     for s in seeds:
-        env = CritterEnv()
+        # num_gyms=0 isolates the catch baseline (the overworld navigation +
+        # catch behavior these policies target); gym battles are exercised in
+        # tests/test_gym_battle.py.
+        env = CritterEnv(num_gyms=0)
         obs, _ = env.reset(seed=s)
         done = False
         g = 0.0
@@ -32,7 +35,7 @@ def _rollout_mean(policy, seeds) -> float:
 
 
 def test_policies_return_valid_actions() -> None:
-    env = CritterEnv()
+    env = CritterEnv(num_gyms=0)
     obs, _ = env.reset(seed=0)
     rng = np.random.default_rng(0)
     for _ in range(50):
@@ -47,11 +50,12 @@ def test_baseline_spread_makes_env_a_valid_benchmark() -> None:
     rng = np.random.default_rng(0)
     random_mean = _rollout_mean(lambda o: random_policy(o, rng), HELDOUT)
     greedy_mean = _rollout_mean(lambda o: greedy_policy(o, 10), HELDOUT)
-    target = CritterEnv().target_catches
+    # Max attainable catch score is the creature count (num_gyms=0 here).
+    cap = CritterEnv(num_gyms=0).num_creatures
 
-    # Margins scale with target_catches so the guard survives env-param changes
-    # (a fixed absolute margin would go brittle if target moves).
+    # Margins scale with the cap so the guard survives env-param changes
+    # (a fixed absolute margin would go brittle if the cap moves).
     assert random_mean > 0, "env unsolvable even by chance"
     assert greedy_mean > random_mean, "no spread — env may be trivial/broken"
-    assert greedy_mean >= 0.5 * target, "scripted policy is not meaningfully competent"
-    assert greedy_mean <= target, "scripted policy exceeds the max attainable score"
+    assert greedy_mean >= 0.5 * cap, "scripted policy is not meaningfully competent"
+    assert greedy_mean <= cap, "scripted policy exceeds the max attainable score"
