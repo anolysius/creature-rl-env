@@ -3,7 +3,7 @@
 > CritterGym 제품 코어 (Gymnasium env) 의 단계적 구축. DESIGN.md §6 로드맵 Phase 1~ 를 담는 멀티-task 묶음.
 >
 > **마일스톤 SSOT**: [roadmap.md](../../explanation/roadmap.md) (왜) · [milestones.md](../../reference/milestones.md) (사실).
-> **활성 마일스톤: M2** (procgen + train/test, moat). M0·M1 완료. 매 task 는 활성 M 의 미충족 EC 에서 내려온다.
+> **활성 마일스톤: M3** (벤치마크 신뢰성 + 런치). M0·M1·M2 완료. 매 task 는 활성 M 의 미충족 EC 에서 내려온다.
 
 ## 목표
 DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "dumbest-possible playable env"
@@ -27,9 +27,11 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 5 | `creature-evolution` | ✅ done (→ `_archive/2026-Q2/env-core/06-creature-evolution/`) | 진화 = long-horizon 투자 (M1-EC2) → **M1 완성** |
 | 6 | `procgen-region` | ✅ done (→ `_archive/2026-Q2/env-core/07-procgen-region/`) | 시드→절차 region + train/test 분리 (M2-EC1) |
 | 7 | `procgen-typechart` | ✅ done (→ `_archive/2026-Q2/env-core/08-procgen-typechart/`) | 시드별 내부정합 타입표, infer-the-meta (M2-EC2/EC3) |
+| 8 | `generalization-harness` | ✅ done (→ `_archive/2026-Q2/env-core/09-generalization-harness/`) | train-vs-test 일반화 갭 측정 하네스 (M2-EC4) → **M2 완성** |
 
 (이후 task 는 /task-start 로 append)
 
 ## 다음 task
-활성 마일스톤 **M2** 의 마지막 미충족 EC — `generalization-harness` (M2-EC4: PPO 를 train/test 시드로
-돌려 일반화 갭 측정; 킬러 데모 토대). 구성 task·EC 는 [milestones.md](../../reference/milestones.md) §M2.
+활성 마일스톤 **M3** (벤치마크 신뢰성 + 런치) 의 미충족 EC — 베이스라인 4종(M3-EC1)·리더보드
+(M3-EC2)·측정 viz(M3-EC3)·킬러 데모(M3-EC6) 등. 구성 task·EC 는
+[milestones.md](../../reference/milestones.md) §M3. M2 의 `critter_gym.generalization` 갭 하네스가 토대.
