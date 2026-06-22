@@ -6,7 +6,7 @@ PPO on a pool of *training* seeds of the **procgen** variant (``vary=True``: eac
 seed is a new map + a new type chart), then measures the Procgen-style
 generalization gap on held-in (training-region) vs held-out (test-region) seeds
 using :mod:`critter_gym.generalization`. The trained policy is expected to beat the
-random baseline on held-out seeds (``test_mean >= random_test_mean + MARGIN``); the
+random baseline on held-out seeds (``heldout_mean >= random_heldout_mean + MARGIN``); the
 gap itself is *reported*, not used as a pass/fail threshold (overfitting is the
 thing we measure, not a failure condition).
 
@@ -102,8 +102,8 @@ def main() -> int:
         report = measure_generalization(make_env, ppo_policy, heldin, heldout)
         d = report.to_dict()
         print(
-            f"{(k + 1) * chunk:>10,} | {d['train_mean']:>8.2f} | "
-            f"{d['test_mean']:>8.2f} | {d['gap']:>7.2f}"
+            f"{(k + 1) * chunk:>10,} | {d['heldin_mean']:>8.2f} | "
+            f"{d['heldout_mean']:>8.2f} | {d['gap']:>7.2f}"
         )
 
     print("\n" + format_report(report))
