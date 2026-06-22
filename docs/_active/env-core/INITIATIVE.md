@@ -31,10 +31,12 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 9 | `baseline-suite` | ✅ done (→ `_archive/2026-Q2/env-core/10-baseline-suite/`) | 베이스라인 4종 train+test 점수표 `critter_gym.scoreboard` (M3-EC1) |
 | 10 | `leaderboard` | ✅ done (→ `_archive/2026-Q2/env-core/11-leaderboard/`) | 리더보드 포맷+재현 configs `critter_gym.leaderboard` + 키 개명 (M3-EC2) |
 | 11 | `metrics-viz` | ✅ done (→ `_archive/2026-Q2/env-core/12-metrics-viz/`) | 측정 메트릭 플롯 4종 `critter_gym.viz` (matplotlib `[viz]` 격리) (M3-EC3) |
+| 12 | `world-render` | ✅ done (→ `_archive/2026-Q2/env-core/13-world-render/`) | 월드 상태→픽셀 프레임 `critter_gym.render` + env rgb_array (M3-EC6 토대) |
 
 (이후 task 는 /task-start 로 append)
 
 ## 다음 task
-활성 마일스톤 **M3** 의 미충족 EC — 킬러 데모(M3-EC6, unseen held-out 보스 격파 GIF; **render 도메인**
-선행 필요), arXiv writeup(M3-EC4), OSS 공개 MIT+Hub 등록(M3-EC5). 구성 task·EC 는
-[milestones.md](../../reference/milestones.md) §M3. 측정 인프라(EC1·EC2·EC3) 완료 — 남은 건 데모·공개.
+활성 마일스톤 **M3** 의 미충족 EC — **킬러 데모(M3-EC6, 충족)**: 보스격파 에이전트 학습 + 에피소드
+녹화→GIF (`world-render` 의 render API 위에서; `[rl]`+`[render]`, CI 비검증). 또는 arXiv writeup(EC4),
+OSS 공개 MIT+Hub(EC5). 구성 task·EC 는 [milestones.md](../../reference/milestones.md) §M3.
+측정 인프라(EC1·EC2·EC3) + render 토대(EC6) 완료 — 남은 건 데모 조립·공개.

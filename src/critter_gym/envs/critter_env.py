@@ -34,6 +34,7 @@ from critter_gym.battle import (
 from critter_gym.creatures import Creature
 from critter_gym.party import gym_boss, starter_party
 from critter_gym.region import TEST_SEED_OFFSET, generate_region
+from critter_gym.render import draw_frame
 from critter_gym.types import FIXED_CHART, ElementType, TypeChart
 
 # Action indices (a minimal subset of DESIGN.md §3.3). Reinterpreted in battle:
@@ -58,7 +59,7 @@ _TYPE_TO_INT: dict[ElementType, int] = {t: i for i, t in enumerate(ElementType)}
 class CritterEnv(Env[dict[str, np.ndarray], int]):
     """Grid env with catch + gym-boss battle subgoals (verifiable rewards)."""
 
-    metadata: dict[str, Any] = {"render_modes": []}
+    metadata: dict[str, Any] = {"render_modes": ["rgb_array"], "render_fps": 5}
 
     def __init__(
         self,
@@ -68,6 +69,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         max_steps: int = 200,
         patch_radius: int = 2,
         vary: bool = False,
+        render_mode: str | None = None,
     ) -> None:
         super().__init__()
         # num_creatures / num_gyms are the *max* counts (obs bounds); with vary=True
@@ -81,6 +83,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.max_steps = max_steps
         self.patch_radius = patch_radius
         self.vary = vary
+        self.render_mode = render_mode
 
         patch_side = 2 * patch_radius + 1
         # gymnasium's Discrete is typed Space[np.int64]; ActType here is int, and
@@ -252,6 +255,27 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             if not self._party[i].is_fainted:
                 return i
         return cur
+
+    # -- rendering ----------------------------------------------------------
+
+    def render(self) -> np.ndarray | None:  # type: ignore[override]
+        # gymnasium types render() as RenderFrame|list|None (RenderFrame is an
+        # unbound TypeVar); we return a concrete np.ndarray, hence the override note.
+        """Gymnasium render hook. Returns an RGB frame in ``rgb_array`` mode, else None.
+
+        Read-only over episode state — never mutates the env (so it can't affect
+        a rollout). See :mod:`critter_gym.render`.
+        """
+        if self.render_mode != "rgb_array":
+            return None
+        return draw_frame(
+            self.grid_size,
+            (int(self._agent_pos[0]), int(self._agent_pos[1])),
+            self._creatures,
+            self._gym_tiles,
+            self._gym_defeated,
+            in_battle=self._mode == "battle",
+        )
 
     # -- observation --------------------------------------------------------
 
