@@ -48,6 +48,8 @@ _MOVE_DELTAS: dict[int, tuple[int, int]] = {
 
 _PATCH_EMPTY, _PATCH_CREATURE, _PATCH_GYM = 0, 1, 2
 _HP_MAX = 10_000  # generous obs upper bound for hp fields
+_LEVEL_MAX = 100  # generous obs upper bound for creature level
+_MAX_PARTY = 6  # generous obs upper bound for the evolved counter
 _NUM_TYPES = len(ElementType)
 _TYPE_TO_INT: dict[ElementType, int] = {t: i for i, t in enumerate(ElementType)}
 
@@ -61,7 +63,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self,
         grid_size: int = 10,
         num_creatures: int = 5,
-        num_gyms: int = 2,
+        num_gyms: int = 3,
         max_steps: int = 200,
         patch_radius: int = 2,
     ) -> None:
@@ -87,9 +89,11 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
                 ),
                 "caught": spaces.Box(0, num_creatures, shape=(1,), dtype=np.int64),
                 "gyms_defeated": spaces.Box(0, num_gyms, shape=(1,), dtype=np.int64),
+                "evolved": spaces.Box(0, _MAX_PARTY, shape=(1,), dtype=np.int64),
                 "in_battle": spaces.Box(0, 1, shape=(1,), dtype=np.int8),
                 "player_hp": spaces.Box(0, _HP_MAX, shape=(1,), dtype=np.int64),
                 "player_type": spaces.Box(0, _NUM_TYPES - 1, shape=(1,), dtype=np.int64),
+                "player_level": spaces.Box(0, _LEVEL_MAX, shape=(1,), dtype=np.int64),
                 "enemy_hp": spaces.Box(0, _HP_MAX, shape=(1,), dtype=np.int64),
                 "enemy_type": spaces.Box(0, _NUM_TYPES - 1, shape=(1,), dtype=np.int64),
             }
@@ -101,6 +105,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._gym_tiles: dict[tuple[int, int], int] = {}
         self._gym_defeated: list[bool] = []
         self._caught = 0
+        self._evolved = 0
         self._steps = 0
         self._party: list[Creature] = []
         self._mode = "overworld"
@@ -125,10 +130,12 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._agent_pos = np.array(coords[-1], dtype=np.int64)
 
         self._caught = 0
+        self._evolved = 0
         self._steps = 0
         self._party = starter_party()
         self._mode = "overworld"
         self._battle = None
+        self._battle_gym_idx = -1
         return self._obs(), self._info()
 
     def step(
@@ -193,6 +200,15 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             if result.winner is Side.A:
                 self._gym_defeated[self._battle_gym_idx] = True
                 reward = 1.0  # RLVR subgoal: a gym boss defeated.
+                # The creature that finished the battle gains a level; reaching
+                # the threshold evolves it (a second RLVR subgoal). Investing wins
+                # in one creature is the long-horizon choice (DESIGN §3.4).
+                winner_creature = battle.state.active(Side.A)
+                winner_creature.gain_level()
+                if winner_creature.can_evolve:
+                    winner_creature.evolve()
+                    self._evolved += 1
+                    reward += 1.0
             # win or lose, leave battle; party is re-healed on the next entry.
             self._mode = "overworld"
             self._battle = None
@@ -232,11 +248,11 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
                 patch[pr, pc] = val
 
         in_battle = self._mode == "battle"
-        p_hp = p_ty = e_hp = e_ty = 0
+        p_hp = p_ty = p_lvl = e_hp = e_ty = 0
         if in_battle and self._battle is not None:
             pa = self._battle.state.active(Side.A)
             ea = self._battle.state.active(Side.B)
-            p_hp, p_ty = pa.hp, _TYPE_TO_INT[pa.types[0]]
+            p_hp, p_ty, p_lvl = pa.hp, _TYPE_TO_INT[pa.types[0]], pa.level
             e_hp, e_ty = ea.hp, _TYPE_TO_INT[ea.types[0]]
 
         return {
@@ -244,9 +260,11 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             "local_patch": patch,
             "caught": np.array([self._caught], dtype=np.int64),
             "gyms_defeated": np.array([sum(self._gym_defeated)], dtype=np.int64),
+            "evolved": np.array([self._evolved], dtype=np.int64),
             "in_battle": np.array([int(in_battle)], dtype=np.int8),
             "player_hp": np.array([p_hp], dtype=np.int64),
             "player_type": np.array([p_ty], dtype=np.int64),
+            "player_level": np.array([p_lvl], dtype=np.int64),
             "enemy_hp": np.array([e_hp], dtype=np.int64),
             "enemy_type": np.array([e_ty], dtype=np.int64),
         }
@@ -264,7 +282,11 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
 
     def _info(self) -> dict[str, Any]:
         return {
-            "subgoals": {"caught": self._caught, "gyms_defeated": sum(self._gym_defeated)},
+            "subgoals": {
+                "caught": self._caught,
+                "gyms_defeated": sum(self._gym_defeated),
+                "evolved": self._evolved,
+            },
             "mode": self._mode,
             "remaining_gyms": self.num_gyms - sum(self._gym_defeated),
         }
