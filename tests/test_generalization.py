@@ -120,12 +120,12 @@ def test_report_contract_keys_and_numbers() -> None:
     assert rep.gap == pytest.approx(2.0)
 
     d = rep.to_dict()
-    assert set(d) == {"train_mean", "test_mean", "gap", "n_train", "n_test"}
-    assert d["n_train"] == 2.0 and d["n_test"] == 1.0
+    assert set(d) == {"heldin_mean", "heldout_mean", "gap", "n_heldin", "n_heldout"}
+    assert d["n_heldin"] == 2.0 and d["n_heldout"] == 1.0
 
     text = format_report(rep)
-    assert "3.000" in text  # train_mean
-    assert "1.000" in text  # test_mean
+    assert "3.000" in text  # heldin_mean
+    assert "1.000" in text  # heldout_mean
     assert "2.000" in text  # gap
 
 
