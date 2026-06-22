@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
-"""Human-readable benchmark report: a 4-baseline train+test score table + throughput.
+"""Human-readable benchmark leaderboard — ranked baselines + throughput (M3-EC2).
 
-Builds the M3-EC1 baseline score table via :mod:`critter_gym.scoreboard` on the
-**procgen** variant (``vary=True``): each seed is a new map + a new type chart, and
-held-in (training-region) vs held-out (test-region) scores are reported per
-baseline alongside the generalization gap.
+Builds the reproducible leaderboard via :mod:`critter_gym.leaderboard` on the
+**procgen** variant (``vary=True``): baselines are ranked by held-out (test-region)
+mean return — performance on unseen maps + type charts — alongside their held-in
+score and the generalization gap. The pinned :class:`BenchmarkSpec` is printed so a
+run is self-describing and reproducible.
 
 The core baselines (``random``, ``scripted``) need only numpy and always run. The
 learned baselines (``ppo``, ``recurrent``) need the ``[rl]`` extra
-(stable-baselines3 + sb3-contrib); if it is not installed they are skipped and the
-core 2-row table is printed (non-fatal).
+(stable-baselines3 + sb3-contrib); without it they are skipped (non-fatal).
 
 Usage:
-    python scripts/benchmark.py                       # core baselines only
+    python scripts/benchmark.py                        # core baselines only
     pip install -e ".[rl]" && python scripts/benchmark.py --timesteps 20000
-    python scripts/benchmark.py --train 64 --heldout 32
+    python scripts/benchmark.py --heldin 100 --heldout 100
 """
 
 from __future__ import annotations
 
 import argparse
 import time
+from collections.abc import Callable
 
 import gymnasium as gym
 import numpy as np
@@ -28,19 +29,16 @@ import numpy as np
 from critter_gym.baselines import greedy_policy, random_policy
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.generalization import PolicyFn
-from critter_gym.region import heldout_seeds, train_seeds
-from critter_gym.scoreboard import score_baselines
+from critter_gym.leaderboard import BenchmarkSpec, run_benchmark
+from critter_gym.region import train_seeds
 
+# Easy, fully-observed env config so learning is visible in a short run.
 CFG = dict(grid_size=5, num_creatures=8, num_gyms=2, max_steps=50, patch_radius=4)
 
 
-def make_env() -> CritterEnv:
-    return CritterEnv(vary=True, **CFG)  # type: ignore[arg-type]
-
-
 class _SeededReset(gym.Wrapper):
-    """Reset cycles through a fixed pool of seeds (the learn pool, kept disjoint
-    from the held-in eval set so the measured gap stays honest)."""
+    """Reset cycles through a fixed pool of seeds (the learn pool), kept disjoint
+    from the spec's held-in eval seeds so the measured gap stays honest."""
 
     def __init__(self, env: gym.Env, seeds: tuple[int, ...]) -> None:
         super().__init__(env)
@@ -53,8 +51,8 @@ class _SeededReset(gym.Wrapper):
         return self.env.reset(seed=s, options=options)
 
 
-def steps_per_second(min_steps: int = 50_000) -> float:
-    env = make_env()
+def steps_per_second(env_factory: Callable[[], CritterEnv], min_steps: int = 50_000) -> float:
+    env = env_factory()
     rng = np.random.default_rng(0)
     obs, _ = env.reset(seed=0)
     steps = 0
@@ -68,12 +66,12 @@ def steps_per_second(min_steps: int = 50_000) -> float:
 
 
 def _learned_baselines(
-    learn_seeds: tuple[int, ...], timesteps: int
+    env_factory: Callable[[], CritterEnv], learn_seeds: tuple[int, ...], timesteps: int
 ) -> dict[str, PolicyFn]:
     """Train PPO + recurrent PPO on the learn pool; return them as policies.
 
     Returns an empty dict (with a printed notice) if the ``[rl]`` extra is absent,
-    so the report degrades to the core baselines instead of crashing.
+    so the leaderboard degrades to the core baselines instead of crashing.
     """
     try:
         from sb3_contrib import RecurrentPPO
@@ -84,7 +82,7 @@ def _learned_baselines(
         return {}
 
     def make_train_env() -> gym.Env:
-        return _SeededReset(make_env(), learn_seeds)
+        return _SeededReset(env_factory(), learn_seeds)
 
     ppo = PPO("MultiInputPolicy", DummyVecEnv([make_train_env]), n_steps=512, seed=0, verbose=0)
     rec = RecurrentPPO(
@@ -100,30 +98,29 @@ def _learned_baselines(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--train", type=int, default=64, help="training seed pool size")
+    parser.add_argument("--heldin", type=int, default=32, help="held-in eval seed count")
     parser.add_argument("--heldout", type=int, default=32, help="held-out eval seed count")
+    parser.add_argument("--learn", type=int, default=64, help="PPO learning pool size")
     parser.add_argument("--timesteps", type=int, default=20_000, help="per learned baseline")
     args = parser.parse_args()
 
-    n_eval = max(1, args.train // 4)
-    pool = tuple(train_seeds(args.train))
-    learn_seeds, heldin = pool[:-n_eval], pool[-n_eval:]
-    heldout = tuple(heldout_seeds(args.heldout))
+    spec = BenchmarkSpec(**CFG, n_heldin=args.heldin, n_heldout=args.heldout)  # type: ignore[arg-type]
+    env_factory = spec.env_factory()
+    # Learn on a training-region pool *after* the held-in eval block [0, n_heldin),
+    # so the learn seeds and the held-in eval seeds stay disjoint.
+    learn_seeds = tuple(train_seeds(args.learn, start=spec.n_heldin))
 
     rng = np.random.default_rng(0)
     baselines: dict[str, PolicyFn] = {
         "random": lambda o: random_policy(o, rng),
-        "scripted": lambda o: greedy_policy(o, grid_size=int(CFG["grid_size"])),
+        "scripted": lambda o: greedy_policy(o, grid_size=spec.grid_size),
     }
-    print(
-        f"CritterGym benchmark — procgen (vary=True) | "
-        f"held-in={len(heldin)} held-out={len(heldout)}\n"
-    )
-    baselines.update(_learned_baselines(learn_seeds, args.timesteps))
+    print(f"CritterGym leaderboard — reproducible spec: {spec.to_dict()}\n")
+    baselines.update(_learned_baselines(env_factory, learn_seeds, args.timesteps))
 
-    table = score_baselines(make_env, baselines, heldin, heldout)
-    print(table.to_markdown())
-    print(f"throughput: {steps_per_second():,.0f} steps/s/core")
+    board = run_benchmark(spec, baselines)
+    print(board.to_markdown())
+    print(f"throughput: {steps_per_second(env_factory):,.0f} steps/s/core")
 
 
 if __name__ == "__main__":

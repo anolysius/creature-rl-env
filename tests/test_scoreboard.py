@@ -48,8 +48,8 @@ def test_score_table_shape_and_contract() -> None:
     d = table.to_dict()
     assert set(d) == {"random", "scripted"}
     for row in d.values():
-        assert set(row) == {"train_mean", "test_mean", "gap", "n_train", "n_test"}
-        assert row["n_train"] == 4 and row["n_test"] == 4
+        assert set(row) == {"heldin_mean", "heldout_mean", "gap", "n_heldin", "n_heldout"}
+        assert row["n_heldin"] == 4 and row["n_heldout"] == 4
 
     md = table.to_markdown()
     assert "random" in md and "scripted" in md
@@ -64,7 +64,7 @@ def test_table_preserves_baseline_spread() -> None:
     d = table.to_dict()
     # A valid benchmark keeps scripted *measurably* above random on held-out seeds.
     # A margin (not a bare `>`) keeps the validity signal from flickering on noise.
-    assert d["scripted"]["test_mean"] > d["random"]["test_mean"] + 0.5
+    assert d["scripted"]["heldout_mean"] > d["random"]["heldout_mean"] + 0.5
 
 
 # -- AC4: determinism ---------------------------------------------------------
@@ -121,5 +121,5 @@ def test_rl_baselines_smoke() -> None:
     }
     table = score_baselines(factory, policies, train_seeds(2), heldout_seeds(2))
     assert {r.name for r in table.rows} == {"random", "scripted", "ppo", "recurrent"}
-    assert all(set(v) == {"train_mean", "test_mean", "gap", "n_train", "n_test"}
+    assert all(set(v) == {"heldin_mean", "heldout_mean", "gap", "n_heldin", "n_heldout"}
                for v in table.to_dict().values())
