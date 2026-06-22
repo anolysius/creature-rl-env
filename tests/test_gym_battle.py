@@ -34,6 +34,27 @@ def _scripted_action(env: CritterEnv, obs: dict[str, np.ndarray]) -> int:
     return NOOP
 
 
+def _concentrate_action(env: CritterEnv, obs: dict[str, np.ndarray]) -> int:
+    """Always attack with the current active in battle (concentrate levels on it);
+    navigate to the nearest gym in overworld."""
+    if obs["in_battle"][0]:
+        return 0
+    undefeated = [p for p, i in env._gym_tiles.items() if not env._gym_defeated[i]]
+    if not undefeated:
+        return NOOP
+    ar, ac = int(env._agent_pos[0]), int(env._agent_pos[1])
+    tr, tc = min(undefeated, key=lambda p: abs(p[0] - ar) + abs(p[1] - ac))
+    if tr < ar:
+        return 0
+    if tr > ar:
+        return 1
+    if tc > ac:
+        return 2
+    if tc < ac:
+        return 3
+    return NOOP
+
+
 def _walk_onto_first_gym(env: CritterEnv) -> dict[str, np.ndarray]:
     """Position the agent adjacent to a gym and step onto it; returns the obs."""
     (gr, gc), _ = next(iter(env._gym_tiles.items()))
@@ -98,8 +119,9 @@ def test_defeating_gym_rewards_once_and_increments_subgoal() -> None:
         if term or trunc:
             break
     assert info["subgoals"]["gyms_defeated"] >= 1
-    # reward is exactly +1 per gym defeated (no dense shaping, no catches taken here)
-    assert total == float(info["subgoals"]["gyms_defeated"] + info["subgoals"]["caught"])
+    # reward is exactly +1 per boolean subgoal (gym defeat / catch / evolution) — no shaping
+    sg = info["subgoals"]
+    assert total == float(sg["gyms_defeated"] + sg["caught"] + sg["evolved"])
 
 
 def test_movement_and_battle_turns_are_unrewarded() -> None:
@@ -149,7 +171,10 @@ def test_same_seed_same_trajectory_with_battles() -> None:
         trace = []
         for _ in range(300):
             obs, r, term, trunc, _ = env.step(_scripted_action(env, obs))
-            trace.append((int(obs["in_battle"][0]), int(obs["gyms_defeated"][0]), r))
+            trace.append(
+                (int(obs["in_battle"][0]), int(obs["gyms_defeated"][0]),
+                 int(obs["evolved"][0]), int(obs["player_level"][0]), r)
+            )
             if term or trunc:
                 break
         return trace
@@ -168,6 +193,65 @@ def test_scripted_policy_clears_at_least_one_gym() -> None:
         if term or trunc:
             break
     assert info["subgoals"]["gyms_defeated"] >= 1
+
+
+# --- evolution wired into the env (M1-EC2: AC2/AC4/AC6/AC8) -------------------
+
+def test_winning_a_battle_levels_the_active_creature() -> None:
+    """AC2: the creature that finishes a battle gains a level."""
+    env = CritterEnv(grid_size=8, num_creatures=2, num_gyms=3, max_steps=300)
+    obs, _ = env.reset(seed=3)
+    assert all(c.level == 1 for c in env._party)
+    for _ in range(300):
+        obs, _, term, trunc, info = env.step(_concentrate_action(env, obs))
+        if info["subgoals"]["gyms_defeated"] >= 1:
+            break
+    assert any(c.level >= 2 for c in env._party)
+
+
+def test_evolution_gives_subgoal_reward() -> None:
+    """AC4: the step where a creature evolves yields the evolution reward (+1),
+    on top of the gym-defeat reward; nothing else is shaped."""
+    env = CritterEnv(grid_size=8, num_creatures=2, num_gyms=3, max_steps=300)
+    obs, _ = env.reset(seed=3)
+    prev_evolved, evolve_step_reward = 0, None
+    for _ in range(300):
+        obs, r, term, trunc, info = env.step(_concentrate_action(env, obs))
+        if info["subgoals"]["evolved"] > prev_evolved:
+            evolve_step_reward = r  # gym(+1) and evolve(+1) land on the same step
+            prev_evolved = info["subgoals"]["evolved"]
+        if term or trunc:
+            break
+    assert info["subgoals"]["evolved"] >= 1
+    assert evolve_step_reward == 2.0  # +1 gym +1 evolution, no shaping
+
+
+def test_obs_exposes_evolution_fields() -> None:
+    """AC6: obs carries evolved + (in battle) player_level, and stays in-space."""
+    env = CritterEnv()
+    obs, _ = env.reset(seed=5)
+    assert "evolved" in obs and "player_level" in obs
+    assert int(obs["evolved"][0]) == 0
+    obs = _walk_onto_first_gym(env)
+    assert int(obs["player_level"][0]) >= 1  # active level shown in battle
+    assert env.observation_space.contains(obs)
+
+
+def test_concentration_evolution_payoff_is_not_vestigial() -> None:
+    """AC8: concentrating wins evolves a creature *before* the final gym, so the
+    evolved form is actually used in later battles (not a last-step trophy)."""
+    env = CritterEnv(grid_size=8, num_creatures=2, num_gyms=3, max_steps=300)
+    obs, _ = env.reset(seed=3)
+    first_evolve_gyms = None
+    for _ in range(300):
+        obs, _, term, trunc, info = env.step(_concentrate_action(env, obs))
+        if info["subgoals"]["evolved"] >= 1 and first_evolve_gyms is None:
+            first_evolve_gyms = info["subgoals"]["gyms_defeated"]
+        if term or trunc:
+            break
+    assert info["subgoals"]["evolved"] >= 1
+    assert first_evolve_gyms is not None and first_evolve_gyms < env.num_gyms
+    assert any(c.evolved for c in env._party)
 
 
 # catching still works alongside gyms (AC4 catch subgoal preserved)
