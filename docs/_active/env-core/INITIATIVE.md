@@ -33,6 +33,7 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 11 | `metrics-viz` | ✅ done (→ `_archive/2026-Q2/env-core/12-metrics-viz/`) | 측정 메트릭 플롯 4종 `critter_gym.viz` (matplotlib `[viz]` 격리) (M3-EC3) |
 | 12 | `world-render` | ✅ done (→ `_archive/2026-Q2/env-core/13-world-render/`) | 월드 상태→픽셀 프레임 `critter_gym.render` + env rgb_array (M3-EC6 토대) |
 | 13 | `killer-demo` | ✅ done (→ `_archive/2026-Q2/env-core/14-killer-demo/`) | 녹화 파이프라인 `critter_gym.demo` + `scripts/killer_demo.py` (M3-EC6 수단; EC6 미충족 유지) |
+| 14 | `typechart-depth` | ✅ done-descoped (→ `_archive/2026-Q2/env-core/15-typechart-depth/`) | 타입 풀 3→15 + 보스 재출현 (M3 신뢰성; "추론 load-bearing"은 pilot로 불가 입증→future work) |
 
 (이후 task 는 /task-start 로 append)
 

@@ -16,11 +16,20 @@ def register_envs() -> None:
         id="CritterGym-v0",
         entry_point="critter_gym.envs.critter_env:CritterEnv",
     )
-    # Procedural variant: seed varies region content; train/test seed split
-    # enables generalization measurement (DESIGN.md §3.1).
+    # Procedural variant: seed varies region content + a per-seed hidden type chart
+    # over a *deep* 12-type pool (far harder to memorize than the M1 3-cycle), with
+    # more gyms whose boss types recur from a per-seed pool. Train/test seed split
+    # enables generalization measurement (DESIGN.md §3.1). NOTE: making chart
+    # *inference* provably load-bearing (vs reaction) needs a battle-economy redesign
+    # — tracked as future work (a pilot showed switch-cost dominates), see DESIGN §3.1.1.
     register(
         id="CritterGym-procgen-v0",
         entry_point="critter_gym.envs.critter_env:CritterEnv",
-        kwargs={"vary": True},
+        kwargs={
+            "vary": True,
+            "num_types": 12,
+            "num_gyms": 8,  # more gyms so boss types recur within an episode
+            "max_steps": 400,  # room to traverse + battle more gyms
+        },
     )
     _REGISTERED = True
