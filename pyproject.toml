@@ -27,6 +27,7 @@ dev = [
 # Deliberately kept out of `dev`/core so the default test suite + CI stay numpy-only.
 rl = [
     "stable-baselines3>=2.0",
+    "sb3-contrib>=2.0",  # RecurrentPPO (recurrent baseline, M3-EC1)
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -28,10 +28,11 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 6 | `procgen-region` | ✅ done (→ `_archive/2026-Q2/env-core/07-procgen-region/`) | 시드→절차 region + train/test 분리 (M2-EC1) |
 | 7 | `procgen-typechart` | ✅ done (→ `_archive/2026-Q2/env-core/08-procgen-typechart/`) | 시드별 내부정합 타입표, infer-the-meta (M2-EC2/EC3) |
 | 8 | `generalization-harness` | ✅ done (→ `_archive/2026-Q2/env-core/09-generalization-harness/`) | train-vs-test 일반화 갭 측정 하네스 (M2-EC4) → **M2 완성** |
+| 9 | `baseline-suite` | ✅ done (→ `_archive/2026-Q2/env-core/10-baseline-suite/`) | 베이스라인 4종 train+test 점수표 `critter_gym.scoreboard` (M3-EC1) |
 
 (이후 task 는 /task-start 로 append)
 
 ## 다음 task
-활성 마일스톤 **M3** (벤치마크 신뢰성 + 런치) 의 미충족 EC — 베이스라인 4종(M3-EC1)·리더보드
-(M3-EC2)·측정 viz(M3-EC3)·킬러 데모(M3-EC6) 등. 구성 task·EC 는
-[milestones.md](../../reference/milestones.md) §M3. M2 의 `critter_gym.generalization` 갭 하네스가 토대.
+활성 마일스톤 **M3** 의 미충족 EC — 리더보드 포맷+재현 configs(M3-EC2, `train_mean`→`heldin/heldout`
+개명 결정 포함), 측정 viz(M3-EC3, 학습곡선·일반화 갭·spread), 킬러 데모(M3-EC6). 구성 task·EC 는
+[milestones.md](../../reference/milestones.md) §M3. M3-EC1 의 `scoreboard` 점수표가 EC2/EC3 토대.
