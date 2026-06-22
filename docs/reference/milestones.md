@@ -10,7 +10,7 @@
 > task 는 *활성 마일스톤*의 미충족 EC 에서만 내려온다. 활성 M 의 EC 가 모두 충족되면 다음 M 으로 게이트.**
 > task report 는 "M{n}-EC{k} 충족" 형태로 체크인해 진행도를 가시화한다.
 
-활성 마일스톤: **M2** (M0·M1 완료).
+활성 마일스톤: **M3** (M0·M1·M2 완료).
 
 ## 마일스톤 표
 
@@ -18,8 +18,8 @@
 |---|---|---|---|---|
 | M0 | Foundation | ✅ done | 패키지+최소 env+검증 레이어 | §6 P1 |
 | M1 | 고정월드 full subgoal chain | ✅ done | 절차생성 없이 단일 월드에서 catch→evolve→gym boss | §3.4–3.5 |
-| M2 | Procgen + train/test (moat) | 🔵 active | 시드→절차 월드 + 절차 타입표; 일반화 측정 | §3.1 |
-| M3 | 벤치마크 신뢰성 + 런치 | ⬜ pending | 베이스라인 4종 + 리더보드 + viz + writeup + OSS + 킬러 데모 | §5–6 P2 |
+| M2 | Procgen + train/test (moat) | ✅ done | 시드→절차 월드 + 절차 타입표; 일반화 측정 | §3.1 |
+| M3 | 벤치마크 신뢰성 + 런치 | 🔵 active | 베이스라인 4종 + 리더보드 + viz + writeup + OSS + 킬러 데모 | §5–6 P2 |
 | M4 | Throughput (JAX) | ⬜ pending | spec 안정 후 핫패스 JAX 포팅 | §4 |
 | M5 | 수익화 표면 | ⬜ pending | 비공개 held-out eval + 커스텀 env + Hub | §8 |
 
@@ -42,16 +42,19 @@
   *(scripted 충족 — `gym-boss-progression`; PPO/풀 베이스라인은 후속. held-out 일반화는 M2)*
 - 구성 task: `battle-system` ✅, `gym-boss-progression` ✅, `creature-evolution` ✅ / (선택 후속: `typechart-fixed`)
 
-### M2 — Procgen + train/test (moat) 🔵 active
+### M2 — Procgen + train/test (moat) ✅ done
 - [x] EC1: 시드 → 절차 생성 region (creature/gym 수·위치·보스 타입; obs 차원 고정) *(`procgen-region`)*
 - [x] EC2: 시드 → 절차 생성 **내부정합 타입표** (infer-the-meta; obs 미노출) *(`procgen-typechart`)*
 - [x] EC3: train/test 시드 분리, 누수 0; held-out 시드가 새 맵 + 새 타입표 생성 *(`procgen-region`+`procgen-typechart`)*
-- [ ] EC4: PPO **train-vs-test 갭** 측정·리포트 (Procgen 관례) — `generalization-harness`
-- 구성 task: `procgen-region` ✅, `procgen-typechart` ✅ / 예정: `generalization-harness`
+- [x] EC4: PPO **train-vs-test 갭** 측정·리포트 (Procgen 관례) *(`generalization-harness` — numpy-only `critter_gym.generalization`, `[rl]` 격리 PPO 소비자)*
+- 구성 task: `procgen-region` ✅, `procgen-typechart` ✅, `generalization-harness` ✅
 
 ### M3 — 벤치마크 신뢰성 + 런치 ⬜
 - [ ] EC1: 베이스라인 4종(random/scripted/PPO/recurrent) 점수표 (train+test 분리)
 - [ ] EC2: 리더보드 포맷 + 재현 가능 configs (seeded, pinned)
+  - ⚠ forward-note (`generalization-harness` L3): `GapReport.to_dict()` 키 `train_mean` 은 실제로
+    held-in **eval** 평균 → "training-set 점수" 오독 소지. 리더보드 스키마 **공개 동결 전**
+    `heldin_mean`/`heldout_mean` 개명(또는 alias) 검토.
 - [ ] EC3: 측정 viz (학습곡선·일반화 갭·베이스라인 spread·시드 분포)
 - [ ] EC4: arXiv writeup 초안
 - [ ] EC5: OSS 공개 (MIT) + Prime Intellect Environments Hub 등록
