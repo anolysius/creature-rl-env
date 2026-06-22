@@ -26,11 +26,33 @@ NEUTRAL = 1.0
 
 
 class ElementType(Enum):
-    """Elemental types. The fixed chart is a 3-cycle (FIRE > GRASS > WATER > FIRE)."""
+    """Elemental types.
 
+    The first three (FIRE/WATER/GRASS = ids 0/1/2) are the M1 fixed-world types and
+    must stay first so the fixed 3-cycle chart and ``_TYPE_TO_INT`` are unchanged.
+    The rest enlarge the *pool* so the procgen variant can sample ``num_types`` ≫ 3
+    types — making the per-seed matchup table far harder to *memorize* than a 3-cycle.
+    (Whether this makes *inference* load-bearing — vs. a within-battle reaction — is an
+    open problem; a pilot showed it does not yet. See DESIGN §3.1.1.)
+    """
+
+    # -- M1 core (must stay ids 0/1/2) --
     FIRE = "fire"
     WATER = "water"
     GRASS = "grass"
+    # -- pool extension (procgen depth) --
+    ELECTRIC = "electric"
+    ICE = "ice"
+    ROCK = "rock"
+    GROUND = "ground"
+    FLYING = "flying"
+    BUG = "bug"
+    POISON = "poison"
+    PSYCHIC = "psychic"
+    GHOST = "ghost"
+    DRAGON = "dragon"
+    STEEL = "steel"
+    FAIRY = "fairy"
 
 
 # Fixed (M1) chart: (attacker, defender) pairs where attacker is super-effective.

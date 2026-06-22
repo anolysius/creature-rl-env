@@ -69,6 +69,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         max_steps: int = 200,
         patch_radius: int = 2,
         vary: bool = False,
+        num_types: int = 3,
         render_mode: str | None = None,
     ) -> None:
         super().__init__()
@@ -82,6 +83,9 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.num_gyms = num_gyms
         self.max_steps = max_steps
         self.patch_radius = patch_radius
+        # num_types: size of the active type pool (3 = M1 fixed; ≥12 = procgen depth,
+        # so the per-seed matchup chart is far harder to memorize than a 3-cycle).
+        self.num_types = num_types
         self.vary = vary
         self.render_mode = render_mode
 
@@ -135,7 +139,12 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             seed if seed is not None else int(self.np_random.integers(0, TEST_SEED_OFFSET))
         )
         region = generate_region(
-            region_seed, self.grid_size, self.num_creatures, self.num_gyms, vary=self.vary
+            region_seed,
+            self.grid_size,
+            self.num_creatures,
+            self.num_gyms,
+            vary=self.vary,
+            num_types=self.num_types,
         )
 
         self._creatures = set(region.creatures)

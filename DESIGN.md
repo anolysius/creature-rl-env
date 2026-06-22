@@ -93,6 +93,16 @@ environments"** surface. So custom environments are not merely a revenue add-on;
 for the generality claim**. Until then, scale difficulty *while keeping the seed split*, so (A) becomes
 "hard-and-gap≈0" rather than "toy-and-gap≈0" — a gap≈0 on a trivial env predicts little about capability.
 
+**Open problem — is infer-the-meta *load-bearing*?** The hidden per-seed type chart is meant to force
+*online rule inference*. We deepened it (3 → 12 types, boss types recurring within an episode so an
+inferred matchup can be reused). But a pilot found that **proving** inference is load-bearing — i.e. that
+a cross-gym *inferring* policy beats a within-battle *probing* one — is not yet achieved: with the
+current battle economy, switching to the type-correct creature costs a turn, and that cost can dominate
+the matchup benefit (a "just attack" policy did as well). Making inference *provably* necessary needs a
+**battle-economy redesign** (e.g. wrong-type openers unrecoverable, costed probing) and is **tracked as
+future work** — we do *not* currently claim the depth makes inference load-bearing, only that the chart
+is far harder to memorize. Honesty here matters more than the headline.
+
 ### 3.2 Observation space
 - **v1: structured/symbolic** (NOT pixels first): agent position, local tile patch, party
   (each creature: type, level, HP, moves), bag/items, current objective flags, partial map memory.
