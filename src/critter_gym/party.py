@@ -8,22 +8,34 @@ type is beaten by one party member (keeps gyms winnable with the right switch).
 
 from __future__ import annotations
 
-from critter_gym.creatures import Creature, Move
+from critter_gym.creatures import Creature, EvolvedForm, Move
 from critter_gym.types import ElementType
 
 F, W, G = ElementType.FIRE, ElementType.WATER, ElementType.GRASS
 
-# Gym i's boss type. FIRE>GRASS>WATER>FIRE, so the beating party member is:
-#   GRASS boss -> FIRE,  FIRE boss -> WATER.
-_BOSS_TYPES: list[ElementType] = [G, F]
+# Gym boss types. With FIRE>GRASS>WATER>FIRE, this sequence lets one party member
+# (FIRE) clear the two GRASS gyms — so concentrating wins on FIRE evolves it after
+# gym 0 and it fights gym 1 already evolved (a non-vestigial investment payoff).
+# The WATER gym is the type-switch case (GRASS beats it).
+_BOSS_TYPES: list[ElementType] = [G, G, W]
 
 
 def starter_party() -> list[Creature]:
-    """The fixed M1 player party: one creature per element."""
+    """The fixed M1 player party: one creature per element, each with an
+    evolved form (stronger stats) reachable by winning battles."""
     return [
-        Creature("Emberling", (F,), 50, 12, 10, 11, [Move("flare", F, 30)]),
-        Creature("Tideling", (W,), 50, 12, 10, 10, [Move("douse", W, 30)]),
-        Creature("Leafling", (G,), 50, 12, 10, 9, [Move("vine", G, 30)]),
+        Creature(
+            "Emberling", (F,), 50, 12, 10, 11, [Move("flare", F, 30)],
+            evolves_to=EvolvedForm("Emberon", 80, 19, 14, 13),
+        ),
+        Creature(
+            "Tideling", (W,), 50, 12, 10, 10, [Move("douse", W, 30)],
+            evolves_to=EvolvedForm("Tidalon", 80, 19, 14, 12),
+        ),
+        Creature(
+            "Leafling", (G,), 50, 12, 10, 9, [Move("vine", G, 30)],
+            evolves_to=EvolvedForm("Leafkin", 80, 19, 14, 11),
+        ),
     ]
 
 

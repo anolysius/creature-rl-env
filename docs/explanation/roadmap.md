@@ -59,5 +59,6 @@ writeup·OSS·viz·킬러 데모를 *한 묶음*으로 런치한다 (DESIGN §6 
 
 ## 현재 위치
 
-M0 완료(`scaffolding`, `env-validation`). **활성 = M1.** 다음 task 는 M1 의 미충족 EC 에서 — 권장
-시작점은 `battle-system`(M1-EC1, 턴제 배틀이 진화·보스의 선행).
+M0·**M1 완료**(`battle-system`·`gym-boss-progression`·`creature-evolution` — 탐험→잡기→배틀→보스→진화가
+한 에피소드에서 verifiable subgoal 로 동작). **활성 = M2 (procgen + train/test, 우리 moat).** 다음 task 는
+M2 의 미충족 EC 에서 — 권장 시작점은 `procgen-region`(시드→절차 월드) 또는 `procgen-typechart`(infer-the-meta).
