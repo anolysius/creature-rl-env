@@ -29,8 +29,9 @@ import numpy as np
 from critter_gym.baselines import greedy_policy, random_policy
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.generalization import PolicyFn
-from critter_gym.leaderboard import BenchmarkSpec, run_benchmark
+from critter_gym.leaderboard import BenchmarkSpec, Leaderboard
 from critter_gym.region import train_seeds
+from critter_gym.scoreboard import score_baselines
 
 # Easy, fully-observed env config so learning is visible in a short run.
 CFG = dict(grid_size=5, num_creatures=8, num_gyms=2, max_steps=50, patch_radius=4)
@@ -102,6 +103,7 @@ def main() -> None:
     parser.add_argument("--heldout", type=int, default=32, help="held-out eval seed count")
     parser.add_argument("--learn", type=int, default=64, help="PPO learning pool size")
     parser.add_argument("--timesteps", type=int, default=20_000, help="per learned baseline")
+    parser.add_argument("--plot", metavar="DIR", help="save charts to DIR ([viz] extra)")
     args = parser.parse_args()
 
     spec = BenchmarkSpec(**CFG, n_heldin=args.heldin, n_heldout=args.heldout)  # type: ignore[arg-type]
@@ -118,9 +120,22 @@ def main() -> None:
     print(f"CritterGym leaderboard — reproducible spec: {spec.to_dict()}\n")
     baselines.update(_learned_baselines(env_factory, learn_seeds, args.timesteps))
 
-    board = run_benchmark(spec, baselines)
-    print(board.to_markdown())
+    # Score once; reuse the table for both the ranked leaderboard and the per-seed plots.
+    table = score_baselines(
+        env_factory, baselines, spec.heldin_eval_seeds(), spec.heldout_eval_seeds()
+    )
+    print(Leaderboard.from_score_table(spec, table).to_markdown())
     print(f"throughput: {steps_per_second(env_factory):,.0f} steps/s/core")
+
+    if args.plot:
+        from critter_gym.viz import save_all  # lazy matplotlib lives inside save_all
+
+        try:
+            paths = save_all(table, args.plot)
+        except ImportError:
+            print('\n  (--plot skipped — install the [viz] extra: pip install -e ".[viz]")')
+        else:
+            print("\nsaved charts:\n  " + "\n  ".join(paths))
 
 
 if __name__ == "__main__":
