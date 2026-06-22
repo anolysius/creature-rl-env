@@ -78,20 +78,22 @@ def test_movement_is_not_rewarded() -> None:
     assert reward == 0.0
 
 
-def test_termination_on_reaching_target_catches() -> None:
-    """AC6: caught >= target_catches -> terminated=True."""
-    env = CritterEnv(target_catches=2, num_creatures=4)
+def test_catching_does_not_terminate() -> None:
+    """Termination evolved (gym-boss-progression): catch is a non-terminal subgoal.
+
+    Catching every creature must NOT end the episode — only clearing the gyms does.
+    """
+    env = CritterEnv(num_creatures=4, num_gyms=2, max_steps=100)
     env.reset(seed=11)
-    creatures = list(env._creatures)[:2]
-    terminated = False
-    for tile in creatures:
+    for tile in list(env._creatures):
         env._agent_pos = np.array(tile, dtype=np.int64)
-        _, _, terminated, _, _ = env.step(CATCH)
-    assert terminated is True
+        _, _, terminated, _, info = env.step(CATCH)
+        assert terminated is False
+    assert info["subgoals"]["caught"] == 4
 
 
 def test_truncation_on_step_budget() -> None:
-    """AC6: exceeding the step budget -> truncated=True."""
+    """Exceeding the step budget -> truncated=True (no gyms cleared)."""
     env = CritterEnv(max_steps=5)
     env.reset(seed=0)
     truncated = False
@@ -100,13 +102,13 @@ def test_truncation_on_step_budget() -> None:
     assert truncated is True
 
 
-def test_too_many_creatures_rejected() -> None:
-    """Guard: num_creatures must leave a free tile for the agent."""
+def test_too_many_entities_rejected() -> None:
+    """Guard: creatures + gyms + agent must fit the grid."""
     try:
-        CritterEnv(grid_size=3, num_creatures=9, target_catches=1)
+        CritterEnv(grid_size=3, num_creatures=8, num_gyms=2)
     except ValueError:
         return
-    raise AssertionError("expected ValueError when num_creatures fills the grid")
+    raise AssertionError("expected ValueError when the grid is overfilled")
 
 
 def test_invalid_action_raises() -> None:
