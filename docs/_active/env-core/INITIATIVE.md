@@ -25,10 +25,11 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 3 | `battle-system` | ✅ done (→ `_archive/2026-Q2/env-core/04-battle-system/`) | 턴제 배틀 sub-MDP 엔진 (M1-EC1) |
 | 4 | `gym-boss-progression` | ✅ done (→ `_archive/2026-Q2/env-core/05-gym-boss-progression/`) | 배틀=gated checkpoint + env 통합 (M1-EC3/EC4) |
 | 5 | `creature-evolution` | ✅ done (→ `_archive/2026-Q2/env-core/06-creature-evolution/`) | 진화 = long-horizon 투자 (M1-EC2) → **M1 완성** |
+| 6 | `procgen-region` | ✅ done (→ `_archive/2026-Q2/env-core/07-procgen-region/`) | 시드→절차 region + train/test 분리 (M2-EC1) |
 
 (이후 task 는 /task-start 로 append)
 
 ## 다음 task
 활성 마일스톤 **M2** (procgen + train/test, moat) 의 미충족 exit criterion 에서 내려온다 — 구성 task·EC 는
 [milestones.md](../../reference/milestones.md) §M2 참조 (중복 유지 금지, SSOT 단일화).
-권장 시작점: `procgen-region` (M2-EC1, 시드→절차 월드) 또는 `procgen-typechart` (M2-EC2, infer-the-meta).
+권장 시작점: `procgen-typechart` (M2-EC2, 시드별 내부정합 타입표 — infer-the-meta, 진짜 암기 불가의 핵심).
