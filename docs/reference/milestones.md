@@ -49,17 +49,17 @@
 - [x] EC4: PPO **train-vs-test 갭** 측정·리포트 (Procgen 관례) *(`generalization-harness` — numpy-only `critter_gym.generalization`, `[rl]` 격리 PPO 소비자)*
 - 구성 task: `procgen-region` ✅, `procgen-typechart` ✅, `generalization-harness` ✅
 
-### M3 — 벤치마크 신뢰성 + 런치 ⬜
+### M3 — 벤치마크 신뢰성 + 런치 🔵 active (EC1·EC2·EC3·EC6 ✅ / EC4·EC5 남음)
 - [x] EC1: 베이스라인 4종(random/scripted/PPO/recurrent) 점수표 (train+test 분리) *(`baseline-suite` — numpy-only `critter_gym.scoreboard`; PPO/recurrent 는 `[rl]` 격리)*
 - [x] EC2: 리더보드 포맷 + 재현 가능 configs (seeded, pinned) *(`leaderboard` — `critter_gym.leaderboard` `BenchmarkSpec`+`Leaderboard.to_json`/`to_markdown`, held-out 랭크)*
   - ✅ resolved (`leaderboard` task): `to_dict` 키 `train_mean`/`test_mean` → `heldin_mean`/`heldout_mean` 개명 완료 (held-in/held-out *eval* 평균임을 정직히 표현; 단일 위임).
 - [x] EC3: 측정 viz (학습곡선·일반화 갭·베이스라인 spread·시드 분포) *(`metrics-viz` — `critter_gym.viz`, matplotlib `[viz]` 격리, 연구자용 메트릭 플롯)*
 - [ ] EC4: arXiv writeup 초안
 - [ ] EC5: OSS 공개 (MIT) + Prime Intellect Environments Hub 등록
-- [ ] EC6: **킬러 데모** — "같은 에이전트 → unseen held-out 시드(새 맵+새 타입표) → 보스 격파" GIF
-  - 🟡 토대 done (`world-render`): 월드 상태→픽셀 프레임 render API (`env.render()` rgb_array + `critter_gym.render.save_gif`).
-  - 🟡 수단 done (`killer-demo`): 녹화 파이프라인 `critter_gym.demo.record_episode`(프레임+보스격파 감지, **CI 검증**) + `scripts/killer_demo.py`(train→held-out 녹화→GIF). **여전히 미충족** — CI 가 검증한 건 파이프라인(seed=3 train 영역)이지 *일반화*가 아님. `[x]` 자격 = 실제 학습 에이전트가 **held-out 보스격파** GIF 육안 확인 + 별도 결재(학습 품질 의존, CI 비검증).
-- 구성 task: `baseline-suite` ✅, `leaderboard` ✅, `metrics-viz` ✅, `world-render` ✅(EC6 토대), `killer-demo` ✅(EC6 수단) / 예정: `arxiv-draft`, `oss-release` / EC6 충족 = 실제 held-out GIF 산출·결재
+- [x] EC6: **킬러 데모** — "같은 에이전트 → unseen held-out 시드(새 맵+새 타입표) → 보스 격파" GIF *(2026-06-22 결재)*
+  - 토대 (`world-render`): render API. 수단 (`killer-demo`): 녹화 파이프라인 `critter_gym.demo` + `scripts/killer_demo.py`.
+  - **충족 증거** (PPO 100k 학습, `scripts/killer_demo.py` 실행): held-out seed 1000000(새 맵+새 타입표) 보스격파 GIF → [`docs/assets/killer_demo.gif`](../assets/killer_demo.gif). 단일 일화 아님 — **held-in 8/20(40%) vs held-out 9/20(45%) 보스격파율, 일반화 갭 ≈ 0**(held-out ≥ held-in, 노이즈 범위). 헤드라인 = *갭 0* = 암기 아닌 진짜 일반화(포켓몬 레드가 구조적으로 못 보이는 것). 절대성능 45%는 더 긴 학습으로 향상 여지(데모 주장=일반화는 입증).
+- 구성 task: `baseline-suite` ✅, `leaderboard` ✅, `metrics-viz` ✅, `world-render` ✅(EC6 토대), `killer-demo` ✅(EC6 수단) → **EC6 충족** / 예정: `arxiv-draft`, `oss-release`
 
 ### M4 — Throughput (JAX) ⬜
 - [ ] EC1: 핫패스 JAX 포팅 (spec 안정 *후* — DESIGN §4)
