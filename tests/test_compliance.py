@@ -8,5 +8,6 @@ from critter_gym.envs.critter_env import CritterEnv
 
 
 def test_check_env_passes() -> None:
-    # Raises on any API-contract violation; skip_render_check since we ship no renderer yet.
-    check_env(CritterEnv(), skip_render_check=True)
+    # Raises on any API-contract violation. The env now ships an rgb_array renderer,
+    # so the render check runs (no skip) and validates the frame contract too.
+    check_env(CritterEnv(render_mode="rgb_array"))

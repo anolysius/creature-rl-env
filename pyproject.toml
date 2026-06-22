@@ -34,6 +34,11 @@ rl = [
 viz = [
     "matplotlib>=3.7",
 ]
+# Optional — only needed to encode rendered frames into a GIF (critter_gym.render
+# save_gif, M3-EC6 demo). rgb_array frames themselves are numpy-only (core).
+render = [
+    "imageio>=2.31",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/critter_gym"]
@@ -57,7 +62,7 @@ warn_redundant_casts = true
 no_implicit_optional = true
 
 [[tool.mypy.overrides]]
-module = ["gymnasium.*", "matplotlib.*"]
+module = ["gymnasium.*", "matplotlib.*", "imageio.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
