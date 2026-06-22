@@ -19,10 +19,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from critter_gym.types import ElementType, TypeChart, generate_typechart
+from critter_gym.types import NEUTRAL, ElementType, TypeChart, generate_typechart
 
 # Boss type sequence used in fixed (non-vary) mode — matches M1 behavior.
 FIXED_BOSS_TYPES: list[ElementType] = [ElementType.GRASS, ElementType.GRASS, ElementType.WATER]
+
+# The player's fixed starter team covers exactly these types (see party.starter_party).
+# A procgen boss type is only placed if at least one starter type is NEUTRAL-or-better
+# against it under the seed's chart — so every gym is winnable with the right (inferred)
+# matchup, while which type wins stays hidden (inference still required).
+_STARTER_TYPES: tuple[ElementType, ...] = (ElementType.FIRE, ElementType.WATER, ElementType.GRASS)
 
 # Test seeds live at/above this offset; train seeds must stay strictly below it,
 # so the two splits are structurally disjoint (no leakage).
@@ -50,20 +56,48 @@ def generate_region(
     max_gyms: int = 3,
     *,
     vary: bool = False,
+    num_types: int = 3,
 ) -> Region:
     """Deterministically build a region from ``seed``.
 
     ``vary=False`` reproduces the fixed M1 world (exactly ``max_creatures``
-    creatures and ``max_gyms`` gyms with the fixed boss sequence). ``vary=True``
-    samples the counts in ``[1, max]`` and the boss types per seed.
+    creatures and ``max_gyms`` gyms, the fixed boss sequence, the fixed 3-cycle
+    chart). ``vary=True`` samples counts in ``[1, max]``, draws boss types and the
+    matchup chart from the first ``num_types`` elements of the type pool. A larger
+    ``num_types`` makes the per-seed chart far harder to *memorize* than a 3-cycle.
+    (Whether it makes *inference* load-bearing is an open problem — see DESIGN §3.1.1.)
+
+    Fixed mode uses exactly 3 types (M1); ``num_types != 3`` with ``vary=False`` is
+    rejected (the fixed chart only defines the 3-cycle).
     """
+    if num_types < 3 or num_types > len(ElementType):
+        raise ValueError(f"num_types must be in [3, {len(ElementType)}], got {num_types}")
+    if not vary and num_types != 3:
+        raise ValueError("fixed (vary=False) world uses exactly 3 types (M1)")
+
     rng = np.random.default_rng(seed)
+    active_types = list(ElementType)[:num_types]
+    chart = generate_typechart(seed, active_types, vary=vary)
 
     if vary:
         n_creatures = int(rng.integers(_MIN_CREATURES, max_creatures + 1))
         n_gyms = int(rng.integers(_MIN_GYMS, max_gyms + 1))
-        all_types = list(ElementType)
-        boss_types = [all_types[int(rng.integers(0, len(all_types)))] for _ in range(n_gyms)]
+        # Only place boss types that at least one starter type can answer (NEUTRAL+),
+        # so every gym is winnable with the right matchup — which one stays hidden.
+        winnable = [
+            t
+            for t in active_types
+            if any(chart.effectiveness(s, t) >= NEUTRAL for s in _STARTER_TYPES)
+        ]
+        # Draw the episode's bosses from a small per-seed *pool* so types RECUR across
+        # gyms — this gives cross-gym inference *room* (a matchup inferred once could be
+        # reused on later gyms of that type). It does NOT, on its own, make inference
+        # load-bearing — a pilot showed switch-cost can dominate (DESIGN §3.1.1, future
+        # work). Pool ≈ half the gym count → ~2 gyms per type.
+        pool_size = min(len(winnable), max(2, n_gyms // 2))
+        pool_idx = rng.choice(len(winnable), size=pool_size, replace=False)
+        pool = [winnable[int(i)] for i in pool_idx]
+        boss_types = [pool[int(rng.integers(0, pool_size))] for _ in range(n_gyms)]
     else:
         n_creatures, n_gyms = max_creatures, max_gyms
         boss_types = [FIXED_BOSS_TYPES[i % len(FIXED_BOSS_TYPES)] for i in range(n_gyms)]
@@ -77,7 +111,6 @@ def generate_region(
     gym_coords = coords[n_creatures : n_creatures + n_gyms]
     gyms = list(zip(gym_coords, boss_types))
     agent_start = coords[-1]
-    chart = generate_typechart(seed, vary=vary)
     return Region(grid_size, creatures, gyms, agent_start, chart)
 
 

@@ -333,7 +333,9 @@ def test_env_uses_per_seed_chart_and_damage_reflects_it() -> None:
 
     pro = CritterEnv(vary=True)
     pro.reset(seed=0)
-    assert pro._region_chart == generate_typechart(0, vary=True)  # adopts seed chart
+    # vary env uses num_types active types (default 3 = the M1 core); generate_typechart
+    # now defaults to the full pool, so compare against the same 3-type subset.
+    assert pro._region_chart == generate_typechart(0, list(ElementType)[:3], vary=True)
 
     # seed 0's chart flips FIRE-vs-GRASS to not-very, so the same attack hits softer.
     attacker = Creature("A", (F,), 50, 12, 10, 10, [Move("flare", F, 30)])
