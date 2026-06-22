@@ -93,15 +93,26 @@ environments"** surface. So custom environments are not merely a revenue add-on;
 for the generality claim**. Until then, scale difficulty *while keeping the seed split*, so (A) becomes
 "hard-and-gap≈0" rather than "toy-and-gap≈0" — a gap≈0 on a trivial env predicts little about capability.
 
-**Open problem — is infer-the-meta *load-bearing*?** The hidden per-seed type chart is meant to force
-*online rule inference*. We deepened it (3 → 12 types, boss types recurring within an episode so an
-inferred matchup can be reused). But a pilot found that **proving** inference is load-bearing — i.e. that
-a cross-gym *inferring* policy beats a within-battle *probing* one — is not yet achieved: with the
-current battle economy, switching to the type-correct creature costs a turn, and that cost can dominate
-the matchup benefit (a "just attack" policy did as well). Making inference *provably* necessary needs a
-**battle-economy redesign** (e.g. wrong-type openers unrecoverable, costed probing) and is **tracked as
-future work** — we do *not* currently claim the depth makes inference load-bearing, only that the chart
-is far harder to memorize. Honesty here matters more than the headline.
+**Is infer-the-meta *load-bearing*? — yes, under the team-commit battle economy (scripted-arm proven).**
+The hidden per-seed type chart is meant to force *online rule inference*. Depth alone (3 → 12 types, boss
+types recurring within an episode) did **not** make inference load-bearing: a first pilot found that with
+the M1 battle economy a "just attack / cycle the party" policy did as well as one that knew the chart —
+faint-triggered *force-switch* let a multi-creature party brute-force the super-effective creature for
+free, and switching cost a turn. The fix is the **team-commit** boss economy (`Battle(commit_mode=True)`,
+env `CritterGym-commit-v0`): you commit **one champion** to a boss — no mid-battle switching, no
+force-switch cycling, a fainted champion loses — with a higher super-effective multiplier and stronger
+bosses so a wrong type pick is punished. This (a) removes the free brute force and (b) makes within-battle
+probing structurally impossible, so cross-battle *inference* of the recurring boss types becomes the only
+cheap route.
+
+A scripted 4-arm gate (`tests/test_reasoning_gate.py`, numpy-only, 42 fixed held-out seeds) proves the
+separation: **oracle 1.00 ≫ type_blind 0.52** (type knowledge is decisive) and **infer 0.84 > probe 0.47**
+(an *inferring* policy that reuses recurring matchups beats a *probing* one that re-discovers each battle).
+
+**Honest scope of the claim.** This proves the *task structure* makes inference load-bearing for scripted
+policies — a necessary precondition that the M1 economy lacked. It does **not** yet show a *learned* (PPO)
+policy actually acquires the inference; measuring that is follow-up work. We claim the substrate, not the
+learnability. Honesty here matters more than the headline.
 
 ### 3.2 Observation space
 - **v1: structured/symbolic** (NOT pixels first): agent position, local tile patch, party
