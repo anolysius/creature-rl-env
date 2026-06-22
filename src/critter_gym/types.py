@@ -32,8 +32,9 @@ class ElementType(Enum):
     must stay first so the fixed 3-cycle chart and ``_TYPE_TO_INT`` are unchanged.
     The rest enlarge the *pool* so the procgen variant can sample ``num_types`` ≫ 3
     types — making the per-seed matchup table far harder to *memorize* than a 3-cycle.
-    (Whether this makes *inference* load-bearing — vs. a within-battle reaction — is an
-    open problem; a pilot showed it does not yet. See DESIGN §3.1.1.)
+    Making *inference* load-bearing (vs. a within-battle reaction) needed the
+    team-commit battle economy; a scripted gate now proves it there, while whether a
+    *learned* policy acquires the inference is follow-up work. See DESIGN §3.1.1.
     """
 
     # -- M1 core (must stay ids 0/1/2) --
@@ -76,10 +77,15 @@ class TypeChart:
     """
 
     beats: frozenset[tuple[ElementType, ElementType]] = field(default=_FIXED_BEATS)
+    # Super-effective amplitude (difficulty knob, reasoning-load-bearing AC2). A
+    # larger multiplier makes the *correct* type choice more decisive — used to keep
+    # boss fights winnable-with-the-right-pick yet lost-with-the-wrong-pick. Defaults
+    # to SUPER_EFFECTIVE so M1 / existing charts are unchanged.
+    super_mult: float = SUPER_EFFECTIVE
 
     def effectiveness(self, attacker: ElementType, defender: ElementType) -> float:
         if (attacker, defender) in self.beats:
-            return SUPER_EFFECTIVE
+            return self.super_mult
         if (defender, attacker) in self.beats:
             return NOT_VERY_EFFECTIVE
         return NEUTRAL
@@ -97,13 +103,18 @@ FIXED_CHART = TypeChart()
 
 
 def generate_typechart(
-    seed: int, types: Iterable[ElementType] | None = None, *, vary: bool = False
+    seed: int,
+    types: Iterable[ElementType] | None = None,
+    *,
+    vary: bool = False,
+    super_mult: float = SUPER_EFFECTIVE,
 ) -> TypeChart:
     """Deterministically build a type chart from ``seed``.
 
     ``vary=False`` returns the fixed M1 chart. ``vary=True`` orients each unordered
     type pair by a per-seed coin flip — antisymmetric and contradiction-free by
-    construction, but un-memorizable across seeds.
+    construction, but un-memorizable across seeds. ``super_mult`` sets the
+    super-effective amplitude (difficulty knob; default keeps M1 behavior).
     """
     if not vary:
         return FIXED_CHART
@@ -115,4 +126,4 @@ def generate_typechart(
             beats.add((a, b))
         else:
             beats.add((b, a))
-    return TypeChart(frozenset(beats))
+    return TypeChart(frozenset(beats), super_mult=super_mult)
