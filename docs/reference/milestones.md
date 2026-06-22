@@ -44,10 +44,10 @@
 
 ### M2 — Procgen + train/test (moat) 🔵 active
 - [x] EC1: 시드 → 절차 생성 region (creature/gym 수·위치·보스 타입; obs 차원 고정) *(`procgen-region`)*
-- [ ] EC2: 시드 → 절차 생성 **내부정합 타입표** (infer-the-meta; 고정표 암기 방지)
-- [~] EC3: train/test 시드 분리, 누수 0 (region 분리·offset 가드·split-safe 완료 — held-out *타입표* 는 EC2 와 함께)
-- [ ] EC4: PPO **train-vs-test 갭** 측정·리포트 (Procgen 관례)
-- 구성 task: `procgen-region` ✅ / 예정: `procgen-typechart`, `generalization-harness`
+- [x] EC2: 시드 → 절차 생성 **내부정합 타입표** (infer-the-meta; obs 미노출) *(`procgen-typechart`)*
+- [x] EC3: train/test 시드 분리, 누수 0; held-out 시드가 새 맵 + 새 타입표 생성 *(`procgen-region`+`procgen-typechart`)*
+- [ ] EC4: PPO **train-vs-test 갭** 측정·리포트 (Procgen 관례) — `generalization-harness`
+- 구성 task: `procgen-region` ✅, `procgen-typechart` ✅ / 예정: `generalization-harness`
 
 ### M3 — 벤치마크 신뢰성 + 런치 ⬜
 - [ ] EC1: 베이스라인 4종(random/scripted/PPO/recurrent) 점수표 (train+test 분리)
