@@ -35,6 +35,7 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 13 | `killer-demo` | ✅ done (→ `_archive/2026-Q2/env-core/14-killer-demo/`) | 녹화 파이프라인 `critter_gym.demo` + `scripts/killer_demo.py` (M3-EC6 수단; EC6 미충족 유지) |
 | 14 | `typechart-depth` | ✅ done-descoped (→ `_archive/2026-Q2/env-core/15-typechart-depth/`) | 타입 풀 3→15 + 보스 재출현 (M3 신뢰성; "추론 load-bearing"은 pilot로 불가 입증→future work) |
 | 15 | `reasoning-load-bearing` | ✅ done (→ `_archive/2026-Q2/env-core/16-reasoning-load-bearing/`) | team-commit 보스 경제로 **추론 load-bearing scripted-arm 실증**(Gate0 0.48/Gate1 0.36, `CritterGym-commit-v0`); DESIGN §3.1.1 open problem 해소(학습 *학습*은 follow-up). M1 무회귀 |
+| 16 | `learnability-measurement` | ✅ done (→ `_archive/2026-Q2/env-core/17-learnability-measurement/`) | 챔피언-선택 액션 UX(`_commit_window`) + `critter_gym.learnability` 측정 하네스. **PPO 100k 측정: learned ≫ probe/blind, infer 수준 = 양성 learnability 신호**(caveat: 진화합산/N16/단일run). (A) 학습 수준 작동 입증. M1 무회귀 |
 
 (이후 task 는 /task-start 로 append)
 
