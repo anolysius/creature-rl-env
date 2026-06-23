@@ -7,10 +7,12 @@ credible claim needs a **learned** policy that generalizes to an env family it n
 on. Here we train PPO on **train families** (random family per episode) and measure transfer
 to a **held-out family**.
 
-Obs constraint: a single PPO net needs one observation space. Families ``critter``,
-``forage`` and ``muster`` share an identical obs (11 keys); ``duel`` adds two charge keys —
-so it cannot share one net and is **excluded** here (harmonizing obs across all families is
-future work). We therefore measure ``{critter, forage} → muster``.
+Obs constraint: a single PPO net needs one observation space. As of the obs-harmonization
+task every family shares ONE harmonized obs space (``env_family.HARMONIZED_OBS_KEYS`` — the
+charge keys are 0-masked on non-duel families, real on ``duel``), so ``assert_obs_compatible``
+now accepts all four families and one net *can* train across them including duel. This default
+run still measures ``{critter, forage} → muster`` (the first learned-transfer measurement);
+expanding the train distribution to include duel is the next task.
 
 Honest scope: one train-set → one held-out family is **not** a genre-generalization proof —
 it is the *first learned-policy transfer measurement*. We *report* the gap (with std); a weak
@@ -45,8 +47,10 @@ N_HELDOUT = 16
 def assert_obs_compatible(families: list[str]) -> None:
     """Raise if the families don't share one observation space (needed for a single net).
 
-    A family-agnostic learned policy needs identical obs keys across every family it sees;
-    ``duel`` adds charge keys, so mixing it in is rejected (obs harmonization is future work).
+    A family-agnostic learned policy needs identical obs keys across every family it sees.
+    Since the obs-harmonization task all families expose ``HARMONIZED_OBS_KEYS`` (duel's
+    charge keys are 0-masked elsewhere), so all four — including duel — are now accepted;
+    this guard still fails loudly if a future family forks the obs space.
     """
     key_sets = {f: frozenset(make_family(f).observation_space.spaces) for f in families}
     shared = set.intersection(*(set(k) for k in key_sets.values())) if key_sets else set()
