@@ -58,3 +58,25 @@ def test_train_and_transfer_smoke() -> None:  # AC2
     assert math.isfinite(report.gap)
     assert report.train_families == ("critter", "forage")
     assert report.heldout_family == "muster"
+
+
+def test_widened_train_loo_smoke() -> None:  # AC1/AC3 — widened-train LOO incl. duel
+    pytest.importorskip("stable_baselines3")
+    script = _load()
+    families = ["critter", "forage", "duel", "muster"]
+    folds = script.train_and_transfer_loo(
+        families, timesteps=256, n_heldin=2, n_heldout=2, seed=0,
+    )
+    # one fold per family held out; each is a TransferReport on the shared gap metric.
+    assert [f.heldout_family for f in folds] == families
+    for f in folds:
+        assert math.isfinite(f.gap)
+        # the held-out family is never in its own train set (family-level split).
+        assert f.heldout_family not in f.train_families
+        # duel is now trainable/evaluable in LOO (impossible before obs harmonization).
+        assert len(f.train_families) == len(families) - 1
+    # duel is held out in its own fold (so excluded there) yet trained on in the others —
+    # both only possible post-harmonization.
+    duel_fold = next(f for f in folds if f.heldout_family == "duel")
+    assert "duel" not in duel_fold.train_families
+    assert any("duel" in f.train_families for f in folds if f.heldout_family != "duel")

@@ -44,6 +44,7 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 22 | `oss-release-prep` | ✅ done (→ `_archive/2026-Q2/env-core/23-oss-release-prep/`) | **M3-EC5 전진(준비, docs-only)** — OSS 릴리스 로컬 산출물: MIT `LICENSE` 신규 + stale README→실제 상태 재작성(install·quickstart env id 6종·정직 positioning·측정 요약·citation) + `CONTRIBUTING.md`. 수치 논문 verbatim(L3 대조). **외부 발행(Hub/repo-public)=사람 게이트** 명시(EC5 자동충족 0). 제품 코드 무회귀(181) |
 | 23 | `competitive-analysis` | ✅ done (→ `_archive/2026-Q2/env-core/24-competitive-analysis/`) | **공개 전 갭 탐지기(docs-only)** — OSS 벤치마크(Procgen/Craftax/XLand/NetHack) 대비 정직 비교 `docs/explanation/competitive-analysis.md`: capability 매트릭스 + 열위 먼저 트레이드오프 + peer [verify] 라벨 + **갭 register**(못함→필요기능→마일스톤). 결론: 공개 전 난이도 스케일·family 확장+학습정책·JAX가 최대 leverage. DESIGN §9 자기평가 준수. 제품 코드 무회귀(181) |
 | 24 | `difficulty-generalization` | ✅ done (→ `_archive/2026-Q2/env-core/25-difficulty-generalization/`) | **(A) hard-and-gap≈0** — 갭 register "난이도" 항목 착수. pilot이 "깨끗한 단조 scripted 사다리" falsify(다차원/cliff/oracle 천장)→**학습정책 gap 실험**으로 reframe. `scripts/difficulty_generalization.py`([rl]): 난이도 점 3종×PPO held-in→held-in/held-out gap. **실측**(40k,N16): 모든 점 gap이 std 안(d2_hard +0.06±1.64) — 학습정책서도 gap≈0 consistent(약한 증거=신호). DESIGN §3.1.1 갱신. numpy-only 유지(181→183) |
+| 27 | `genre-transfer-policy` | ✅ done (→ `_archive/2026-Q2/env-core/28-genre-transfer-policy/`) | **(B) 전이하는 학습 정책 — widened-train LOO 전이 측정(moat 층2 핵심)**: obs 조화(#27) 위에서 train 분포 확대(**duel 포함**)로 학습 정책의 unseen family 전이 gap 측정. `train_and_transfer_loo`+`--loo`(4 family LOO, #26과 동일 gap metric). **실측**(PPO 50k, N16, 단일run): unseen-muster gap **+2.56(2-family)→−0.25(3-family, duel 포함)**, 타 fold critter −0.92/forage −1.48/duel +1.08 — gap 0근처/음수로 붕괴=**wider train이 전이 돕는 양성 신호**. ⚠ **정직 caveat**: held-in 절대성능도 2.94→1.1~2.0 하락(generalist 평범화)→좁은/음수 gap은 균일 평범도 반영(증명 아님); 음수 gap=낮은 절대skill+held-out 쉬움 유력. (B) "측정상 미해결(#26)"→"wider train이 gap 좁힘(이 task)"=**신호지 증명 아님**(절대skill↑·multi-run 필요). 192→193(+1 smoke, 회귀 0), core numpy-only 유지, mypy(22)/ruff/build clean. DESIGN §3.1.1 갱신 |
 | 26 | `obs-harmonization` | ✅ done (→ `_archive/2026-Q2/env-core/27-obs-harmonization/`) | **(B) 전이 정책 이니셔티브 선행 — 4-family obs 조화(enabler)**: #26이 obs 불일치로 제외하던 **duel(13키)을 포함**해 4 family(A/B/C/D)가 **단일 공유 obs 공간** 노출. `env_family.HARMONIZED_OBS_KEYS`(=`REQUIRED_OBS_KEYS` ∪ charge 2키) SSOT + `MAX_CHARGE_OBS`; base `CritterEnv`가 charge 0-마스킹 노출(비-duel)·`DuelEnv` 실제값 override(중복 space 제거). **freeze 전 pilot로 회귀 단 1건 실측→A안(코어 최소 침습) 확정**. 패딩 **행동 불변** 수치 증명(charge 키 제거 시 액션 동일). `assert_obs_compatible` 4 family 통과 + `_MultiFamilyEnv` 구성 smoke(**4-family 전이 *실험*은 다음 task**, gap 미축소). 마일스톤 override(M5 enabler를 M3 공개보다 먼저). 185→192(+7, 회귀 0), mypy(22)/ruff/build clean. DESIGN §3.1.1 갱신 |
 | 25 | `genre-learned-transfer` | ✅ done (→ `_archive/2026-Q2/env-core/26-genre-learned-transfer/`) | **(B) 학습-정책 전이 첫 측정** — 갭 register "family+학습정책" 착수. `scripts/genre_learned_transfer.py`([rl]): train {critter,forage} PPO → held-out family {muster}(obs 동일 family만, duel 제외). **실측**(50k,N16): held-in 2.94±2.02 vs held-out 0.38±0.70, **gap +2.56** — 학습 정책이 unseen family로 전이 안 됨=**"(B) 미해결" 정직 신호**(증명 아님). 닫는 것=M5/층2. DESIGN §3.1.1 갱신. numpy-only 유지(183→185) |
 
@@ -52,8 +53,11 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 ## 다음 task
 **현재 진행 중 이니셔티브 = "전이하는 학습 정책"(moat 층2, M5/갭 register 1순위) — 공개 전 기능 준비 우선**
 (사람 방침: OSS/arXiv 제출은 맨 마지막). task 26(`obs-harmonization`)으로 **선행(4-family obs 조화) 완료**.
-- **다음(층2 핵심)** — *전이하는* 학습 정책 실험: 조화된 obs 위에서 duel 포함 **train 분포 확대 + 메커닉-범용
-  정책**으로 unseen family 전이 gap(#26 +2.56)을 *줄이는* 것을 측정. (B)를 토대→주장.
+- ✅ **층2 핵심 측정 완료(task 27)** — widened-train LOO로 "wider train이 unseen 전이 gap을 좁힌다"는
+  **양성 신호**(muster +2.56→−0.25) 측정. 단 held-in 절대성능 하락(generalist-mediocrity) caveat = 신호지 증명 아님.
+- **다음(신호를 주장으로)** — caveat를 메우는 것: (a) **절대 skill 향상**(예산↑/정책·obs 표현 개선)으로 held-in을
+  끌어올린 뒤 gap 재측정(generalist-mediocrity 교란 제거), (b) **multi-run/multi-seed** robust화, (c) 5~6번째
+  family로 분포 확대, (d) 메커닉-범용 정책. 이 중 (a)+(b)가 "신호→주장"에 가장 직접적.
 - 이후 옵션: 5~6번째 family 추가 / JAX 포트(속도=채택 게이트) / 난이도 ladder env 재설계 / multi-run learnability.
 - **맨 마지막(M3 공개)**: arXiv 제출(EC4) + OSS repo-public·Hub(EC5) + 실제 학습 에이전트 데모 GIF(EC6) — 전부 사람 게이트.
   구성 EC 는 [milestones.md](../../reference/milestones.md) §M3.

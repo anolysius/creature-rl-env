@@ -11,8 +11,11 @@ Obs constraint: a single PPO net needs one observation space. As of the obs-harm
 task every family shares ONE harmonized obs space (``env_family.HARMONIZED_OBS_KEYS`` — the
 charge keys are 0-masked on non-duel families, real on ``duel``), so ``assert_obs_compatible``
 now accepts all four families and one net *can* train across them including duel. This default
-run still measures ``{critter, forage} → muster`` (the first learned-transfer measurement);
-expanding the train distribution to include duel is the next task.
+default ``train_and_transfer`` run measures ``{critter, forage} → muster`` (the first
+learned-transfer measurement). ``--loo`` / :func:`train_and_transfer_loo` then widens the
+train distribution: a leave-one-out over all four families (incl. duel) on the SAME gap
+metric, so "does a wider train set narrow the unseen-family gap?" is read against the #26
+baseline on one axis (genre-transfer-policy task).
 
 Honest scope: one train-set → one held-out family is **not** a genre-generalization proof —
 it is the *first learned-policy transfer measurement*. We *report* the gap (with std); a weak
@@ -164,10 +167,89 @@ def train_and_transfer(
     )
 
 
+# #26 baseline (genre-learned-transfer): train {critter, forage} → held-out muster, on the
+# SAME gap metric (held_in_mean − held_out_family_mean). Reported alongside the widened-train
+# folds so "does a wider train distribution narrow the unseen-family gap?" is read on one axis.
+BASELINE_26 = ("train{critter,forage} → muster (2-family, #26)", 2.94, 0.38, 2.56)
+
+ALL_FAMILIES = ["critter", "forage", "duel", "muster"]
+
+
+def train_and_transfer_loo(
+    families: list[str] = ALL_FAMILIES,
+    timesteps: int = 60_000,
+    *,
+    n_heldin: int = N_HELDIN,
+    n_heldout: int = N_HELDOUT,
+    seed: int = 0,
+) -> list[TransferReport]:
+    """Leave-one-out widened-train transfer over ``families`` — one fold per held-out family.
+
+    Each fold trains a single PPO net on the other N−1 families (a *wider* train distribution
+    than #26's two families, and one that — post obs-harmonization — can include ``duel``) and
+    measures transfer to the held-out family. Every fold reports the SAME gap metric as #26
+    (``held_in_mean − held_out_family_mean``), so the folds and the #26 baseline are directly
+    comparable on one axis: does widening the train distribution narrow the unseen-family gap?
+
+    Honest scope: still a single run at modest N/budget — a *signal*, not a proof. A narrower
+    gap is encouraging (B moving toward a claim); a gap that stays wide is the honest
+    "(B) is still open even with a wider train set" result. Nothing here is a pass threshold.
+    """
+    assert_obs_compatible(families)
+    reports: list[TransferReport] = []
+    for held in families:
+        train = [f for f in families if f != held]
+        reports.append(
+            train_and_transfer(
+                train, held, timesteps=timesteps,
+                n_heldin=n_heldin, n_heldout=n_heldout, seed=seed,
+            )
+        )
+    return reports
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timesteps", type=int, default=60_000)
+    parser.add_argument(
+        "--loo", action="store_true",
+        help="widened-train leave-one-out over all 4 families (incl. duel), vs the #26 baseline",
+    )
     args = parser.parse_args()
+
+    if args.loo:
+        try:
+            folds = train_and_transfer_loo(timesteps=args.timesteps)
+        except ImportError:
+            print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
+            return 2
+        print(f"widened-train LOO genre transfer | PPO timesteps={args.timesteps:,}\n")
+        print("Same gap metric as #26 (held-in − held-out family). Lower gap = better transfer.\n")
+        print("| train → held-out family | held-in (±std) | held-out (±std) | transfer gap |")
+        print("|---|---|---|---|")
+        label, b_in, b_out, b_gap = BASELINE_26
+        print(f"| {label} | {b_in:.3f} | {b_out:.3f} | {b_gap:+.3f} |")
+        for f in folds:
+            train_lbl = "{" + ",".join(f.train_families) + "}"
+            print(
+                f"| train{train_lbl} → {f.heldout_family} (3-family) "
+                f"| {f.heldin_mean:.3f} ±{f.heldin_std:.3f} "
+                f"| {f.heldout_mean:.3f} ±{f.heldout_std:.3f} | {f.gap:+.3f} |"
+            )
+        print(
+            f"\nReported, not pass/fail. Compare each 3-family fold's gap to the #26 "
+            f"2-family baseline (+{b_gap:.2f}) on the SAME axis: a *narrower* gap is a signal "
+            f"that a wider train distribution helps unseen-family transfer; a gap that stays "
+            f"wide is the honest '(B) still open even with a wider train set' result.\n"
+            f"⚠ Honest caveats: (1) the widened-train held-in means also DROP vs #26 "
+            f"(generalist-mediocrity — one net, same budget, 3 families), so a narrower (or "
+            f"negative) gap is partly 'uniformly mediocre across families', NOT proof of strong "
+            f"transfer. A negative gap (held-out > held-in) most likely means low absolute skill "
+            f"plus an easier held-out family, not super-transfer. (2) Single run, "
+            f"N={N_HELDIN}/{N_HELDOUT}, low budget, deterministic bosses — a signal, not a proof. "
+            f"Read gaps WITH the absolute held-in/held-out columns. See DESIGN §3.1.1."
+        )
+        return 0
     try:
         rep = train_and_transfer(timesteps=args.timesteps)
     except ImportError:
