@@ -3,8 +3,9 @@
 The real measurement — does a PPO policy trained on train families {critter, forage}
 transfer to an UNSEEN family {muster}? — is heavy ([rl]) and lives in
 ``scripts/genre_learned_transfer.py``, exercised here only at a tiny budget via
-``importorskip``. Also checks the obs-compatibility guard (only obs-identical families
-can share one net; duel — which adds charge keys — must be rejected).
+``importorskip``. Also checks the obs-compatibility guard: after obs harmonization
+(obs-harmonization task) all four families share one obs space, so the guard now
+*accepts* duel — and the 4-family multi-env is constructible (the experiment is next).
 """
 
 from __future__ import annotations
@@ -23,13 +24,26 @@ def _load():
     return script
 
 
-def test_obs_incompatible_family_rejected() -> None:  # AC3
+def test_all_families_obs_compatible_after_harmonization() -> None:  # AC5
     script = _load()
-    # duel has extra obs keys → cannot share a single net with critter/forage/muster.
-    with pytest.raises(ValueError):
-        script.assert_obs_compatible(["critter", "forage", "duel"])
-    # the obs-identical set is accepted.
-    script.assert_obs_compatible(["critter", "forage", "muster"])
+    # After obs harmonization every family (incl. duel) shares one obs space, so a
+    # single net can train across all four — duel is no longer rejected.
+    script.assert_obs_compatible(["critter", "forage", "duel", "muster"])
+
+
+def test_multifamily_env_constructs_with_duel() -> None:  # AC5 (smoke; experiment is next task)
+    script = _load()
+    families = ["critter", "forage", "duel", "muster"]
+    script.assert_obs_compatible(families)
+    env = script._MultiFamilyEnv(families, seeds=(0, 1, 2, 3))
+    # the multi-family training env exposes the shared harmonized obs and cycles
+    # through all four families (one per reset) without raising.
+    seen = set()
+    for _ in range(len(families)):
+        obs, _ = env.reset()
+        assert set(obs) == set(env.observation_space.spaces)
+        seen.add(int(obs["in_battle"][0]))  # just touch the obs
+    assert env.observation_space is not None
 
 
 def test_train_and_transfer_smoke() -> None:  # AC2
