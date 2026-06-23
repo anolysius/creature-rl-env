@@ -99,7 +99,16 @@ What the train/test **seed** split proves — and does *not* prove — stated pl
   structural axes family B lacked. Still a foundation, still not evidence of genre generalization across the
   *genre*. *(Family D uses stronger bosses — the calibration that makes mustering load-bearing, part of its
   identity — so its raw cross-family LOO mean gap is difficulty-confounded; the honest signal is the
-  within-family policy contrast above, not the raw gap.)* *(Caveats kept
+  within-family policy contrast above, not the raw gap.)* **First *learned*-policy transfer measurement
+  (genre-learned-transfer).** The contrasts above use *scripted* policies; a real (B) claim needs a *learned*
+  policy that generalizes to an env family it never trained on. `scripts/genre_learned_transfer.py` trains
+  PPO on train families {critter, forage} (one family per episode; obs-identical — `duel` is excluded since
+  its charge keys break a single net) and evaluates transfer to the **unseen family `muster`**. An initial
+  run (PPO 50k, N=16/16) gives **held-in 2.94 ±2.02 vs held-out-family 0.38 ±0.70, transfer gap +2.56** — the
+  learned policy does **not** transfer to the unseen family's mechanic (a gap far beyond std). This is the
+  honest result: **learned genre transfer is hard and (B) remains open** — one train-set → one held-out
+  family is a first measurement, not a proof. (Closing this gap — train a policy that *does* transfer to an
+  unseen family — is the M5 / moat-layer-2 work.) *(Caveats kept
   honest: a single N=12 held-out run of scripted reference policies — a signal, not a tuned number; and the
   duel boss plays a fixed deterministic pattern with charge exposed in obs, so the ≈4.3 win partly reflects
   opponent predictability, not duel skill alone. The skill-structural read still holds — the A-tuned policy
