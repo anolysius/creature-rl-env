@@ -32,6 +32,18 @@ REQUIRED_OBS_KEYS: frozenset[str] = frozenset(
         "enemy_hp", "enemy_type",
     }
 )
+
+# Harmonized obs (obs-harmonization task). A *single* family-agnostic policy net needs
+# one identical observation space across every family (DESIGN §3.1.1 (B)). Family C
+# (duel) needs two extra "charge" keys to be playable from observation; rather than let
+# that fork the obs space (which forced #26 to exclude duel), every family exposes the
+# same superset — the charge keys are masked to 0 on families that don't use them and
+# carry real values on duel. This is a contract change, not a dynamics change: the
+# 0-padding is behaviorally inert for policies that already read charge via ``.get``.
+CHARGE_OBS_KEYS: frozenset[str] = frozenset({"player_charge", "enemy_charge"})
+MAX_CHARGE_OBS = 2  # obs upper bound for charge keys; must be ≥ duel_env.MAX_CHARGE.
+HARMONIZED_OBS_KEYS: frozenset[str] = REQUIRED_OBS_KEYS | CHARGE_OBS_KEYS
+
 ACTION_N = 6  # Discrete(6): MOVE{N,S,E,W} / CATCH / NOOP, reinterpreted in battle.
 
 
