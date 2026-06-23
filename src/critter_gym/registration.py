@@ -69,6 +69,17 @@ def register_envs() -> None:
         entry_point="critter_gym.envs.duel_env:DuelEnv",
         kwargs={"vary": True, "num_types": 12, "num_gyms": 8, "max_steps": 400},
     )
+    # Family D (family-d-muster): collection-gated power — catching buffs party attack,
+    # with strong bosses so you must muster a collection before you can win (a
+    # progression-dependency axis distinct from B's collection and C's battle system).
+    register(
+        id="CritterGym-muster-v0",
+        entry_point="critter_gym.envs.muster_env:MusterEnv",
+        kwargs={
+            "vary": True, "num_types": 12, "num_gyms": 8, "max_steps": 600,
+            "num_creatures": 12, "boss_hp": 300, "boss_def": 24,
+        },
+    )
     _register_families()
     _REGISTERED = True
 
@@ -87,7 +98,13 @@ def _register_families() -> None:
     from critter_gym.envs.critter_env import CritterEnv
     from critter_gym.envs.duel_env import DuelEnv
     from critter_gym.envs.forage_env import ForageEnv
+    from critter_gym.envs.muster_env import MusterEnv
 
     register_family("critter", lambda **kw: CritterEnv(**{**_FAMILY_CFG, **kw}))
     register_family("forage", lambda **kw: ForageEnv(**{**_FAMILY_CFG, **kw}))
     register_family("duel", lambda **kw: DuelEnv(**{**_FAMILY_CFG, **kw}))
+    # Family D needs strong bosses + headroom to muster (its identity calibration), so
+    # its registry factory overrides the shared world config accordingly.
+    _MUSTER_CFG = {**_FAMILY_CFG, "boss_hp": 300, "boss_def": 24,
+                   "num_creatures": 10, "max_steps": 220}
+    register_family("muster", lambda **kw: MusterEnv(**{**_MUSTER_CFG, **kw}))
