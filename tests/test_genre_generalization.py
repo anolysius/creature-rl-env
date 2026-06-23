@@ -111,3 +111,21 @@ def test_family_c_gap_is_skill_structural_not_difficulty() -> None:  # AC5
     a_gap_duel = next(g.gap for g in a_loo if g.held_out == "duel")
     c_gap_duel = next(g.gap for g in c_loo if g.held_out == "duel")
     assert a_gap_duel > c_gap_duel, "A-tuned shows a larger env-level gap on held-out duel"
+
+
+# -- family-d-muster: 4-family leave-one-out -----------------------------------
+
+def test_leave_one_out_measures_four_families() -> None:  # AC4
+    from critter_gym.genre_generalization import (
+        measure_genre_generalization_loo,
+        muster_policy,
+    )
+
+    gaps = measure_genre_generalization_loo(
+        muster_policy, ["critter", "forage", "duel", "muster"], _SEEDS
+    )
+    assert {g.held_out for g in gaps} == {"critter", "forage", "duel", "muster"}
+    for g in gaps:
+        assert np.isfinite(g.gap)
+        if g.held_out == "muster":
+            assert "muster" not in g.train_families

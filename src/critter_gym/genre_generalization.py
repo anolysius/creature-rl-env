@@ -26,6 +26,7 @@ from critter_gym.envs.critter_env import (
     MOVE_N,
     MOVE_S,
     MOVE_W,
+    NOOP,
     CritterEnv,
 )
 from critter_gym.envs.duel_env import ATTACK, CHARGE, GUARD, MAX_CHARGE
@@ -187,3 +188,60 @@ def duel_aware_policy(obs: Obs) -> int:
             return int(CHARGE)  # safe to build charge
         return int(ATTACK)  # unleash the charged hit
     return nav_toward_gyms(obs)
+
+
+def _nav_gyms_only(obs: Obs) -> int:
+    """Navigate to the nearest gym, else sweep — but NEVER catch (a pure 'rush' nav)."""
+    patch = obs["local_patch"]
+    center = patch.shape[0] // 2
+    gyms = np.argwhere(patch == 2)
+    if gyms.size > 0:
+        rel = gyms - center
+        nearest = rel[np.argmin(np.abs(rel).sum(axis=1))]
+        dr, dc = int(nearest[0]), int(nearest[1])
+        if dr == 0 and dc == 0:
+            return int(NOOP)  # standing on the gym (battle entry handled on the move)
+        if abs(dr) >= abs(dc):
+            return int(MOVE_S if dr > 0 else MOVE_N)
+        return int(MOVE_E if dc > 0 else MOVE_W)
+    r, c = int(obs["agent_pos"][0]), int(obs["agent_pos"][1])
+    if r % 2 == 0:
+        return int(MOVE_E if c < 9 else MOVE_S)
+    return int(MOVE_W if c > 0 else MOVE_S)
+
+
+def _nav_to_creature(obs: Obs) -> int:
+    """Head to the nearest visible creature and CATCH it; else fall back to gyms."""
+    patch = obs["local_patch"]
+    center = patch.shape[0] // 2
+    cre = np.argwhere(patch == 1)
+    if cre.size > 0:
+        rel = cre - center
+        nearest = rel[np.argmin(np.abs(rel).sum(axis=1))]
+        dr, dc = int(nearest[0]), int(nearest[1])
+        if dr == 0 and dc == 0:
+            return int(CATCH)
+        if abs(dr) >= abs(dc):
+            return int(MOVE_S if dr > 0 else MOVE_N)
+        return int(MOVE_E if dc > 0 else MOVE_W)
+    return _nav_gyms_only(obs)
+
+
+def rush_policy(obs: Obs) -> int:
+    """Fight-now reference: go straight to gyms and attack, NEVER collecting. On family D
+    (collection-gated power + strong bosses) this floors — the party is never mustered."""
+    if int(obs["in_battle"][0]) == 1:
+        return int(ATTACK)
+    return _nav_gyms_only(obs)
+
+
+def muster_policy(obs: Obs) -> int:
+    """D-appropriate reference: muster a collection first (catch until ``caught >= 4``),
+    then fight. On family D the buff makes strong bosses winnable; on family A catching
+    confers no buff, so this is no better than ``rush_policy`` — the contrast that shows
+    family D's gap is skill-structural (a wrong/absent skill), not raw difficulty."""
+    if int(obs["in_battle"][0]) == 1:
+        return int(ATTACK)
+    if int(obs["caught"][0]) < 4:
+        return _nav_to_creature(obs)
+    return _nav_gyms_only(obs)
