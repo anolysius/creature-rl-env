@@ -22,7 +22,13 @@ from critter_gym.region import (
     heldout_seeds,
     train_seeds,
 )
-from critter_gym.types import NEUTRAL, ElementType, generate_typechart
+from critter_gym.types import (
+    NEUTRAL,
+    SUPER_EFFECTIVE,
+    ElementType,
+    TypeChart,
+    generate_typechart,
+)
 
 _STARTERS = (ElementType.FIRE, ElementType.WATER, ElementType.GRASS)
 PROCGEN = dict(grid_size=10, max_creatures=5, max_gyms=8, vary=True, num_types=12)
@@ -114,16 +120,90 @@ def test_train_and_heldout_charts_differ_no_leak() -> None:
     assert train.isdisjoint(held)  # no train chart reappears in held-out
 
 
-# -- D9: honesty invariant — no residual "inference is load-bearing" overclaim --
+# -- difficulty knob: super-effective multiplier is configurable (not hardcoded) --
 
 
-def test_source_does_not_overclaim_inference_is_load_bearing() -> None:
-    # The descope (DESIGN §3.1.1) is explicit: depth makes the chart harder to
-    # *memorize*, NOT proof that *inference* is load-bearing. Guard against the
-    # overclaim creeping back into the in-code SSOT.
-    for mod in (typesmod, regionmod):
-        src = inspect.getsource(mod)
-        assert "pay off" not in src  # the payoff the pilot disproved
-        # "load-bearing" may appear only when paired with the open-problem caveat
-        if "load-bearing" in src:
-            assert "open problem" in src and "DESIGN §3.1.1" in src
+def test_super_mult_defaults_to_2_and_is_configurable() -> None:
+    F, G = ElementType.FIRE, ElementType.GRASS
+    beats = frozenset({(F, G)})
+    default = TypeChart(beats)
+    assert default.effectiveness(F, G) == SUPER_EFFECTIVE == 2.0  # M1 default unchanged
+    harder = TypeChart(beats, super_mult=3.0)
+    assert harder.effectiveness(F, G) == 3.0          # configurable amplitude
+    assert harder.effectiveness(G, F) == 0.5          # not-very unchanged
+    assert harder.effectiveness(F, F) == NEUTRAL      # neutral unchanged
+
+
+def test_generate_typechart_threads_super_mult() -> None:
+    active = list(ElementType)[:12]
+    chart = generate_typechart(7, active, vary=True, super_mult=4.0)
+    assert chart.super_mult == 4.0
+    # default call keeps M1 amplitude
+    assert generate_typechart(7, active, vary=True).super_mult == SUPER_EFFECTIVE
+
+
+# -- env/registration expose the difficulty knobs (AC2) ----------------------
+
+
+def test_env_exposes_super_mult_and_boss_strength_knobs() -> None:
+    from critter_gym.envs.critter_env import CritterEnv
+
+    env = CritterEnv(vary=True, num_types=12, super_mult=3.0,
+                     boss_hp=140, boss_atk=18, commit_battles=True)
+    env.reset(seed=1000)
+    assert env._region_chart.super_mult == 3.0          # threaded into the hidden chart
+    assert env.commit_battles is True                   # team-commit boss mode on
+    assert (env.boss_hp, env.boss_atk) == (140, 18)     # boss strength configurable
+
+
+def test_env_defaults_keep_m1_battle_economy() -> None:
+    from critter_gym.envs.critter_env import CritterEnv
+    from critter_gym.types import SUPER_EFFECTIVE as SE
+
+    env = CritterEnv()  # M1 defaults
+    env.reset(seed=0)
+    assert env._region_chart.super_mult == SE           # 2.0, unchanged
+    assert env.commit_battles is False                  # force-switch economy intact
+    assert (env.boss_hp, env.boss_atk, env.boss_def) == (120, 12, 12)  # M1 boss stats
+
+
+def test_commit_env_id_is_registered_and_compliant() -> None:
+    import gymnasium as gym
+
+    from critter_gym.registration import register_envs
+
+    register_envs()
+    env = gym.make("CritterGym-commit-v0")
+    try:
+        env.reset(seed=1000)
+        for _ in range(30):
+            obs, _r, term, trunc, _i = env.step(env.action_space.sample())
+            if term or trunc:
+                env.reset()
+        assert env.get_wrapper_attr("commit_battles") is True
+    finally:
+        env.close()
+
+
+# -- D9: honesty invariant — no overclaim that a *learned* policy infers ------
+
+
+def test_source_does_not_overclaim_learned_inference() -> None:
+    # reasoning-load-bearing changed the honest baseline: a scripted 4-arm gate now
+    # PROVES inference is load-bearing under team-commit (so the SSOT may say so).
+    # The remaining overclaim to guard against is *learnability* — claiming a trained
+    # policy actually acquires the inference, which is not yet measured. Any
+    # "load-bearing" claim in the SSOT must keep the scripted/learned caveat, and
+    # explicit learnability boasts are banned.
+    from critter_gym import registration as registrationmod
+
+    banned = ("learns to infer", "proves the agent", "agent infers the chart")
+    for mod in (typesmod, regionmod, registrationmod):
+        low = inspect.getsource(mod).lower()
+        for phrase in banned:
+            assert phrase not in low, f"learnability overclaim in {mod.__name__}: {phrase}"
+        if "load-bearing" in low:
+            # must be qualified as scripted-arm evidence with learnability as follow-up
+            assert "scripted" in low and "follow-up" in low, (
+                f"{mod.__name__} claims load-bearing without the scripted/follow-up caveat"
+            )

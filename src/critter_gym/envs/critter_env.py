@@ -36,6 +36,7 @@ from critter_gym.party import gym_boss, starter_party
 from critter_gym.region import TEST_SEED_OFFSET, generate_region
 from critter_gym.render import draw_frame
 from critter_gym.types import FIXED_CHART, ElementType, TypeChart
+from critter_gym.types import SUPER_EFFECTIVE as _SUPER_EFFECTIVE
 
 # Action indices (a minimal subset of DESIGN.md §3.3). Reinterpreted in battle:
 #   0-3 -> use battle move (clamped), 4 -> switch to next alive, 5 -> pass.
@@ -70,6 +71,11 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         patch_radius: int = 2,
         vary: bool = False,
         num_types: int = 3,
+        super_mult: float = _SUPER_EFFECTIVE,
+        boss_hp: int = 120,
+        boss_atk: int = 12,
+        boss_def: int = 12,
+        commit_battles: bool = False,
         render_mode: str | None = None,
     ) -> None:
         super().__init__()
@@ -87,6 +93,16 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         # so the per-seed matchup chart is far harder to memorize than a 3-cycle).
         self.num_types = num_types
         self.vary = vary
+        # Difficulty knobs (reasoning-load-bearing AC2). Defaults reproduce the M1
+        # battle economy; the procgen-commit variant raises them so a wrong type
+        # commit is punished and inferring the hidden chart becomes load-bearing.
+        self.super_mult = super_mult
+        self.boss_hp = boss_hp
+        self.boss_atk = boss_atk
+        self.boss_def = boss_def
+        # team-commit boss fights: one committed champion, no switching / no
+        # force-switch cycling (DESIGN §3.1.1). Default False = M1 economy.
+        self.commit_battles = commit_battles
         self.render_mode = render_mode
 
         patch_side = 2 * patch_radius + 1
@@ -145,6 +161,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             self.num_gyms,
             vary=self.vary,
             num_types=self.num_types,
+            super_mult=self.super_mult,
         )
 
         self._creatures = set(region.creatures)
@@ -207,9 +224,14 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             return
         for c in self._party:  # battle starts with a fully healed party.
             c.hp = c.max_hp
-        boss = gym_boss(self._gym_types[idx], idx)
+        boss = gym_boss(
+            self._gym_types[idx], idx,
+            hp=self.boss_hp, atk=self.boss_atk, df=self.boss_def,
+        )
         self._battle = Battle(
-            BattleState(party_a=self._party, party_b=boss), chart=self._region_chart
+            BattleState(party_a=self._party, party_b=boss),
+            chart=self._region_chart,
+            commit_mode=self.commit_battles,
         )
         self._battle_gym_idx = idx  # captured at entry — robust to action-space changes
         self._mode = "battle"
