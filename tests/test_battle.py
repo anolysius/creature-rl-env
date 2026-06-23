@@ -99,6 +99,42 @@ def test_forced_switch_on_faint_then_loss() -> None:
     assert a2.is_fainted and r2.terminated and r2.winner is Side.B
 
 
+def test_commit_mode_switch_is_a_noop() -> None:
+    # team-commit (reasoning-load-bearing AC1): you commit one champion — a SWITCH
+    # action is ignored, so a policy cannot probe by cycling creatures mid-battle.
+    bench = _c("A2", (W,))
+    weak_b = _c("B", (G,), atk=1, moves=[Move("poke", G, 1)])
+    st = BattleState(party_a=[_c("A", (F,)), bench], party_b=[weak_b])
+    battle = Battle(st, commit_mode=True)
+    lead = st.active(Side.A)
+    battle.step(BattleAction(ActionKind.SWITCH, 1), MOVE())
+    assert st.active(Side.A) is lead          # switch ignored — still the committed lead
+
+
+def test_commit_mode_active_faint_is_immediate_loss() -> None:
+    # In commit mode a fainted active is NOT force-switched to an alive bench: the
+    # committed champion's faint ends the battle as a loss (no free brute-force).
+    a1 = _c("A1", (G,), hp=1)
+    a2 = _c("A2", (G,), hp=1)            # alive bench that must NOT be cycled in
+    b = _c("B", (F,), atk=100, spd=99)  # fire one-shots grass
+    st = BattleState(party_a=[a1, a2], party_b=[b])
+    battle = Battle(st, commit_mode=True)
+    r = battle.step(MOVE(), MOVE())
+    assert a1.is_fainted and not a2.is_fainted        # bench untouched
+    assert r.terminated and r.winner is Side.B         # lost despite an alive bench
+
+
+def test_commit_mode_defaults_off_preserves_forced_switch() -> None:
+    # Regression: default (commit_mode=False) keeps M1 force-switch behavior.
+    a1 = _c("A1", (G,), hp=1)
+    a2 = _c("A2", (G,), hp=1)
+    b = _c("B", (F,), atk=100, spd=99)
+    st = BattleState(party_a=[a1, a2], party_b=[b])
+    battle = Battle(st)  # default
+    r1 = battle.step(MOVE(), MOVE())
+    assert a1.is_fainted and st.active(Side.A) is a2 and not r1.terminated
+
+
 def test_scripted_opponent_picks_most_effective_move() -> None:
     attacker = _c("A", (F,), moves=[Move("splash", W, 40), Move("flare", F, 40)])
     # defender GRASS: FIRE move (idx1) is super-effective, WATER (idx0) not-very.

@@ -19,7 +19,13 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from critter_gym.types import NEUTRAL, ElementType, TypeChart, generate_typechart
+from critter_gym.types import (
+    NEUTRAL,
+    SUPER_EFFECTIVE,
+    ElementType,
+    TypeChart,
+    generate_typechart,
+)
 
 # Boss type sequence used in fixed (non-vary) mode — matches M1 behavior.
 FIXED_BOSS_TYPES: list[ElementType] = [ElementType.GRASS, ElementType.GRASS, ElementType.WATER]
@@ -57,6 +63,7 @@ def generate_region(
     *,
     vary: bool = False,
     num_types: int = 3,
+    super_mult: float = SUPER_EFFECTIVE,
 ) -> Region:
     """Deterministically build a region from ``seed``.
 
@@ -65,7 +72,9 @@ def generate_region(
     chart). ``vary=True`` samples counts in ``[1, max]``, draws boss types and the
     matchup chart from the first ``num_types`` elements of the type pool. A larger
     ``num_types`` makes the per-seed chart far harder to *memorize* than a 3-cycle.
-    (Whether it makes *inference* load-bearing is an open problem — see DESIGN §3.1.1.)
+    Making chart *inference* load-bearing needed the team-commit battle economy: a
+    scripted 4-arm gate now proves infer > probe there, while whether a *learned*
+    policy acquires the inference is follow-up work (see DESIGN §3.1.1).
 
     Fixed mode uses exactly 3 types (M1); ``num_types != 3`` with ``vary=False`` is
     rejected (the fixed chart only defines the 3-cycle).
@@ -77,7 +86,7 @@ def generate_region(
 
     rng = np.random.default_rng(seed)
     active_types = list(ElementType)[:num_types]
-    chart = generate_typechart(seed, active_types, vary=vary)
+    chart = generate_typechart(seed, active_types, vary=vary, super_mult=super_mult)
 
     if vary:
         n_creatures = int(rng.integers(_MIN_CREATURES, max_creatures + 1))

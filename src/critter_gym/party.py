@@ -33,11 +33,24 @@ def starter_party() -> list[Creature]:
     ]
 
 
-def gym_boss(boss_type: ElementType, index: int = 0) -> list[Creature]:
-    """The boss party for a gym of ``boss_type`` (single tanky creature)."""
+def gym_boss(
+    boss_type: ElementType,
+    index: int = 0,
+    *,
+    hp: int = 120,
+    atk: int = 12,
+    df: int = 12,
+    spd: int = 8,
+) -> list[Creature]:
+    """The boss party for a gym of ``boss_type`` (single tanky creature).
+
+    Stats default to the M1 values; ``hp``/``atk``/``df``/``spd`` are difficulty
+    knobs (reasoning-load-bearing AC2) — a stronger boss punishes a wrong type
+    commit so the correct (inferred) matchup becomes decisive.
+    """
     return [
         Creature(
-            f"Warden-{index}", (boss_type,), 120, 12, 12, 8,
+            f"Warden-{index}", (boss_type,), hp, atk, df, spd,
             [Move("strike", boss_type, 30)],
         )
     ]

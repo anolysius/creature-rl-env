@@ -98,10 +98,18 @@ class Battle:
         state: BattleState,
         chart: TypeChart | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
+        commit_mode: bool = False,
     ) -> None:
         self.state = state
         self.chart = chart or TypeChart()
         self.max_turns = max_turns
+        # team-commit (reasoning-load-bearing AC1): when True the side commits one
+        # champion — SWITCH actions are ignored, a fainted active is NOT force-switched
+        # to the bench, and a fainted active loses immediately. This removes the free
+        # force-switch "try every creature" brute force AND in-battle probing, so that
+        # cross-battle *inference* of the hidden type chart becomes load-bearing
+        # (DESIGN §3.1.1). Default False keeps M1 battle behavior unchanged.
+        self.commit_mode = commit_mode
         self.terminated = False
         self.truncated = False
         self.winner: Side | None = None
@@ -122,7 +130,8 @@ class Battle:
         # Phase 1 — non-move actions (switch / item) resolve before moves.
         for side, action in ((Side.A, action_a), (Side.B, action_b)):
             if action.kind is ActionKind.SWITCH:
-                self._switch(side, action.index)
+                if not self.commit_mode:  # commit mode: no mid-battle switching
+                    self._switch(side, action.index)
             elif action.kind is ActionKind.ITEM:
                 self._use_item(side, action.index)
 
@@ -141,11 +150,13 @@ class Battle:
             defender.take_damage(self.damage(attacker, defender, action.index))
 
         # Phase 3 — force-switch fainted actives to the next alive creature.
-        for side in (Side.A, Side.B):
-            if self.state.active(side).is_fainted:
-                nxt = self._next_alive(side)
-                if nxt is not None:
-                    self.state.set_active(side, nxt)
+        # Skipped in commit mode: a committed champion is not replaced on faint.
+        if not self.commit_mode:
+            for side in (Side.A, Side.B):
+                if self.state.active(side).is_fainted:
+                    nxt = self._next_alive(side)
+                    if nxt is not None:
+                        self.state.set_active(side, nxt)
 
         self._update_terminal()
         return self._result()
@@ -177,8 +188,13 @@ class Battle:
         return None
 
     def _update_terminal(self) -> None:
-        a_wiped = self.state.party_wiped(Side.A)
-        b_wiped = self.state.party_wiped(Side.B)
+        if self.commit_mode:
+            # Champion's faint == loss (no bench to cycle to).
+            a_wiped = self.state.active(Side.A).is_fainted
+            b_wiped = self.state.active(Side.B).is_fainted
+        else:
+            a_wiped = self.state.party_wiped(Side.A)
+            b_wiped = self.state.party_wiped(Side.B)
         if a_wiped or b_wiped:
             self.terminated = True
             # If both wiped the same turn, the side that still has a standing
