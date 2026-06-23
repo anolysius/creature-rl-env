@@ -141,6 +141,9 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._mode = "overworld"
         self._battle: Battle | None = None
         self._battle_gym_idx = -1
+        # team-commit: True while a boss fight's one-time champion-select window is
+        # open (commit_battles only). See _step_battle / learnability-measurement AC1.
+        self._commit_window = False
 
     # -- gym API ------------------------------------------------------------
 
@@ -178,6 +181,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._mode = "overworld"
         self._battle = None
         self._battle_gym_idx = -1
+        self._commit_window = False
         return self._obs(), self._info()
 
     def step(
@@ -235,12 +239,26 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         )
         self._battle_gym_idx = idx  # captured at entry — robust to action-space changes
         self._mode = "battle"
+        # team-commit: open the champion-select window so the agent commits one
+        # creature (informed by enemy_type) before the fight locks (AC1).
+        self._commit_window = self.commit_battles
 
     # -- battle -------------------------------------------------------------
 
     def _step_battle(self, action: int) -> float:
         battle = self._battle
         assert battle is not None
+        # team-commit champion-select window: while open, action 4 cycles the
+        # committed champion with no battle turn (the boss does not attack — cycling
+        # only re-reads the observed types, never deals/takes damage, so it is
+        # selection, not probing). Any other action locks the champion and the fight
+        # proceeds in commit_mode (further switches become no-ops).
+        if self._commit_window:
+            if action == 4:
+                nxt = self._next_alive_player()
+                battle.state.set_active(Side.A, nxt)
+                return 0.0
+            self._commit_window = False
         result = battle.step(
             self._to_battle_action(action),
             scripted_opponent(battle.state, Side.B, self._region_chart),
@@ -263,6 +281,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             # win or lose, leave battle; party is re-healed on the next entry.
             self._mode = "overworld"
             self._battle = None
+            self._commit_window = False
         return reward
 
     def _to_battle_action(self, action: int) -> BattleAction:
