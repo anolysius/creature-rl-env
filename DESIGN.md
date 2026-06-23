@@ -117,6 +117,18 @@ environments"** surface. So custom environments are not merely a revenue add-on;
 for the generality claim**. Until then, scale difficulty *while keeping the seed split*, so (A) becomes
 "hard-and-gap≈0" rather than "toy-and-gap≈0" — a gap≈0 on a trivial env predicts little about capability.
 
+*Toward "hard-and-gap≈0" (difficulty-generalization).* A pilot **falsified** a clean monotonic *scripted*
+difficulty ladder: difficulty is multi-dimensional (a larger hidden chart raises *inference* difficulty
+but makes *blind grinding easier*; boss stats are a cliff, not a gradient) and a scripted oracle caps at
+~0.6 (3 starters vs 12 types). So we test the property the right way — with a **learned** policy, since a
+scripted policy cannot memorize and its gap≈0 is trivial. `scripts/difficulty_generalization.py` trains PPO
+on held-in seeds at several **difficulty points** (increasing knob intensity; *not* a calibrated ladder) and
+reports the held-in vs held-out gap (held-in eval carved disjoint from learning seeds). An initial run
+(PPO 40k/point, N=16/16) lands every point's gap **within its per-seed std** — including the hardest point
+(d2: held-out 0.94 ±1.64, gap +0.06) — i.e. generalization is consistent with gap≈0 even at higher
+intensity, for a *learned* policy. Caveats kept honest: a single run, a low training budget (absolute
+performance has headroom), and large std → a **signal**, not a tuned number.
+
 **Is infer-the-meta *load-bearing*? — yes, under the team-commit battle economy (scripted-arm proven).**
 The hidden per-seed type chart is meant to force *online rule inference*. Depth alone (3 → 12 types, boss
 types recurring within an episode) did **not** make inference load-bearing: a first pilot found that with
