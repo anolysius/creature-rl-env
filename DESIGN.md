@@ -79,14 +79,24 @@ What the train/test **seed** split proves — and does *not* prove — stated pl
   That is the claim that would justify "generalizes within the collection-RPG genre." *(This is also
   exactly why a CritterGym-trained agent can't play Pokémon: Pokémon is a held-out **environment** it
   has never seen — not a held-out seed.)* **Foundation in place (not yet the claim):** we now have an
-  env-*family* abstraction (`critter_gym.env_family`, a shared obs/action contract + registry), a
-  **second** structurally-distinct family (`ForageEnv` — contact-collect vs family A's action-collect,
-  verified non-reducible to a seed variant), and env-level measurement (`critter_gym.genre_generalization`,
-  train-family → unseen-family gap). This stands up the machinery end-to-end on **two** families — a
-  *foundation*, **not** a genre-generalization proof: a credible claim needs **many** structurally-distinct
-  families and a stronger structural axis than one collection mechanic. The measured gap is a *signal*
-  (e.g. a family-A-tuned scripted policy transfers to B with gap≈0 here — the minimal axis is forgiving),
-  not evidence of genre generalization.
+  env-*family* abstraction (`critter_gym.env_family`, a shared obs/action contract + registry), **three**
+  structurally-distinct families — family A (`CritterEnv`, action-collect + type-matchup battle), family B
+  (`ForageEnv`, contact-collect, a *collection*-axis difference), and family C (`DuelEnv`, a type-agnostic
+  stamina/commit *battle-system* difference — no type chart, no switching) — and env-level measurement
+  (`critter_gym.genre_generalization`, leave-one-out train-families → unseen-family gap). This stands up the
+  machinery end-to-end on **three** families — a *foundation*, **not** a genre-generalization proof: a
+  credible claim still needs **many** structurally-distinct families. The measured gap is a *signal*, and
+  its interpretation now has a **policy-specific** discriminator: on held-out family B the minimal
+  *collection* axis is forgiving (an A-tuned scripted policy transfers with gap≈0), whereas on held-out
+  family C — whose *battle system* makes family A's type-inference skill useless — the **A-tuned policy
+  fails to transfer (gap ≈ +3.9) while a C-appropriate policy transfers (gap ≈ +0.2)**. That policy
+  *contrast* shows family C's env-level gap is **skill-structural** (a wrong skill, since family C is
+  winnable ≈4.3 by the C-appropriate policy), not mere difficulty — the stronger structural axis family B
+  lacked. Still a foundation, still not evidence of genre generalization across the *genre*. *(Caveats kept
+  honest: a single N=12 held-out run of scripted reference policies — a signal, not a tuned number; and the
+  duel boss plays a fixed deterministic pattern with charge exposed in obs, so the ≈4.3 win partly reflects
+  opponent predictability, not duel skill alone. The skill-structural read still holds — the A-tuned policy
+  has the same obs access and still floors ≈0.6.)*
 
 **Positioning consequence.** Pokémon is a **plain-language metaphor** (creatures + type matchups + gyms →
 the task is instantly legible), **not a competitive claim**. "We do what Pokémon-RL can't" overreaches:

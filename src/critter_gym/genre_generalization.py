@@ -20,7 +20,15 @@ from dataclasses import dataclass
 import numpy as np
 
 from critter_gym.env_family import make_family
-from critter_gym.envs.critter_env import CritterEnv
+from critter_gym.envs.critter_env import (
+    CATCH,
+    MOVE_E,
+    MOVE_N,
+    MOVE_S,
+    MOVE_W,
+    CritterEnv,
+)
+from critter_gym.envs.duel_env import ATTACK, CHARGE, GUARD, MAX_CHARGE
 from critter_gym.generalization import evaluate
 
 Obs = dict[str, np.ndarray]
@@ -77,3 +85,105 @@ def measure_genre_generalization(
         train_mean=train.mean,
         test_mean=test.mean,
     )
+
+
+@dataclass(frozen=True)
+class LeaveOneOutGap:
+    """One leave-one-out fold: a policy's mean on the train families vs the held-out one.
+
+    With N families, each fold holds one family out and trains on the other N−1. The
+    gap (train − held-out) is the env-level transfer signal for that unseen family.
+    """
+
+    held_out: str
+    train_families: tuple[str, ...]
+    train_mean: float
+    heldout_mean: float
+
+    @property
+    def gap(self) -> float:
+        """Env-level generalization gap (train families − held-out). Reported, not thresholded."""
+        return self.train_mean - self.heldout_mean
+
+
+def measure_genre_generalization_loo(
+    policy: PolicyFn,
+    families: list[str],
+    seeds: Iterable[int],
+) -> list[LeaveOneOutGap]:
+    """Leave-one-out env-level measurement over ``families`` for one policy.
+
+    For each family it is held out as the unseen environment while the rest form the
+    train set; the per-fold gap is the genre-generalization signal for that family.
+    Same seeds on every family so each fold isolates the *mechanic*, not the layout.
+
+    Honest scope: leave-one-out over a *handful* of families is still a foundation —
+    the gap is a signal, never a pass threshold, and three families is not a proof.
+    """
+    seeds_t = tuple(int(s) for s in seeds)
+    per_family = {f: evaluate(_family_factory(f), policy, seeds_t).mean for f in families}
+    folds: list[LeaveOneOutGap] = []
+    for held in families:
+        train = tuple(f for f in families if f != held)
+        train_mean = float(np.mean([per_family[f] for f in train])) if train else float("nan")
+        folds.append(LeaveOneOutGap(held, train, train_mean, per_family[held]))
+    return folds
+
+
+# -- reference scripted policies for the env-level skill-structural contrast ----
+# These are obs-only, family-agnostic instruments (not learned baselines): they let
+# the measurement show that family C's env-level gap is *skill-structural* (a
+# C-appropriate policy transfers, an A-tuned one does not) rather than mere difficulty.
+
+
+def nav_toward_gyms(obs: Obs) -> int:
+    """Head to the nearest visible gym (else creature, else sweep) to trigger battles.
+
+    Shared overworld navigation so the reference policies differ *only* in battle —
+    isolating the battle skill, which is the genre axis under test.
+    """
+    patch = obs["local_patch"]
+    center = patch.shape[0] // 2
+    targets = np.argwhere(patch == 2)
+    if targets.size == 0:
+        targets = np.argwhere(patch == 1)
+    if targets.size > 0:
+        rel = targets - center
+        nearest = rel[np.argmin(np.abs(rel).sum(axis=1))]
+        dr, dc = int(nearest[0]), int(nearest[1])
+        if dr == 0 and dc == 0:
+            return int(CATCH)
+        if abs(dr) >= abs(dc):
+            return int(MOVE_S if dr > 0 else MOVE_N)
+        return int(MOVE_E if dc > 0 else MOVE_W)
+    r, c = int(obs["agent_pos"][0]), int(obs["agent_pos"][1])
+    if r % 2 == 0:
+        return int(MOVE_E if c < 9 else MOVE_S)
+    return int(MOVE_W if c > 0 else MOVE_S)
+
+
+def type_attacker_policy(obs: Obs) -> int:
+    """A-tuned reference: in battle, always attack (action 0 = best move in family A,
+    = ATTACK in family C). Optimal-ish on family A; on family C it ignores the duel
+    resource game and is punished — the skill does not transfer."""
+    if int(obs["in_battle"][0]) == 1:
+        return int(ATTACK)
+    return nav_toward_gyms(obs)
+
+
+_ZERO = np.zeros(1, dtype=np.int64)
+
+
+def duel_aware_policy(obs: Obs) -> int:
+    """C-appropriate reference: play the duel RPS from observed charge (GUARD the
+    incoming attack, build charge, then punish). Reads the duel charge obs keys when
+    present and falls back to 0 on families that lack them, so it is family-agnostic."""
+    if int(obs["in_battle"][0]) == 1:
+        echarge = int(obs.get("enemy_charge", _ZERO)[0])
+        pcharge = int(obs.get("player_charge", _ZERO)[0])
+        if echarge >= 1:
+            return int(GUARD)  # negate the telegraphed attack
+        if pcharge < MAX_CHARGE:
+            return int(CHARGE)  # safe to build charge
+        return int(ATTACK)  # unleash the charged hit
+    return nav_toward_gyms(obs)
