@@ -109,10 +109,15 @@ A scripted 4-arm gate (`tests/test_reasoning_gate.py`, numpy-only, 42 fixed held
 separation: **oracle 1.00 ≫ type_blind 0.52** (type knowledge is decisive) and **infer 0.84 > probe 0.47**
 (an *inferring* policy that reuses recurring matchups beats a *probing* one that re-discovers each battle).
 
-**Honest scope of the claim.** This proves the *task structure* makes inference load-bearing for scripted
-policies — a necessary precondition that the M1 economy lacked. It does **not** yet show a *learned* (PPO)
-policy actually acquires the inference; measuring that is follow-up work. We claim the substrate, not the
-learnability. Honesty here matters more than the headline.
+**Honest scope of the claim.** The scripted gate proves the *task structure* makes inference load-bearing —
+a necessary precondition the M1 economy lacked. The *learnability* follow-up then asks whether a **learned**
+policy acquires it: PPO trained on `CritterGym-commit-v0` (champion-select action UX, `scripts/learnability.py`)
+is measured against the four reference arms (`critter_gym.learnability`). In an initial run it lands **well
+above** the `type_blind`/`probe` floor and **at/above** the `infer` reference on held-out seeds — evidence a
+learned agent does acquire effective champion selection, not blind play, and generalizes (held-out ≈ held-in,
+no memorization). Caveats kept honest: the return metric also rewards evolution (so absolute cross-arm gaps
+are noisy), it is a single run on a small config, and eval N is modest — so we report a **positive
+learnability signal**, not a tuned headline number. Honesty here matters more than the headline.
 
 ### 3.2 Observation space
 - **v1: structured/symbolic** (NOT pixels first): agent position, local tile patch, party
