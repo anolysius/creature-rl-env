@@ -76,10 +76,17 @@ What the train/test **seed** split proves — and does *not* prove — stated pl
 - **(B) Genre generalization — what we do NOT yet measure.** Working across *structurally distinct*
   collection-RPGs (different battle systems, collection/progression mechanics, rule *systems*) under an
   **environment-level** held-out split (train on env families {A,B,C} → test on an unseen family D).
-  That is the claim that would justify "generalizes within the collection-RPG genre." We have **one**
-  generator today, so we **cannot** measure (B) yet. *(This is also exactly why a CritterGym-trained
-  agent can't play Pokémon: Pokémon is a held-out **environment** it has never seen — not a held-out
-  seed.)*
+  That is the claim that would justify "generalizes within the collection-RPG genre." *(This is also
+  exactly why a CritterGym-trained agent can't play Pokémon: Pokémon is a held-out **environment** it
+  has never seen — not a held-out seed.)* **Foundation in place (not yet the claim):** we now have an
+  env-*family* abstraction (`critter_gym.env_family`, a shared obs/action contract + registry), a
+  **second** structurally-distinct family (`ForageEnv` — contact-collect vs family A's action-collect,
+  verified non-reducible to a seed variant), and env-level measurement (`critter_gym.genre_generalization`,
+  train-family → unseen-family gap). This stands up the machinery end-to-end on **two** families — a
+  *foundation*, **not** a genre-generalization proof: a credible claim needs **many** structurally-distinct
+  families and a stronger structural axis than one collection mechanic. The measured gap is a *signal*
+  (e.g. a family-A-tuned scripted policy transfers to B with gap≈0 here — the minimal axis is forgiving),
+  not evidence of genre generalization.
 
 **Positioning consequence.** Pokémon is a **plain-language metaphor** (creatures + type matchups + gyms →
 the task is instantly legible), **not a competitive claim**. "We do what Pokémon-RL can't" overreaches:
