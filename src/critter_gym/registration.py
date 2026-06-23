@@ -60,6 +60,15 @@ def register_envs() -> None:
         entry_point="critter_gym.envs.forage_env:ForageEnv",
         kwargs={"vary": True, "num_types": 12, "num_gyms": 8, "max_steps": 400},
     )
+    # Family C (battle-system-family): a structurally distinct BATTLE SYSTEM — a
+    # type-agnostic stamina/commit duel (no type chart, no switching), a stronger
+    # structural axis than family B's collection-only difference. Exposes the duel
+    # charge as extra obs keys (contract-safe). See envs/duel_env.py.
+    register(
+        id="CritterGym-duel-v0",
+        entry_point="critter_gym.envs.duel_env:DuelEnv",
+        kwargs={"vary": True, "num_types": 12, "num_gyms": 8, "max_steps": 400},
+    )
     _register_families()
     _REGISTERED = True
 
@@ -76,7 +85,9 @@ _FAMILY_CFG: dict[str, object] = dict(vary=True, num_types=12, num_gyms=3, max_s
 def _register_families() -> None:
     from critter_gym.env_family import register_family
     from critter_gym.envs.critter_env import CritterEnv
+    from critter_gym.envs.duel_env import DuelEnv
     from critter_gym.envs.forage_env import ForageEnv
 
     register_family("critter", lambda **kw: CritterEnv(**{**_FAMILY_CFG, **kw}))
     register_family("forage", lambda **kw: ForageEnv(**{**_FAMILY_CFG, **kw}))
+    register_family("duel", lambda **kw: DuelEnv(**{**_FAMILY_CFG, **kw}))

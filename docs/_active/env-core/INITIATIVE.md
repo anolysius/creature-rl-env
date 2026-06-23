@@ -37,6 +37,7 @@ DESIGN.md 스펙을 실제 동작하는 Gymnasium 환경으로 구현한다. "du
 | 15 | `reasoning-load-bearing` | ✅ done (→ `_archive/2026-Q2/env-core/16-reasoning-load-bearing/`) | team-commit 보스 경제로 **추론 load-bearing scripted-arm 실증**(Gate0 0.48/Gate1 0.36, `CritterGym-commit-v0`); DESIGN §3.1.1 open problem 해소(학습 *학습*은 follow-up). M1 무회귀 |
 | 16 | `learnability-measurement` | ✅ done (→ `_archive/2026-Q2/env-core/17-learnability-measurement/`) | 챔피언-선택 액션 UX(`_commit_window`) + `critter_gym.learnability` 측정 하네스. **PPO 100k 측정: learned ≫ probe/blind, infer 수준 = 양성 learnability 신호**(caveat: 진화합산/N16/단일run). (A) 학습 수준 작동 입증. M1 무회귀 |
 | 17 | `genre-generalization-foundation` | ✅ done (→ `_archive/2026-Q2/env-core/18-genre-generalization-foundation/`) | (B) 장르 일반화 **측정 머신 토대**: `env_family`(공유 계약+registry) + `ForageEnv`(family B, contact-collect, same-seed→A≠B) + `genre_generalization`(env-level 갭). 2 패밀리=토대지 장르 주장 아님(gap=신호). family A 무회귀, check_env 4종 |
+| 18 | `battle-system-family` | ✅ done (→ `_archive/2026-Q2/env-core/19-battle-system-family/`) | (B) **토대 강화 — 세 번째 family C** `DuelEnv`(`CritterGym-duel-v0`)가 **배틀 시스템 자체 교체**(타입-무관 stamina/commit RPS, family B의 thin 약점 메움). `genre_generalization` 다-family LOO + obs-only 레퍼런스 정책. **측정**: held-out=duel에서 A-튜닝 gap +3.917 ≫ C-적합 +0.167 = **skill-structural 신호**(난이도 아님; family B gap≈0이 못 만든 정책-특정 대조). 3 family도 증명 아닌 토대. family A/B 무회귀(160→171), check_env 5종 |
 
 (이후 task 는 /task-start 로 append)
 
