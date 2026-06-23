@@ -38,9 +38,9 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from gymnasium import spaces
 
 from critter_gym.battle import Battle, BattleState, Side
+from critter_gym.env_family import MAX_CHARGE_OBS
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.party import gym_boss
 
@@ -55,14 +55,11 @@ class DuelEnv(CritterEnv):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        # Extend the obs with the duel charge state. conforms() requires obs keys
-        # ⊇ REQUIRED_OBS_KEYS, so adding keys keeps family C on the shared contract
-        # while making the duel playable from observation (not privileged access).
-        assert isinstance(self.observation_space, spaces.Dict)
-        extended = dict(self.observation_space.spaces)
-        extended["player_charge"] = spaces.Box(0, MAX_CHARGE, shape=(1,), dtype=np.int64)
-        extended["enemy_charge"] = spaces.Box(0, MAX_CHARGE, shape=(1,), dtype=np.int64)
-        self.observation_space = spaces.Dict(extended)
+        # The charge keys are part of the harmonized obs every family shares now
+        # (env_family.HARMONIZED_OBS_KEYS — masked to 0 on non-duel families). Family C
+        # just fills them with real values in ``_obs`` so the duel is playable from
+        # observation (not privileged access). MAX_CHARGE must fit the shared obs bound.
+        assert MAX_CHARGE <= MAX_CHARGE_OBS
         self._pcharge = 0
         self._echarge = 0
         self._duel_turns = 0

@@ -32,6 +32,7 @@ from critter_gym.battle import (
     scripted_opponent,
 )
 from critter_gym.creatures import Creature
+from critter_gym.env_family import MAX_CHARGE_OBS
 from critter_gym.party import gym_boss, starter_party
 from critter_gym.region import TEST_SEED_OFFSET, generate_region
 from critter_gym.render import draw_frame
@@ -124,6 +125,11 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
                 "player_level": spaces.Box(0, _LEVEL_MAX, shape=(1,), dtype=np.int64),
                 "enemy_hp": spaces.Box(0, _HP_MAX, shape=(1,), dtype=np.int64),
                 "enemy_type": spaces.Box(0, _NUM_TYPES - 1, shape=(1,), dtype=np.int64),
+                # Harmonized charge keys (env_family.HARMONIZED_OBS_KEYS): one shared obs
+                # space across all families. 0 on non-duel families; family C overrides
+                # with real charge values in DuelEnv._obs.
+                "player_charge": spaces.Box(0, MAX_CHARGE_OBS, shape=(1,), dtype=np.int64),
+                "enemy_charge": spaces.Box(0, MAX_CHARGE_OBS, shape=(1,), dtype=np.int64),
             }
         )
 
@@ -358,6 +364,9 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             "player_level": np.array([p_lvl], dtype=np.int64),
             "enemy_hp": np.array([e_hp], dtype=np.int64),
             "enemy_type": np.array([e_ty], dtype=np.int64),
+            # 0-masked on the base family; DuelEnv overrides with real charge state.
+            "player_charge": np.array([0], dtype=np.int64),
+            "enemy_charge": np.array([0], dtype=np.int64),
         }
 
     def _patch_entities(self) -> list[tuple[tuple[int, int], int]]:
