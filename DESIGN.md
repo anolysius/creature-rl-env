@@ -132,9 +132,18 @@ policy acquires it: PPO trained on `CritterGym-commit-v0` (champion-select actio
 is measured against the four reference arms (`critter_gym.learnability`). In an initial run it lands **well
 above** the `type_blind`/`probe` floor and **at/above** the `infer` reference on held-out seeds — evidence a
 learned agent does acquire effective champion selection, not blind play, and generalizes (held-out ≈ held-in,
-no memorization). Caveats kept honest: the return metric also rewards evolution (so absolute cross-arm gaps
-are noisy), it is a single run on a small config, and eval N is modest — so we report a **positive
-learnability signal**, not a tuned headline number. Honesty here matters more than the headline.
+no memorization). *Metric precision (learnability-precision):* the original return conflated gym-defeats with
+evolution reward, so we now also report a **gym-clear-only** metric (bosses defeated, evolution excluded) that
+decouples the streams — a learned policy can no longer appear to out-score `oracle` merely by evolving more.
+On the clean metric the load-bearing ordering holds (`oracle ≥ infer ≫ type_blind > probe`). Caveats kept
+honest and now stated precisely: (i) the gym-clear-only count is **bounded by `num_gyms`** (e.g. oracle ≈ 4.2/8
+held-out), so it trades evolution-inflation for a ceiling that compresses gaps between strong arms; (ii)
+`oracle == infer` on this config (gym types recur enough that one sighting suffices), so the metric **cannot by
+itself separate inference from perfect knowledge** — it shows inference *suffices*, not that inference alone is
+load-bearing (that is the scripted gate's job); (iii) it remains a single config with modest eval N — the
+`scripts/learnability.py --runs N` option averages several PPO seeds to bound training variance, but that path
+is `[rl]`/non-CI. So we report a **positive learnability signal**, not a tuned headline number. Honesty here
+matters more than the headline.
 
 ### 3.2 Observation space
 - **v1: structured/symbolic** (NOT pixels first): agent position, local tile patch, party

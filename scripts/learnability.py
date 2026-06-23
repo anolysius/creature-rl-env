@@ -60,9 +60,10 @@ class _SeededReset(gym.Wrapper):
 
 
 def train_and_measure(timesteps: int, *, n_heldin: int = N_HELDIN,
-                      n_heldout: int = N_HELDOUT) -> LearnabilityReport:
+                      n_heldout: int = N_HELDOUT, seed: int = 0) -> LearnabilityReport:
     """Train PPO ``timesteps`` on commit-v0 learn seeds; return the arm comparison.
 
+    ``seed`` varies the PPO init so ``--runs`` can average over training runs.
     Importable so a CI smoke test can run a tiny budget. Raises ImportError if the
     ``[rl]`` extra is missing (callers gate with ``pytest.importorskip``).
     """
@@ -79,7 +80,7 @@ def train_and_measure(timesteps: int, *, n_heldin: int = N_HELDIN,
         return _SeededReset(make_env(), learn_seeds)
 
     model = PPO("MultiInputPolicy", DummyVecEnv([make_train_env]),
-                verbose=0, n_steps=512, seed=0)
+                verbose=0, n_steps=512, seed=seed)
     model.learn(timesteps, progress_bar=False)
 
     def ppo_policy(obs: dict) -> int:
@@ -91,25 +92,42 @@ def train_and_measure(timesteps: int, *, n_heldin: int = N_HELDIN,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timesteps", type=int, default=100_000)
+    parser.add_argument("--runs", type=int, default=1,
+                        help="train this many PPO seeds and average the learned policy "
+                             "(mitigates — does not remove — the single-run caveat).")
     args = parser.parse_args()
     try:
-        report = train_and_measure(args.timesteps)
+        reports = [train_and_measure(args.timesteps, seed=i) for i in range(max(1, args.runs))]
     except ImportError:
         print('This demo needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
         return 2
 
-    print(f"commit-v0 PPO learnability | timesteps={args.timesteps:,}\n")
+    report = reports[0]
+    print(f"commit-v0 PPO learnability | timesteps={args.timesteps:,} | runs={args.runs}\n")
     print(report.to_markdown())
-    lo, hi = report.heldout["probe"], report.heldout["infer"]
-    learned = report.heldout["learned"]
+
+    # Compare on the CLEAN gym-clear-only metric (evolution-free) — the metric that
+    # decouples the conflated return so a learned policy can't appear to beat oracle
+    # merely by evolving more (learnability-precision).
+    lo, hi = report.heldout_gyms["probe"], report.heldout_gyms["infer"]
+    learned_runs = [r.heldout_gyms["learned"] for r in reports]
+    learned = sum(learned_runs) / len(learned_runs)
+    band = hi - lo
     where = (
-        "≈ infer (learned to infer the chart)" if learned >= lo + 0.7 * (hi - lo)
+        "≈ infer (learned to infer the chart)" if band > 0 and learned >= lo + 0.7 * band
         else "≈ probe/blind (did NOT acquire inference at this budget)"
-        if learned <= lo + 0.3 * (hi - lo)
+        if band <= 0 or learned <= lo + 0.3 * band
         else "between probe and infer (partial)"
     )
-    print(f"\nLearned policy sits {where}.")
-    print("(Reported, not pass/fail — see DESIGN §3.1.1 follow-up.)")
+    band_txt = ""
+    if len(reports) > 1:
+        band_txt = f" [range {min(learned_runs):.3f}–{max(learned_runs):.3f}]"
+    print(
+        f"\nLearned gym-clear-only (held-out): mean={learned:.3f} "
+        f"over {len(reports)} run(s){band_txt}  → sits {where}."
+    )
+    print("(Gym-clear-only: bosses defeated, evolution excluded. Reported, not pass/fail —")
+    print(" single config, N modest, multi-run is [rl]/non-CI. See DESIGN §3.1.1 follow-up.)")
     return 0
 
 

@@ -22,7 +22,8 @@ behind the ``[rl]`` extra.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import partial
 
 import numpy as np
 
@@ -118,8 +119,26 @@ def as_env_policy(policy: ObsPolicy) -> EnvPolicy:
 
 
 # -- evaluation ---------------------------------------------------------------
-def run_episode(env_factory: Callable[[], CritterEnv], policy: EnvPolicy, seed: int) -> float:
-    """One full commit-v0 episode; return total reward (gyms defeated + evolutions)."""
+@dataclass(frozen=True)
+class EpisodeOutcome:
+    """One episode's outcome, with the subgoal streams **separated**.
+
+    ``learnability-measurement`` reported a single conflated return = gym-defeats
+    (+1 each) **+** evolutions (+1 each), so a policy that evolves a lot could appear
+    to out-score even ``oracle`` (a noisy cross-arm comparison). Splitting the streams
+    here lets the comparison use a clean **gym-clear-only** count (the actual
+    inference-load-bearing subgoal), with evolution reported separately.
+    """
+
+    episode_return: float  # total reward (gym-defeats + evolutions [+ catches, if any])
+    gyms_cleared: int      # bosses defeated this episode (the clean, load-bearing metric)
+    evolutions: int        # creatures evolved this episode (the inflating stream)
+
+
+def run_episode(
+    env_factory: Callable[[], CritterEnv], policy: EnvPolicy, seed: int
+) -> EpisodeOutcome:
+    """One full commit-v0 episode; return the outcome with subgoal streams separated."""
     env = env_factory()
     obs, _ = env.reset(seed=int(seed))
     total, done = 0.0, False
@@ -127,30 +146,63 @@ def run_episode(env_factory: Callable[[], CritterEnv], policy: EnvPolicy, seed: 
         obs, reward, terminated, truncated, _ = env.step(policy(env, obs))
         total += float(reward)
         done = bool(terminated or truncated)
-    return total
+    # Read the separated streams from terminal env state (deterministic; no double-count).
+    return EpisodeOutcome(
+        episode_return=total,
+        gyms_cleared=int(sum(env._gym_defeated)),
+        evolutions=int(env._evolved),
+    )
+
+
+def _arm_means(
+    env_factory: Callable[[], CritterEnv], policy_factory: Callable[[], EnvPolicy],
+    seeds: Iterable[int],
+) -> tuple[float, float]:
+    """(combined-return mean, gym-clear-only mean) over ``seeds`` — one run per seed."""
+    outs = [run_episode(env_factory, policy_factory(), s) for s in seeds]
+    if not outs:
+        return float("nan"), float("nan")
+    return (
+        float(np.mean([o.episode_return for o in outs])),
+        float(np.mean([o.gyms_cleared for o in outs])),
+    )
 
 
 def arm_mean(env_factory: Callable[[], CritterEnv], arm: str, seeds: Iterable[int]) -> float:
-    """Mean episode return of a reference ``arm`` over ``seeds`` (fresh state per ep)."""
-    return float(np.mean([run_episode(env_factory, reference_arm(arm), s) for s in seeds]))
+    """Mean **combined** episode return of a reference ``arm`` (backward-compatible)."""
+    return _arm_means(env_factory, lambda: reference_arm(arm), seeds)[0]
 
 
 @dataclass(frozen=True)
 class LearnabilityReport:
-    """Held-in vs held-out means for each reference arm + a learned policy."""
+    """Held-in vs held-out means per arm + learned, for both the combined return and
+    the clean gym-clear-only metric (``*_gyms``). The gym-clear-only means are the
+    evolution-free comparison; combined is kept for backward compatibility."""
 
     heldin: dict[str, float]
     heldout: dict[str, float]
+    heldin_gyms: dict[str, float] = field(default_factory=dict)
+    heldout_gyms: dict[str, float] = field(default_factory=dict)
 
     def gap(self, name: str) -> float:
         return self.heldin[name] - self.heldout[name]
 
+    def gym_gap(self, name: str) -> float:
+        return self.heldin_gyms[name] - self.heldout_gyms[name]
+
     def to_markdown(self) -> str:
         names = list(self.heldin)
-        rows = ["| arm | held-in | held-out | gap |", "|---|---|---|---|"]
+        rows = [
+            "| arm | held-in (return) | held-out (return) | held-in (gym-clear) "
+            "| held-out (gym-clear) | gym-clear gap |",
+            "|---|---|---|---|---|---|",
+        ]
         for n in names:
+            gi = self.heldin_gyms.get(n, float("nan"))
+            go = self.heldout_gyms.get(n, float("nan"))
             rows.append(
-                f"| {n} | {self.heldin[n]:.3f} | {self.heldout[n]:.3f} | {self.gap(n):+.3f} |"
+                f"| {n} | {self.heldin[n]:.3f} | {self.heldout[n]:.3f} | "
+                f"{gi:.3f} | {go:.3f} | {go - gi:+.3f} |"
             )
         return "\n".join(rows)
 
@@ -161,7 +213,8 @@ def measure_learnability(
     heldout_seeds: Iterable[int],
     learned: ObsPolicy | None = None,
 ) -> LearnabilityReport:
-    """Evaluate the four reference arms (+ optional learned policy) held-in vs held-out.
+    """Evaluate the four reference arms (+ optional learned policy) held-in vs held-out,
+    on both the combined return and the clean **gym-clear-only** metric.
 
     Enforces the region split (held-in < TEST_SEED_OFFSET ≤ held-out) so a leaked
     seed can't flatter the gap — same guard as :mod:`critter_gym.generalization`.
@@ -175,11 +228,21 @@ def measure_learnability(
     if mislabeled:
         raise ValueError(f"held-out seeds must be held-out; got training-region {mislabeled[:5]}")
 
+    heldin: dict[str, float] = {}
+    heldout: dict[str, float] = {}
+    heldin_gyms: dict[str, float] = {}
+    heldout_gyms: dict[str, float] = {}
     arms = ("oracle", "infer", "type_blind", "probe")
-    heldin = {a: arm_mean(env_factory, a, hi) for a in arms}
-    heldout = {a: arm_mean(env_factory, a, ho) for a in arms}
+    for a in arms:
+        heldin[a], heldin_gyms[a] = _arm_means(env_factory, partial(reference_arm, a), hi)
+        heldout[a], heldout_gyms[a] = _arm_means(env_factory, partial(reference_arm, a), ho)
     if learned is not None:
-        pol = as_env_policy(learned)
-        heldin["learned"] = float(np.mean([run_episode(env_factory, pol, s) for s in hi]))
-        heldout["learned"] = float(np.mean([run_episode(env_factory, pol, s) for s in ho]))
-    return LearnabilityReport(heldin=heldin, heldout=heldout)
+        heldin["learned"], heldin_gyms["learned"] = _arm_means(
+            env_factory, partial(as_env_policy, learned), hi
+        )
+        heldout["learned"], heldout_gyms["learned"] = _arm_means(
+            env_factory, partial(as_env_policy, learned), ho
+        )
+    return LearnabilityReport(
+        heldin=heldin, heldout=heldout, heldin_gyms=heldin_gyms, heldout_gyms=heldout_gyms
+    )
