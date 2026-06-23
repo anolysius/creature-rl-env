@@ -12,9 +12,11 @@ import pytest
 
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.learnability import (
+    EpisodeOutcome,
     arm_mean,
     measure_learnability,
     reference_arm,
+    run_episode,
 )
 from critter_gym.region import heldout_seeds, train_seeds
 
@@ -44,7 +46,8 @@ def test_measure_learnability_reports_all_arms_and_split_guard() -> None:
     report = measure_learnability(_commit_factory, train_seeds(8), heldout_seeds(8))
     for arm in ("oracle", "infer", "type_blind", "probe"):
         assert arm in report.heldin and arm in report.heldout
-    assert "| arm | held-in | held-out | gap |" in report.to_markdown()
+    md = report.to_markdown()
+    assert "held-in (return)" in md and "held-out (gym-clear)" in md
 
 
 def test_measure_learnability_rejects_leaked_split() -> None:
@@ -59,6 +62,36 @@ def test_as_env_policy_wraps_obs_only_policy() -> None:
         _commit_factory, train_seeds(4), heldout_seeds(4), learned=lambda _obs: 0
     )
     assert "learned" in report.heldin and "learned" in report.heldout
+
+
+# -- learnability-precision: gym-clear-only metric (decouple evolution inflation) ---
+
+def test_run_episode_returns_outcome_separating_gyms_and_evolutions() -> None:  # AC1
+    out = run_episode(_commit_factory, reference_arm("oracle"), seed=int(train_seeds(1)[0]))
+    assert isinstance(out, EpisodeOutcome)
+    assert out.gyms_cleared >= 0 and out.evolutions >= 0
+    # an arm only navigates to gyms (never CATCH), so the combined return is exactly
+    # gym-defeat (+1 each) + evolution (+1 each) — the two separable subgoal streams.
+    assert out.episode_return == float(out.gyms_cleared + out.evolutions)
+
+
+def test_gym_clear_only_separates_evolution_and_preserves_order() -> None:  # AC2/AC3
+    report = measure_learnability(_commit_factory, train_seeds(16), heldout_seeds(16))
+    # gym-clear-only means reported alongside combined.
+    assert set(report.heldout_gyms) == {"oracle", "infer", "type_blind", "probe"}
+    g = report.heldout_gyms
+    # load-bearing ordering preserved on the clean (evolution-free) metric.
+    assert g["oracle"] >= g["infer"] > g["type_blind"] > g["probe"], g
+    # combined return is inflated by evolutions → strictly above gym-clear-only.
+    assert report.heldout["oracle"] > g["oracle"]
+    # the inflation is exactly the evolution stream (combined = gyms + evolutions).
+    assert report.to_markdown().count("gym-clear") >= 1
+
+
+def test_gym_clear_metric_is_in_report_markdown() -> None:  # AC2
+    report = measure_learnability(_commit_factory, train_seeds(4), heldout_seeds(4))
+    md = report.to_markdown()
+    assert "gym-clear" in md  # both combined and gym-clear-only surfaced
 
 
 def test_ppo_learnability_smoke() -> None:
