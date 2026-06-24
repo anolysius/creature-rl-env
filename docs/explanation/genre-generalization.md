@@ -99,12 +99,19 @@ Every layer of rigor we added exists to separate cause (1) from cause (2):
 
 ## 5. Where (B) stands — the honest result
 
-> Widening the training distribution makes the environment-level transfer gap *look* much smaller than the
-> 2-family baseline (+2.56), but this is **largely multi-task interference lowering held-in**, not transfer;
-> the apparent below-zero readings were single-seed noise; and the held-in drop is **not recoverable** by
-> the cheap levers tested (more compute; bigger net; large-key obs scaling). Therefore **learned
-> generalization *across structurally distinct mechanics* remains an open problem** in this environment.
-> `duel` is robustly the hardest held-out family. (B) is a **characterized signal, not a proven claim.**
+> **(B) transfers within a mechanic neighborhood but fails across battle systems — a characterized,
+> partial claim.** Early widened-train results looked like a shrinking gap, but that was largely
+> multi-task interference lowering held-in (generalist-mediocrity), with single-seed noise on top. Two
+> levers were then probed: capacity (a bigger net) is ruled out — it *underfits* and lowers held-in; but
+> **budget recovers held-in** past the pre-registered 2.5 bar (plateauing ≈2.75 at 400k–500k, below #26's
+> 2.94). At that *recovered* skill, the confound-reduced full-LOO gap (400k, 5 seeds) is sharp: held-out
+> `critter` −1.08, `forage` −1.48, `muster` −0.12 (≤0 — transfer to these is fine), but **`duel` +1.73 ±
+> 0.61** (robust). So a learned policy **generalizes within the collection + type-matchup neighborhood even
+> at recovered skill, and robustly fails only to `duel`** — the one structurally distinct battle system.
+> (B)'s open frontier is therefore *localized* to **cross-battle-system transfer**, not generalization in
+> general. Caveats: negative gaps partly reflect held-out family difficulty asymmetry (not pure transfer);
+> the clean signal is the duel failure (at recovered held-in, so not a confound); single config, N=16,
+> deterministic bosses, held-in plateaus below #26.
 
 Why this is a *result*, not a *failure*, for a benchmark:
 
@@ -118,13 +125,14 @@ Why this is a *result*, not a *failure*, for a benchmark:
 
 ## 6. Open questions — what an actual (B) *claim* would require
 
-Status update (transfer-capacity-budget): the cheap paths are **not all closed** — *budget* is still
-lifting held-in (2.07→2.44 out to 250k, PARTIAL recovery, std tightening), while *capacity* (bigger net)
-is ruled out (it underfits). So the honest near-term probe is **more budget**, watching for diminishing
-returns; the genuinely *expensive/different* paths below remain for if budget plateaus before recovery:
+Status update (transfer-budget-recovery): **budget recovered held-in** (≈2.75, RECOVERY) and the
+confound-reduced gap localized (B)'s failure to **`duel` (cross-battle-system)** while the other three
+families transfer fine. So the open frontier is no longer "transfer in general" but specifically
+**transfer to a structurally distinct battle system**. The remaining paths target *that*:
 
-1. **More budget on the baseline net** — the only cheap lever still climbing; push past 250k toward the
-   ≥2.5 recovery bar (diminishing-returns watch), then re-measure the full-LOO confound-reduced gap.
+1. **Cross-battle-system transfer (the localized frontier)** — get a learned policy to transfer to `duel`
+   (type-agnostic RPS/stamina) from type-matchup families. Likely needs a mechanic-general representation
+   or `duel`-inclusive curriculum, since pure budget recovered held-in but did not close the duel gap.
 2. **Mechanic-general representation** — obs/network that encodes environment structure (a family/task
    embedding, structured features) so the policy can *condition* on the mechanic instead of averaging over
    it (cf. contextual MDPs / task-conditioned policies).
