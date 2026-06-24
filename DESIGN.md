@@ -272,8 +272,11 @@ vectorization, not per-env speed). Next: `jax-battle-port` → env integration �
 the composed **full-episode env** are now ported too (`jax_battle` / `jax_env`, parity 0 mismatch incl. full
 obs, vmap ≈34–1047×), and a **JAX-native A2C** (`jax_train`) now **actually trains** family A on CPU **in
 seconds** — the learning curve rises (mean episode return ≈1.8 → ≈10.0) and training runs ≈170× the existing
-numpy/sb3 path (on-device vmap; CPU, single run, A2C-lite — a signal, not a tuned PPO). Remaining for a full
-M4: families B/C/D, the non-commit full battle, a tuned PPO, and GPU measurement (M4-EC3).
+numpy/sb3 path (on-device vmap; CPU, single run, A2C-lite — a signal, not a tuned PPO). The env is now
+**config-driven** (`jax-difficulty-report`/R5): `make_jax_env(cfg)` re-establishes parity (0 mismatch) at the
+higher-gym *dynamic-range* difficulty config (8 gyms), which now also trains under `vmap` (≈63× sb3 on that
+config) — so the sharper-discrimination config is the fast-to-train one. Remaining for a full M4: families
+B/C/D, the non-commit full battle, a tuned PPO, and GPU measurement (M4-EC3).
 
 ---
 
