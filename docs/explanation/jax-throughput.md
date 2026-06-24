@@ -97,10 +97,33 @@ stages** rather than porting everything at once.
 > adversarial L3 reviewer. Multi-layer review caught edges a single pass would miss.* Remaining: families
 > B/C/D, the full non-commit battle (`jax-battle-full`), and GPU measurement.
 
+> **Update (jax-rl-demo): the vectorized env now actually trains a policy — fast, on CPU, in
+> seconds.** The prior updates measured *step* throughput; this one closes M4 as a *demonstration*:
+> a minimal **JAX-native** actor-critic (`critter_gym.jax_train`, A2C) whose policy, `lax.scan`
+> rollout, advantage and Adam update all run **on-device under `jit` + `vmap`** trains family-A
+> commit-mode in one run. (Wrapping the JAX env in an off-the-shelf sb3 loop would cross the
+> host↔device boundary every step and lose the vmap win — hence a from-scratch loop; procgen `reset`
+> stays numpy via a fixed *region bank* of training seeds, and episodes auto-reset to their own bank
+> entry so the whole rollout is a single jitted scan.) **Pre-registered decision rule** (frozen
+> before the data, to block post-hoc spin): branch *(a) "learns + fast"* iff the curve's late-window
+> mean clears the early-window mean by more than the late-window noise (`mean_late − mean_early ≥
+> std_late`), else *(b)* report throughput with learning as a partial signal. **Measured (CPU, single
+> run — a signal, not a tuned benchmark):** the learning curve **rises (mean episode return ≈1.8 →
+> ≈10.0**, rise 0.041 ≫ std_late 0.003) → **branch (a)**; training throughput **≈0.66M env-steps/s**
+> (1.23M steps in ≈1.9s; a separate run saw ≈1.1M — single-run variance) vs the repo's existing
+> numpy/sb3 path **≈3.8k env-steps/s** → **≈170× faster** (the win is on-device vmap lock-step,
+> consistent with the step benchmark). A held-out-seed eval of the greedy policy gives **≈1.44 vs
+> held-in ≈1.00** (seed split; gap ≈ 0, consistent with the (A) no-memorization story — a signal, not
+> a tuned number). **Honest boundary:** A2C-lite (not a tuned PPO), CPU, single run; the metric is
+> reward-per-step (a clean monotone proxy); the sb3 baseline is the *existing single-env* path (many
+> parallel sb3 processes would narrow the ratio but stay below on-device vmap); GPU still unmeasured.
+> So "fast enough to train on" is no longer a plan — it is a demonstrated, parity-backed loop.
+
 Why this is a *result* for a benchmark, not just plumbing: it converts "we *plan* to be fast" into
-"we have a parity-proven, vectorizable **full-episode env** (family A) an RL loop can train on, with
-measured ~34–1000× CPU headroom across the stack" — a concrete step toward the adoption gate, with the
-honest boundary (other families, full battle, GPU) explicitly marked.
+"we have a parity-proven, vectorizable **full-episode env** (family A) an RL loop **actually trains
+on** — a JAX-native A2C learns it on CPU in seconds, ~170× the existing numpy/sb3 path" — a concrete
+step toward the adoption gate, with the honest boundary (other families, full battle, GPU, tuned PPO)
+explicitly marked.
 
 ## 5. Open questions — what a full M4 claim requires
 
@@ -108,8 +131,11 @@ honest boundary (other families, full battle, GPU) explicitly marked.
    1047× vmap). Remaining: **`jax-battle-full`** — the full non-commit battle (3-creature party + SWITCH +
    ITEM + force-switch + party-wipe terminal), which needs dynamic party indexing and `lax.scan`.
 2. ~~**Env integration** (`jax-env-integration`)~~ — ✅ done for **family A commit-mode**: a composed
-   full-episode `jax_env_step` with full obs+reward+term+trunc parity, vmap-batchable (34–73×). Remaining:
-   families B/C/D, and a thin Gymnasium `VectorEnv` adapter if an off-the-shelf loop needs the gym API.
+   full-episode `jax_env_step` with full obs+reward+term+trunc parity, vmap-batchable (34–73×).
+   ~~**Trains on** (`jax-rl-demo`)~~ — ✅ a JAX-native A2C (`critter_gym.jax_train`) learns family A on
+   CPU in seconds (≈170× the existing numpy/sb3 path; learning curve rises, held-out gap ≈ 0).
+   Remaining: families B/C/D, a thin Gymnasium `VectorEnv` adapter if an off-the-shelf loop needs the
+   gym API, and a tuned PPO.
 3. **GPU throughput** (`vectorized-bench`) — measure M4-EC3's ≥10M steps/s on GPU (CPU vmap already
    clears it on the slices, but the EC is stated for GPU).
 4. **Spec-stability watch** — if the (A) difficulty-scaling work changes env mechanics (starters,
@@ -120,6 +146,7 @@ honest boundary (other families, full battle, GPU) explicitly marked.
 
 - `DESIGN.md` §4 — throughput target + measured direction.
 - `src/critter_gym/jax_overworld.py` — `OverworldState` pytree + functional `overworld_step` + parity bridge.
-- `tests/test_jax_parity.py` — numpy↔JAX parity + jit/vmap guards (`importorskip`, CI numpy-only).
-- `scripts/bench_throughput.py` — numpy/jax-single/jax-vmap throughput, honest framing.
+- `src/critter_gym/jax_train.py` — JAX-native A2C (region bank + `lax.scan` rollout + manual Adam) + `learning_verdict` (pre-registered R1 rule) + `evaluate`.
+- `tests/test_jax_parity.py` / `tests/test_jax_train.py` — numpy↔JAX parity + train-loop smoke (`importorskip`, CI numpy-only).
+- `scripts/bench_throughput.py` / `scripts/jax_rl_demo.py` — step throughput (honest framing) / RL learning demo (curve + train-throughput vs sb3).
 - `docs/explanation/competitive-analysis.md` — gap register ("competitively fast" row).

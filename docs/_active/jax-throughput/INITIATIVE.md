@@ -41,12 +41,15 @@ env step 이 Python dict(`self._creatures` 위치-키 set/dict, `self._gym_tiles
 
 | 3 | `jax-env-integration` | ✅ done (→ `_archive/2026-Q2/jax-throughput/03-jax-env-integration/`) | **벡터화 full-episode env step** — `jax_overworld`+`jax_battle` 합성(`jax_env.py`: `lax.cond` mode dispatch + `encode_obs` 13키[local_patch egocentric]). 실제 `CritterEnv(commit_battles=True)` 대비 **full parity 0 mismatch**(obs 13키 전체+reward+term+trunc, random+gym-clearing, fixed+vary). **실측**: numpy 130k/s · **jax vmap 34×(b=1024)~73×(b=4096)**(full-episode 발산으로 슬라이스보다 배율↓). **AC7 (a) 완성**(local_patch 포함). **다층 검증 버그 3건 포착**(pilot 2 + 가변gym `gym_active` + **L3 truncated 독립성 갭**). family A commit-mode. RL 루프 실소비 가능 surface. 263→281(+18, 회귀 0), mypy(25)/ruff/build clean |
 
-(이후 task 는 /task-start 로 append — 예정: `jax-battle-full`, `vectorized-bench`, 다른 family 통합)
+| 4 | `jax-rl-demo` | ✅ done (→ `_archive/2026-Q2/jax-throughput/04-jax-rl-demo/`) | **JAX-native A2C로 실제 학습 1회 데모** — `jax_train.py`(region bank + `lax.scan` rollout + 손수 Adam, on-device vmap+jit) + `scripts/jax_rl_demo.py`. **freeze 전 pilot이 사전약정 결정규칙(R1 `mean_late−mean_early≥std_late`)으로 분기 (a) 확정.** **실측**(CPU·single run): 학습곡선 **상승**(ep_return ~1.8→~10.0, rise 0.041≫std_late 0.003) / 학습 throughput **~0.66M env-steps/s**(별 run ~1.1M) vs 기존 numpy/sb3 ~3.8k = **~170× FASTER**(on-device vmap) / held-out 1.44 vs held-in 1.00 = **gap≈0**(seed split, (A) no-memorization 일관). **정직 framing**: A2C-lite·CPU·single run·reward/step proxy=신호(tuned PPO 아님), sb3 baseline=기존 단일-env 경로. env/jax_env 무변경(parity 보존). 283→287(+4 importorskip smoke, 회귀 0), mypy(26)/ruff/build clean. jax-throughput.md(§4/§5)+DESIGN §4+competitive-analysis 갱신 |
+
+(이후 task 는 /task-start 로 append — 예정: `jax-battle-full`, `vectorized-bench`[GPU], 다른 family 통합, tuned PPO)
 
 ## 다음 task
-**task 1·2·3 종결 — overworld + commit-battle + 통합 full-episode env 완료**(전부 parity 0 mismatch).
-family A commit-mode 가 **RL 루프 실소비 가능한 벡터화 surface** 로 묶임. 핵심 미지수(jit·parity·speedup·
-composition) 모두 양성 입증. M4-EC1/EC2 의 family-A 부분 사실상 달성(GPU·다른 family 만 남음).
+**task 1·2·3·4 종결 — overworld + commit-battle + 통합 full-episode env + 실학습 데모 완료**(전부 parity 0,
+학습 곡선 상승·~170× 빠름). family A commit-mode 가 **RL 루프가 실제로 학습하는 벡터화 surface** 로 입증됨 —
+"속도가 실재한다"가 벤치 숫자 너머 *데모*로 마감. 핵심 미지수(jit·parity·speedup·composition·**학습 가능성**)
+모두 양성. M4-EC1/EC2 의 family-A 부분 사실상 달성(GPU·다른 family·tuned PPO 만 남음).
 - **다음(택1)**:
   - **`vectorized-bench`** — M4-EC3(≥10M steps/s GPU) 측정. CPU vmap 은 슬라이스에서 이미 통과, full-env 는
     34–73×. GPU 환경 필요(현 .venv 는 CPU jax). EC 마무리.
