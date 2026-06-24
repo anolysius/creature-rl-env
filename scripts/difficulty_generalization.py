@@ -28,14 +28,23 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import statistics
 import sys
 import warnings
+from dataclasses import dataclass
 
 import gymnasium as gym
 
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.generalization import GapReport, measure_generalization, split_train_pool
 from critter_gym.region import heldout_seeds
+
+# Pre-registered decision rule (frozen BEFORE seeing multi-run data — p-hacking guard,
+# difficulty-gap-rigor task). The uncertainty that matters for "is the gap real" is the
+# run-to-run variability of the gap point estimate (std-ACROSS-runs), NOT the per-seed std
+# within a single run that task difficulty-generalization (#24) reported.
+GAP_FLOOR = 0.3  # held-in below this → policy basically can't clear → can't test generalization
+GAP_K = 1.0  # std-across-runs multiplier for the "robust" boundary
 
 # Difficulty POINTS (increasing knob intensity) — NOT a calibrated monotonic ladder
 # (the pilot falsified that). A small, fully-observed world so a short PPO run can learn,
@@ -94,20 +103,117 @@ def train_and_gap(config: dict, timesteps: int, *, n_heldin: int = N_HELDIN,
     )
 
 
+def classify_gap(gap_mean: float, gap_std: float, heldin_mean: float) -> str:
+    """Pre-registered verdict for one difficulty point (thresholds frozen pre-data).
+
+    ``gap_std`` is the std **across runs** (run-to-run variability of the gap), the
+    quantity that determines whether a gap is real — not the per-seed std within a run.
+
+    - ``inconclusive`` — held-in below ``GAP_FLOOR`` (policy can't clear, so a small gap
+      reflects incapacity, not generalization), OR a robustly *negative* gap (held-out
+      easier = difficulty asymmetry, not transfer).
+    - ``real-gap`` — gap robustly positive (``> GAP_K·gap_std``): the env exhibits a
+      train→test generalization gap (a "hard benchmark" signal, Procgen-style).
+    - ``gap≈0-signal`` — ``|gap_mean| ≤ GAP_K·gap_std``: run variability swamps the gap,
+      robustly consistent with gap≈0 (now at multi-run rigor, not single-run noise).
+    """
+    if heldin_mean < GAP_FLOOR:
+        return "inconclusive"
+    if gap_mean > GAP_K * gap_std:
+        return "real-gap"
+    if gap_mean < -GAP_K * gap_std:
+        return "inconclusive"
+    return "gap≈0-signal"
+
+
+@dataclass
+class MultiRunGap:
+    """Across-run aggregate of per-run :class:`GapReport`s for one difficulty point."""
+
+    heldin_mean: float
+    heldout_mean: float
+    gap_mean: float
+    gap_std: float  # std ACROSS runs of the per-run gap (the rigor quantity)
+    runs: int
+
+    @property
+    def verdict(self) -> str:
+        return classify_gap(self.gap_mean, self.gap_std, self.heldin_mean)
+
+
+def train_and_gap_multirun(
+    config: dict, timesteps: int, runs: int, *, n_heldin: int = N_HELDIN,
+    n_heldout: int = N_HELDOUT,
+) -> MultiRunGap:
+    """Run :func:`train_and_gap` ``runs`` times (distinct PPO seeds) and aggregate.
+
+    Reports the gap **mean ± std-across-runs** — the multi-run upgrade over #24's single
+    run, so a small real gap can be told apart from run noise. Raises ImportError without
+    the ``[rl]`` extra (callers gate with importorskip)."""
+    gaps, heldins, heldouts = [], [], []
+    for r in range(runs):
+        rep = train_and_gap(config, timesteps, n_heldin=n_heldin, n_heldout=n_heldout, seed=r)
+        d = rep.to_dict()
+        heldins.append(d["heldin_mean"])
+        heldouts.append(d["heldout_mean"])
+        gaps.append(d["gap"])
+    gap_std = statistics.stdev(gaps) if len(gaps) > 1 else 0.0
+    return MultiRunGap(
+        heldin_mean=statistics.fmean(heldins),
+        heldout_mean=statistics.fmean(heldouts),
+        gap_mean=statistics.fmean(gaps),
+        gap_std=gap_std,
+        runs=runs,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timesteps", type=int, default=60_000)
+    parser.add_argument("--runs", type=int, default=1,
+                        help="PPO seeds per config; >1 reports gap mean ± std-ACROSS-runs "
+                             "with the pre-registered classify_gap verdict (rigor).")
     args = parser.parse_args()
+
+    if args.runs <= 1:
+        return _main_singlerun(args.timesteps)
+
     try:
-        rows = []
-        for name, cfg in CONFIGS.items():
-            rep = train_and_gap(cfg, args.timesteps)
-            rows.append((name, rep))
+        rows = [(name, train_and_gap_multirun(cfg, args.timesteps, args.runs))
+                for name, cfg in CONFIGS.items()]
     except ImportError:
         print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
         return 2
 
-    print(f"gap-at-difficulty | PPO timesteps={args.timesteps:,} per config\n")
+    print(f"gap-at-difficulty | PPO timesteps={args.timesteps:,} | runs={args.runs} "
+          f"(mean ± std-across-runs) | N={N_HELDIN}/{N_HELDOUT}\n")
+    print("| difficulty point | held-in | held-out | gap (±std-across-runs) | verdict |")
+    print("|---|---|---|---|---|")
+    for name, mr in rows:
+        print(
+            f"| {name} | {mr.heldin_mean:.3f} | {mr.heldout_mean:.3f} | "
+            f"{mr.gap_mean:+.3f} ±{mr.gap_std:.3f} | {mr.verdict} |"
+        )
+    print(
+        f"\nVerdict by the PRE-REGISTERED rule (frozen before data): floor={GAP_FLOOR}, "
+        f"k={GAP_K}. 'gap≈0-signal' = |gap| ≤ k·std-across-runs (robustly consistent with "
+        "gap≈0); 'real-gap' = gap > k·std (env shows a train→test gap = a hard-benchmark "
+        "signal); 'inconclusive' = held-in < floor (policy too weak) or robustly negative "
+        "(held-out easier). Multi-run corrects the single-run weak signal of #24. Configs "
+        "are difficulty *points*, not a calibrated monotonic ladder. See DESIGN §3.1.1."
+    )
+    return 0
+
+
+def _main_singlerun(timesteps: int) -> int:
+    """The original single-run table (#24) — kept for the smoke path / quick look."""
+    try:
+        rows = [(name, train_and_gap(cfg, timesteps)) for name, cfg in CONFIGS.items()]
+    except ImportError:
+        print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
+        return 2
+
+    print(f"gap-at-difficulty | PPO timesteps={timesteps:,} per config | SINGLE run\n")
     print("| difficulty point | held-in (±std) | held-out (±std) | gap |")
     print("|---|---|---|---|")
     for name, rep in rows:
@@ -117,12 +223,9 @@ def main() -> int:
             f"{d['heldout_mean']:.3f} ±{rep.test.std:.3f} | {d['gap']:+.3f} |"
         )
     print(
-        "\nReported, not pass/fail. Configs are difficulty *points* (a clean monotonic "
-        "scripted ladder was falsified — difficulty is multi-dimensional). A gap within "
-        "±std is consistent with gap≈0, but at this std/budget cannot distinguish a small "
-        "real gap from zero (weak evidence, not 'generalization proven'); a gap growing "
-        f"beyond std as intensity rises would be reported as-is. Single run, N={N_HELDIN}/"
-        f"{N_HELDOUT}, low budget → a signal. See DESIGN §3.1.1."
+        f"\nSINGLE run, N={N_HELDIN}/{N_HELDOUT} → a weak signal (per-seed std, not "
+        "std-across-runs). Use --runs N for the pre-registered multi-run verdict. "
+        "See DESIGN §3.1.1."
     )
     return 0
 
