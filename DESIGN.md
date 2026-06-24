@@ -132,10 +132,28 @@ but makes *blind grinding easier*; boss stats are a cliff, not a gradient) and a
 scripted policy cannot memorize and its gap≈0 is trivial. `scripts/difficulty_generalization.py` trains PPO
 on held-in seeds at several **difficulty points** (increasing knob intensity; *not* a calibrated ladder) and
 reports the held-in vs held-out gap (held-in eval carved disjoint from learning seeds). An initial run
-(PPO 40k/point, N=16/16) lands every point's gap **within its per-seed std** — including the hardest point
-(d2: held-out 0.94 ±1.64, gap +0.06) — i.e. generalization is consistent with gap≈0 even at higher
-intensity, for a *learned* policy. Caveats kept honest: a single run, a low training budget (absolute
-performance has headroom), and large std → a **signal**, not a tuned number.
+(PPO 40k/point, N=16/16, *single* run) landed every point's gap within its *per-seed* std — a weak signal
+that, at that std/budget, could not tell a small real gap from zero.
+
+*Multi-run rigor (difficulty-gap-rigor).* That weak signal was then upgraded the way (B)'s `transfer-rigor`
+upgraded its single-seed reads: `--runs N` reports the gap **mean ± std-ACROSS-runs** (the run-to-run
+variability of the gap point estimate — the quantity that decides whether a gap is real, not the within-run
+per-seed std), at a **higher budget** (100k), against a **pre-registered** decision rule (`classify_gap`,
+thresholds `floor=0.3`, `k=1.0`, frozen before the data). Result (PPO 100k, 5 runs, N=16/16): held-in is now
+**well above the floor** (1.10 / 1.21 / 1.54 for d0/d1/d2 — the policy actually clears, so this is *not*
+generalist-mediocrity), and every point's gap is `gap≈0-signal` (|gap| ≤ k·std-across-runs): d0 −0.225 ±0.350,
+d1 −0.237 ±0.489, **d2 (12 types, strong bosses) −0.400 ±0.896** — and at d2 held-in *rises* to 1.54, i.e. the
+learned policy keeps generalizing (gap≈0) even at the hardest knob setting, now **robust across 5 runs**, not
+single-run noise. **No `real-gap` emerges** — the current difficulty knobs do not make the env exhibit a
+train→test generalization gap. *Honest caveats:* the gaps are weakly **negative** (held-out marginally easier =
+difficulty *asymmetry*, not super-transfer) but sign-unstable within std; the **std-across-runs grows with
+difficulty** (0.35 → 0.49 → 0.90), so at the hardest point a small real gap still can't be pinned (it is
+"robustly consistent with gap≈0", not "gap = 0 proven"); held-out ≈1.9/3 suggests the current knobs may not be
+**hard enough to discriminate capability**. **So the open part of "hard-and-gap≈0" is now the *hard* side, not
+the *gap* side:** gap≈0 holds robustly at a capable skill level, but making the env genuinely discriminating
+(structural difficulty a learned policy can't easily solve — e.g. raising the scripted-oracle ceiling / deeper
+inference load) is the next lever, and it would touch env mechanics (hence a JAX re-port; M4 is gated on spec
+stability).
 
 **Is infer-the-meta *load-bearing*? — yes, under the team-commit battle economy (scripted-arm proven).**
 The hidden per-seed type chart is meant to force *online rule inference*. Depth alone (3 → 12 types, boss
