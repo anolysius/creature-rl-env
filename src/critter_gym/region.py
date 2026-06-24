@@ -64,6 +64,7 @@ def generate_region(
     vary: bool = False,
     num_types: int = 3,
     super_mult: float = SUPER_EFFECTIVE,
+    min_gyms: int | None = None,
 ) -> Region:
     """Deterministically build a region from ``seed``.
 
@@ -76,6 +77,13 @@ def generate_region(
     scripted 4-arm gate now proves infer > probe there, while whether a *learned*
     policy acquires the inference is follow-up work (see DESIGN §3.1.1).
 
+    ``min_gyms`` (vary mode only) raises the floor of the per-seed gym count from the
+    default 1 to widen the **dynamic range** of the score (more gyms → a larger
+    oracle-vs-blind spread → finer capability discrimination; difficulty-dynamic-range
+    task / DESIGN §3.1.1). ``None`` keeps the historical floor (``_MIN_GYMS=1``);
+    ``min_gyms == max_gyms`` fixes the count exactly. Recurrence (the boss pool) is
+    preserved, so cross-gym inference stays load-bearing.
+
     Fixed mode uses exactly 3 types (M1); ``num_types != 3`` with ``vary=False`` is
     rejected (the fixed chart only defines the 3-cycle).
     """
@@ -83,6 +91,13 @@ def generate_region(
         raise ValueError(f"num_types must be in [3, {len(ElementType)}], got {num_types}")
     if not vary and num_types != 3:
         raise ValueError("fixed (vary=False) world uses exactly 3 types (M1)")
+    gym_floor = _MIN_GYMS
+    if min_gyms is not None:  # validated only when explicitly set (None = historical behavior)
+        gym_floor = int(min_gyms)
+        if gym_floor < _MIN_GYMS or gym_floor > max_gyms:
+            raise ValueError(
+                f"min_gyms must be in [{_MIN_GYMS}, max_gyms={max_gyms}], got {min_gyms}"
+            )
 
     rng = np.random.default_rng(seed)
     active_types = list(ElementType)[:num_types]
@@ -90,7 +105,7 @@ def generate_region(
 
     if vary:
         n_creatures = int(rng.integers(_MIN_CREATURES, max_creatures + 1))
-        n_gyms = int(rng.integers(_MIN_GYMS, max_gyms + 1))
+        n_gyms = int(rng.integers(gym_floor, max_gyms + 1))
         # Only place boss types that at least one starter type can answer (NEUTRAL+),
         # so every gym is winnable with the right matchup — which one stays hidden.
         winnable = [
