@@ -116,3 +116,21 @@ def test_improved_policy_config_smoke_and_deterministic() -> None:  # AC1/AC4 �
     base = script.train_and_transfer(["critter", "forage"], "muster",
                                      timesteps=256, n_heldin=2, n_heldout=2, seed=0)
     assert math.isfinite(base.heldin_mean)
+
+
+def test_held_in_sweep_smoke() -> None:  # AC1 — capacity×budget sweep (transfer-capacity-budget)
+    pytest.importorskip("stable_baselines3")
+    script = _load()
+    configs = [
+        {"label": "baseline@a", "net_arch": None, "timesteps": 256},
+        {"label": "big@a", "net_arch": [32, 32], "timesteps": 256},
+    ]
+    rows = script.held_in_sweep(
+        configs, held_out="muster", n_runs=2, n_heldin=2, n_heldout=2, base_seed=0,
+    )
+    assert [r.label for r in rows] == ["baseline@a", "big@a"]
+    for r in rows:
+        assert r.n_runs == 2
+        assert math.isfinite(r.heldin_mean) and math.isfinite(r.heldin_std)
+        assert math.isfinite(r.gap_mean)
+        assert r.heldin_std >= 0.0

@@ -330,6 +330,78 @@ def train_and_transfer_loo_multirun(
     return out
 
 
+# Held-in ceilings from prior tasks (3-family widened-train muster fold, SAME held-in metric),
+# printed as baselines so "does capacity×budget recover held-in?" is read on one axis.
+# #26 = 2-family single-family reference; #28 = budget-only@150k; #30 = net-only@50k.
+HELD_IN_CEILINGS = (
+    ("#26 ref (2-family)", 2.94),
+    ("#28 budget-only @150k", 2.07),
+    ("#30 net-only @50k", 1.15),
+)
+RECOVERY_THRESHOLD = 2.5  # pre-registered: held-in ≥ this ≈ #26 level ⇒ confound recovered.
+
+
+@dataclass(frozen=True)
+class SweepRow:
+    """One (capacity, budget) config's widened held-in on the anchor fold, over ``n_runs`` seeds."""
+
+    label: str
+    net_arch: tuple[int, ...] | None
+    timesteps: int
+    n_runs: int
+    heldin_mean: float
+    heldin_std: float
+    heldout_mean: float
+    heldout_std: float
+    gap_mean: float
+    gap_std: float
+
+
+def held_in_sweep(
+    configs: list[dict],
+    held_out: str = HELDOUT_FAMILY,
+    families: list[str] = ALL_FAMILIES,
+    *,
+    n_runs: int = 3,
+    n_heldin: int = N_HELDIN,
+    n_heldout: int = N_HELDOUT,
+    base_seed: int = 0,
+) -> list[SweepRow]:
+    """Multi-run widened held-in on the anchor ``held_out`` fold for each (net, budget) config.
+
+    The pilot found that *budget* (not capacity) drives held-in recovery, so this sweep varies both
+    over the same fold to robustly locate the held-in ceiling against ``RECOVERY_THRESHOLD``. Each
+    config repeats over ``n_runs`` seeds; held-in/held-out/gap are mean ± std-across-runs.
+    """
+    train = [f for f in families if f != held_out]
+    assert_obs_compatible([*train, held_out])
+    rows: list[SweepRow] = []
+    for cfg in configs:
+        net = cfg.get("net_arch")
+        ts = int(cfg["timesteps"])
+        runs = [
+            train_and_transfer(
+                train, held_out, timesteps=ts, n_heldin=n_heldin, n_heldout=n_heldout,
+                seed=base_seed + i, net_arch=net, scale_obs=bool(cfg.get("scale_obs", False)),
+            )
+            for i in range(n_runs)
+        ]
+        hin = [r.heldin_mean for r in runs]
+        hout = [r.heldout_mean for r in runs]
+        gaps = [r.gap for r in runs]
+        rows.append(
+            SweepRow(
+                label=str(cfg["label"]),
+                net_arch=tuple(net) if net else None,
+                timesteps=ts, n_runs=n_runs,
+                heldin_mean=float(np.mean(hin)), heldin_std=float(np.std(hin)),
+                heldout_mean=float(np.mean(hout)), heldout_std=float(np.std(hout)),
+                gap_mean=float(np.mean(gaps)), gap_std=float(np.std(gaps)),
+            )
+        )
+    return rows
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timesteps", type=int, default=60_000)
@@ -348,10 +420,61 @@ def main() -> int:
              "large-key obs scaling (transfer-skill-policy). Run with and without to compare "
              "widened held-in. NOTE: whole-obs VecNormalize was pilot-rejected (it hurt).",
     )
+    parser.add_argument(
+        "--sweep", action="store_true",
+        help="(transfer-capacity-budget) multi-run capacity×budget sweep on the muster anchor "
+             "fold vs the prior-task held-in ceilings + pre-registered recovery threshold.",
+    )
+    parser.add_argument("--runs-n", type=int, default=5, help="seeds per sweep config (--sweep)")
     args = parser.parse_args()
     improved_kw = (
         {"net_arch": [256, 256], "scale_obs": True} if args.improved else {}
     )
+
+    if args.sweep:
+        configs = [
+            {"label": "baseline-net @150k (budget-only, #28)",
+             "net_arch": None, "timesteps": 150_000},
+            {"label": "baseline-net @250k (more budget)",
+             "net_arch": None, "timesteps": 250_000},
+            {"label": "big-net[256,256] @250k (capacity+budget)",
+             "net_arch": [256, 256], "timesteps": 250_000},
+        ]
+        try:
+            rows = held_in_sweep(configs, n_runs=args.runs_n)
+        except ImportError:
+            print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
+            return 2
+        print(
+            f"capacity×budget sweep | muster anchor fold (train{{critter,forage,duel}}) | "
+            f"runs={args.runs_n}\n"
+        )
+        print("Held-in ceilings from prior tasks (same metric):")
+        for name, val in HELD_IN_CEILINGS:
+            print(f"  {name:28s} held-in {val:.2f}")
+        print(f"  pre-registered recovery threshold: held-in ≥ {RECOVERY_THRESHOLD}\n")
+        print("| config | held-in (±run-std) | held-out (±run-std) | gap (±run-std) |")
+        print("|---|---|---|---|")
+        for r in rows:
+            print(
+                f"| {r.label} | {r.heldin_mean:.3f} ±{r.heldin_std:.3f} "
+                f"| {r.heldout_mean:.3f} ±{r.heldout_std:.3f} "
+                f"| {r.gap_mean:+.3f} ±{r.gap_std:.3f} |"
+            )
+        best = max(rows, key=lambda r: r.heldin_mean)
+        ceil_budget = 2.07  # #28 budget-only @150k
+        if best.heldin_mean >= RECOVERY_THRESHOLD:
+            verdict = (f"RECOVERY: best held-in {best.heldin_mean:.2f} ≥ {RECOVERY_THRESHOLD} "
+                       f"({best.label}) — confound looks removable; re-measure the gap.")
+        elif best.heldin_mean > ceil_budget + best.heldin_std:
+            verdict = (f"PARTIAL: best held-in {best.heldin_mean:.2f} (>{ceil_budget} budget-only "
+                       f"ceiling, <{RECOVERY_THRESHOLD}) — budget helps but no full recovery.")
+        else:
+            verdict = (f"BOUNDARY CLOSED: best held-in {best.heldin_mean:.2f} ≤ ~{ceil_budget} "
+                       f"within run-std — capacity+budget does NOT recover held-in.")
+        print(f"\nPre-registered verdict (read WITH run-std): {verdict}\n"
+              f"⚠ Single config, deterministic bosses — a signal, not a proof. See DESIGN §3.1.1.")
+        return 0
 
     if args.runs > 1:
         try:
