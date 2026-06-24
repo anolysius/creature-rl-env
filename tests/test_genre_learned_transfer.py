@@ -98,3 +98,21 @@ def test_widened_train_loo_multirun_smoke() -> None:  # AC1/AC3 — multi-run ro
         assert math.isfinite(f.heldout_mean) and math.isfinite(f.heldout_std)
         assert f.gap_std >= 0.0
         assert f.heldout_family not in f.train_families
+
+
+def test_improved_policy_config_smoke_and_deterministic() -> None:  # AC1/AC4 — (a') knobs
+    pytest.importorskip("stable_baselines3")
+    script = _load()
+    # the improved knobs (bigger net + deterministic large-key obs scaling) run and stay
+    # backward-compatible; same seed → identical result (no running-stats nondeterminism).
+    kw = dict(timesteps=256, n_heldin=2, n_heldout=2, seed=0,
+              net_arch=[32, 32], scale_obs=True)
+    r1 = script.train_and_transfer(["critter", "forage"], "muster", **kw)
+    r2 = script.train_and_transfer(["critter", "forage"], "muster", **kw)
+    assert math.isfinite(r1.heldin_mean) and math.isfinite(r1.gap)
+    assert r1.heldin_mean == r2.heldin_mean  # deterministic (AC4)
+    assert r1.heldout_mean == r2.heldout_mean
+    # bare baseline still works (knobs default off — backward compat).
+    base = script.train_and_transfer(["critter", "forage"], "muster",
+                                     timesteps=256, n_heldin=2, n_heldout=2, seed=0)
+    assert math.isfinite(base.heldin_mean)
