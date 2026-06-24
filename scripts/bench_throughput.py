@@ -127,6 +127,91 @@ def main() -> None:
     print("\n  Honest read: JAX's gain is from vmap vectorization, not per-env speed.")
     print("  A single jit env is slower than numpy; only batched (vmap) rollouts win.")
 
+    # --- battle (commit-mode champion) ---
+    print("\n== Commit-mode champion battle throughput (CPU, single run) ==")
+    bn = bench_numpy_battle(n_steps)
+    print(f"  {'numpy single':<22}{bn:>15,.0f} steps/s   (baseline)")
+    try:
+        brows = _bench_jax_battle(batches, steps_per_batch)
+    except ImportError:
+        print("  (JAX not installed — `pip install critter_gym[jax]` for the JAX rows)")
+        return
+    for label, rate in brows:
+        print(f"  {'jax ' + label:<22}{rate:>15,.0f} steps/s   ({rate / bn:.0f}x numpy)")
+    print("\n  (battle step is pure arithmetic → vmap vectorizes even better than overworld)")
+
+
+def bench_numpy_battle(n_steps: int) -> float:
+    """steps/s of the numpy commit-mode champion battle (re-seed a fresh fight on end)."""
+    from critter_gym.battle import (
+        ActionKind,
+        Battle,
+        BattleAction,
+        BattleState,
+        Side,
+        scripted_opponent,
+    )
+    from critter_gym.party import gym_boss, starter_party
+    from critter_gym.types import ElementType, TypeChart
+
+    chart = TypeChart()
+
+    def fresh() -> Battle:
+        st = BattleState(party_a=starter_party(), party_b=gym_boss(ElementType.GRASS))
+        return Battle(st, chart=chart, commit_mode=True)
+
+    battle = fresh()
+    cnt = 0
+    start = time.perf_counter()
+    while cnt < n_steps:
+        if battle.terminated or battle.truncated:
+            battle = fresh()
+            continue
+        battle.step(
+            BattleAction(ActionKind.MOVE, 0), scripted_opponent(battle.state, Side.B, chart)
+        )
+        cnt += 1
+    return cnt / (time.perf_counter() - start)
+
+
+def _bench_jax_battle(batches: tuple[int, ...], steps_per_batch: int) -> list[str]:
+    import jax
+    import jax.numpy as jnp
+
+    from critter_gym.jax_battle import (
+        ChampionBattleState,
+        champion_battle_step,
+        params_from_creatures,
+    )
+    from critter_gym.party import gym_boss, starter_party
+    from critter_gym.types import ElementType, TypeChart
+
+    champ = starter_party()[0]
+    boss = gym_boss(ElementType.GRASS)[0]
+    p = params_from_creatures(champ, boss, TypeChart())
+    rows: list[str] = []
+    for batch in batches:
+        params = jax.tree_util.tree_map(
+            lambda x, b=batch: jnp.broadcast_to(x, (b,) + x.shape), p
+        )
+        state = ChampionBattleState(
+            champ_hp=jnp.full((batch,), float(champ.hp), jnp.float32),
+            boss_hp=jnp.full((batch,), float(boss.hp), jnp.float32),
+            turn=jnp.zeros((batch,), jnp.int32),
+            done=jnp.zeros((batch,), jnp.bool_),
+            winner=jnp.zeros((batch,), jnp.int32),
+        )
+        vstep = jax.jit(jax.vmap(champion_battle_step))
+        state = vstep(state, params)  # warm
+        jax.block_until_ready(state.champ_hp)
+        start = time.perf_counter()
+        for _ in range(steps_per_batch):
+            state = vstep(state, params)
+        jax.block_until_ready(state.champ_hp)
+        rate = (batch * steps_per_batch) / (time.perf_counter() - start)
+        rows.append((f"vmap (batch={batch})", rate))
+    return rows
+
 
 if __name__ == "__main__":
     main()
