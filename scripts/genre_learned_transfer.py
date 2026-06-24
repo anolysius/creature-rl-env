@@ -117,6 +117,45 @@ def _family_factory(name: str):
     return lambda: make_family(name)
 
 
+# (a') policy/obs-representation knobs (transfer-skill-policy). The bare PPO feeds raw obs —
+# but `player_hp`/`enemy_hp` (bound 10000) and `player_level` (100) are huge vs the small
+# categorical keys (in_battle 0/1, local_patch 0-2, types). The pilot found that a *whole-obs*
+# VecNormalize HURTS (it corrupts the categorical keys), so we instead scale ONLY these large
+# continuous keys by their fixed space bound → [0,1]. Deterministic (no running stats), so
+# eval reproducibility is trivial — the same divisor is reapplied at eval time.
+_LARGE_OBS_KEYS: tuple[str, ...] = ("player_hp", "enemy_hp", "player_level")
+
+
+def _obs_scales(env: object) -> dict[str, float]:
+    """Per-key divisor = the obs-space upper bound, for the large continuous keys only."""
+    space = env.observation_space  # type: ignore[attr-defined]
+    return {k: float(np.asarray(space[k].high).max()) for k in _LARGE_OBS_KEYS}
+
+
+def _scale_obs(obs: dict, scales: dict[str, float]) -> dict:
+    out = dict(obs)
+    for k, s in scales.items():
+        out[k] = (np.asarray(obs[k], dtype=np.float32) / s)
+    return out
+
+
+class _ScaleObs(gym.ObservationWrapper):
+    """Deterministically scale the large continuous obs keys to ~[0,1]; leave the rest."""
+
+    def __init__(self, env: gym.Env) -> None:
+        super().__init__(env)
+        from gymnasium import spaces
+
+        self._scales = _obs_scales(env)
+        sp = dict(env.observation_space.spaces)  # type: ignore[attr-defined]
+        for k in self._scales:
+            sp[k] = spaces.Box(0.0, 1.0, shape=sp[k].shape, dtype=np.float32)
+        self.observation_space = spaces.Dict(sp)
+
+    def observation(self, obs: dict) -> dict:
+        return _scale_obs(obs, self._scales)
+
+
 def train_and_transfer(
     train_families: list[str] = TRAIN_FAMILIES,
     heldout_family: str = HELDOUT_FAMILY,
@@ -125,12 +164,18 @@ def train_and_transfer(
     n_heldin: int = N_HELDIN,
     n_heldout: int = N_HELDOUT,
     seed: int = 0,
+    net_arch: list[int] | None = None,
+    scale_obs: bool = False,
 ) -> TransferReport:
     """Train PPO on ``train_families`` and measure transfer to the unseen ``heldout_family``.
 
     Importable so a CI smoke test can use a tiny budget. Raises ImportError if ``[rl]`` is
     missing (callers gate with importorskip). Held-in eval seeds are carved disjoint from the
     learning seeds; the held-out *family* is never trained on (family-level split).
+
+    (a') knobs (transfer-skill-policy), default off = the bare baseline (backward compatible):
+    ``net_arch`` sets a larger PPO net (e.g. ``[256, 256]``); ``scale_obs`` applies the
+    deterministic large-key obs scaling (:class:`_ScaleObs`). Both are reproducible.
     """
     assert_obs_compatible([*train_families, heldout_family])
     from stable_baselines3 import PPO
@@ -139,15 +184,20 @@ def train_and_transfer(
     warnings.filterwarnings("ignore")
     learn_seeds, heldin = split_train_pool(range(N_TRAIN), n_eval=n_heldin)
     heldout = heldout_seeds(n_heldout)
+    scales = _obs_scales(make_family(train_families[0])) if scale_obs else {}
 
     def make_train_env() -> gym.Env:
-        return _MultiFamilyEnv(train_families, learn_seeds)
+        env: gym.Env = _MultiFamilyEnv(train_families, learn_seeds)
+        return _ScaleObs(env) if scale_obs else env
 
+    policy_kwargs = {"net_arch": list(net_arch)} if net_arch else None
     model = PPO("MultiInputPolicy", DummyVecEnv([make_train_env]),
-                verbose=0, n_steps=512, seed=seed)
+                verbose=0, n_steps=512, seed=seed, policy_kwargs=policy_kwargs)
     model.learn(timesteps, progress_bar=False)
 
     def policy(obs: dict) -> int:
+        if scales:
+            obs = _scale_obs(obs, scales)
         return int(model.predict(obs, deterministic=True)[0])
 
     # Held-in: mean over train families on held-in seeds (disjoint from learning seeds).
@@ -183,6 +233,8 @@ def train_and_transfer_loo(
     n_heldin: int = N_HELDIN,
     n_heldout: int = N_HELDOUT,
     seed: int = 0,
+    net_arch: list[int] | None = None,
+    scale_obs: bool = False,
 ) -> list[TransferReport]:
     """Leave-one-out widened-train transfer over ``families`` — one fold per held-out family.
 
@@ -204,6 +256,7 @@ def train_and_transfer_loo(
             train_and_transfer(
                 train, held, timesteps=timesteps,
                 n_heldin=n_heldin, n_heldout=n_heldout, seed=seed,
+                net_arch=net_arch, scale_obs=scale_obs,
             )
         )
     return reports
@@ -238,6 +291,8 @@ def train_and_transfer_loo_multirun(
     n_heldin: int = N_HELDIN,
     n_heldout: int = N_HELDOUT,
     base_seed: int = 0,
+    net_arch: list[int] | None = None,
+    scale_obs: bool = False,
 ) -> list[MultiRunFoldReport]:
     """Multi-run widened-train LOO — each fold repeated over ``n_runs`` seeds, aggregated.
 
@@ -257,6 +312,7 @@ def train_and_transfer_loo_multirun(
             train_and_transfer(
                 list(train), held, timesteps=timesteps,
                 n_heldin=n_heldin, n_heldout=n_heldout, seed=base_seed + i,
+                net_arch=net_arch, scale_obs=scale_obs,
             )
             for i in range(n_runs)
         ]
@@ -286,17 +342,29 @@ def main() -> int:
         help="repeat the LOO over N seeds and report per-fold mean ± std across runs "
              "(transfer-rigor; implies --loo). N=1 is the single-run --loo table.",
     )
+    parser.add_argument(
+        "--improved", action="store_true",
+        help="(a') policy/obs improvements: bigger net (net_arch=[256,256]) + deterministic "
+             "large-key obs scaling (transfer-skill-policy). Run with and without to compare "
+             "widened held-in. NOTE: whole-obs VecNormalize was pilot-rejected (it hurt).",
+    )
     args = parser.parse_args()
+    improved_kw = (
+        {"net_arch": [256, 256], "scale_obs": True} if args.improved else {}
+    )
 
     if args.runs > 1:
         try:
-            mfolds = train_and_transfer_loo_multirun(timesteps=args.timesteps, n_runs=args.runs)
+            mfolds = train_and_transfer_loo_multirun(
+                timesteps=args.timesteps, n_runs=args.runs, **improved_kw
+            )
         except ImportError:
             print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
             return 2
+        cfg = "IMPROVED (net256 + obs-scale)" if args.improved else "baseline (bare PPO)"
         print(
             f"multi-run widened-train LOO | PPO timesteps={args.timesteps:,} | "
-            f"runs={args.runs} (seeds 0..{args.runs - 1})\n"
+            f"runs={args.runs} (seeds 0..{args.runs - 1}) | config={cfg}\n"
         )
         print("Per-fold mean ± std ACROSS RUNS. Same gap metric as #26/#27 (held-in − held-out).\n")
         print(
@@ -329,7 +397,7 @@ def main() -> int:
 
     if args.loo:
         try:
-            folds = train_and_transfer_loo(timesteps=args.timesteps)
+            folds = train_and_transfer_loo(timesteps=args.timesteps, **improved_kw)
         except ImportError:
             print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
             return 2
