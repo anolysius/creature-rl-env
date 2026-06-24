@@ -112,6 +112,15 @@ Every layer of rigor we added exists to separate cause (1) from cause (2):
 > general. Caveats: negative gaps partly reflect held-out family difficulty asymmetry (not pure transfer);
 > the clean signal is the duel failure (at recovered held-in, so not a confound); single config, N=16,
 > deterministic bosses, held-in plateaus below #26.
+>
+> **Why duel, and is it reachable (duel-fewshot-adapt):** the duel RPS depends on the charge obs, which
+> is *degenerate (≡0)* across the train families — a feature with no gradient is **unlearnable zero-shot**
+> (the general principle: genre transfer is zero-shot-blocked when the novel mechanic rides on a
+> training-degenerate obs dimension). Few-shot fine-tuning on duel is **SLOW** (0.65→1.45 only at ~100k;
+> ≤50k within noise), i.e. duel's battle system is a *genuinely new skill learned largely from scratch*,
+> not a quick transfer. So (B) is a **sharply characterized partial result** — zero-shot within the
+> mechanic neighborhood, zero-shot-blocked (for a known reason) and only slowly adaptable across a novel
+> battle system — not "open" and not "solved".
 
 Why this is a *result*, not a *failure*, for a benchmark:
 
@@ -125,14 +134,16 @@ Why this is a *result*, not a *failure*, for a benchmark:
 
 ## 6. Open questions — what an actual (B) *claim* would require
 
-Status update (transfer-budget-recovery): **budget recovered held-in** (≈2.75, RECOVERY) and the
-confound-reduced gap localized (B)'s failure to **`duel` (cross-battle-system)** while the other three
-families transfer fine. So the open frontier is no longer "transfer in general" but specifically
-**transfer to a structurally distinct battle system**. The remaining paths target *that*:
+Status update (duel-fewshot-adapt, thread close): the duel frontier is now *characterized*, not just
+located. **Zero-shot to duel is mechanism-blocked** — its RPS depends on the charge obs, which is
+*degenerate (≡0)* across the train families (proven by a deterministic guard), so it carries no gradient
+and is unlearnable zero-shot. **Few-shot adaptation is SLOW** — fine-tuning on held-out duel lifts it
+only at ~100k steps (0.65→1.45; ≤50k is within noise), so duel's RPS is a *genuinely new skill learned
+largely from scratch*, not a quick transfer. Remaining work, if pursued:
 
-1. **Cross-battle-system transfer (the localized frontier)** — get a learned policy to transfer to `duel`
-   (type-agnostic RPS/stamina) from type-matchup families. Likely needs a mechanic-general representation
-   or `duel`-inclusive curriculum, since pure budget recovered held-in but did not close the duel gap.
+1. **Faster cross-battle-system adaptation** — meta-RL / a mechanic-general representation that makes the
+   degenerate feature *usable* (e.g. training distributions where charge varies), so duel needs less than
+   ~100k. Pure budget/capacity is exhausted; this needs an architecture or distribution change.
 2. **Mechanic-general representation** — obs/network that encodes environment structure (a family/task
    embedding, structured features) so the policy can *condition* on the mechanic instead of averaging over
    it (cf. contextual MDPs / task-conditioned policies).

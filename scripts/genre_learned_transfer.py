@@ -402,6 +402,91 @@ def held_in_sweep(
     return rows
 
 
+def charge_trace(family: str, seed: int = 0, steps: int = 200) -> list[int]:
+    """Per-step max(player_charge, enemy_charge) over a scripted rollout — numpy-only.
+
+    Used to *prove* the zero-shot duel block (duel-fewshot-adapt): across the train families the
+    charge keys stay 0 the whole rollout (degenerate → unlearnable), while duel drives them > 0.
+    """
+    from critter_gym.genre_generalization import nav_toward_gyms
+
+    env = make_family(family)
+    obs, _ = env.reset(seed=seed)  # type: ignore[attr-defined]
+    trace = [0]
+    for _ in range(steps):
+        obs, _, term, trunc, _ = env.step(nav_toward_gyms(obs))  # type: ignore[attr-defined]
+        trace.append(max(int(obs["player_charge"][0]), int(obs["enemy_charge"][0])))
+        if term or trunc:
+            obs, _ = env.reset(seed=seed)  # type: ignore[attr-defined]
+    return trace
+
+
+@dataclass(frozen=True)
+class FewShotPoint:
+    """duel held-out score after ``adapt_budget`` steps of fine-tuning, over ``n_runs`` seeds."""
+
+    adapt_budget: int
+    n_runs: int
+    duel_mean: float
+    duel_std: float
+
+
+def fewshot_adapt_curve(
+    train_families: list[str],
+    target: str = "duel",
+    base_timesteps: int = 150_000,
+    adapt_budgets: list[int] | None = None,
+    *,
+    n_runs: int = 3,
+    n_heldout: int = N_HELDOUT,
+    base_seed: int = 0,
+) -> list[FewShotPoint]:
+    """Few-shot adaptation curve: train a base policy on ``train_families``, then fine-tune on the
+    held-out ``target`` for each adapt budget, scoring ``target`` held-out at each step.
+
+    ``adapt_budgets`` must start at 0 (= zero-shot, the #32 baseline). Budgets are *cumulative*
+    fine-tuning on the target family; the held-out eval seeds are disjoint from the fine-tune
+    (learn) seeds, so this measures few-shot adaptation, not memorisation. Zero-shot transfer to
+    ``duel`` is mechanism-blocked (charge degenerate in train, see :func:`charge_trace`); this
+    asks the separate question of whether a *little* adaptation reaches it.
+    """
+    from stable_baselines3 import PPO
+    from stable_baselines3.common.vec_env import DummyVecEnv
+
+    warnings.filterwarnings("ignore")
+    budgets = adapt_budgets if adapt_budgets is not None else [0, 25_000, 50_000, 100_000]
+    learn_seeds, _ = split_train_pool(range(N_TRAIN), n_eval=8)
+    heldout = heldout_seeds(n_heldout)
+    per_budget: dict[int, list[float]] = {b: [] for b in budgets}
+
+    for i in range(n_runs):
+        model = PPO(
+            "MultiInputPolicy",
+            DummyVecEnv([lambda: _MultiFamilyEnv(train_families, learn_seeds)]),
+            verbose=0, n_steps=512, seed=base_seed + i,
+        )
+        model.learn(base_timesteps, progress_bar=False)
+
+        def policy(obs: dict, _m: object = model) -> int:
+            return int(_m.predict(obs, deterministic=True)[0])  # type: ignore[attr-defined]
+
+        prev = 0
+        for b in budgets:
+            if b > prev:  # cumulative fine-tuning on the target family
+                model.set_env(DummyVecEnv([lambda: _MultiFamilyEnv([target], learn_seeds)]))
+                model.learn(b - prev, progress_bar=False)
+                prev = b
+            per_budget[b].append(evaluate(_family_factory(target), policy, heldout).mean)
+
+    return [
+        FewShotPoint(
+            adapt_budget=b, n_runs=n_runs,
+            duel_mean=float(np.mean(per_budget[b])), duel_std=float(np.std(per_budget[b])),
+        )
+        for b in budgets
+    ]
+
+
 def budget_ladder_configs(budgets: list[int]) -> list[dict]:
     """Baseline-net configs at each budget — the budget ladder (transfer-budget-recovery).
 
@@ -444,7 +529,50 @@ def main() -> int:
         help="(transfer-budget-recovery) comma-separated budgets for a baseline-net budget "
              "ladder on the muster fold (e.g. 250000,400000,500000); capacity ruled out in #31.",
     )
+    parser.add_argument(
+        "--fewshot", action="store_true",
+        help="(duel-fewshot-adapt) train on {critter,forage,muster}, then few-shot fine-tune on "
+             "held-out duel over an adapt-budget ladder; report the duel adaptation curve.",
+    )
     args = parser.parse_args()
+
+    if args.fewshot:
+        try:
+            curve = fewshot_adapt_curve(
+                ["critter", "forage", "muster"], "duel", n_runs=args.runs_n,
+            )
+        except ImportError:
+            print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
+            return 2
+        print(
+            f"few-shot adaptation to held-out duel | base=train{{critter,forage,muster}} | "
+            f"runs={args.runs_n}\n"
+        )
+        print("Zero-shot duel is mechanism-blocked: charge (the duel RPS feature) is degenerate "
+              "(≡0) across train families, so it is unlearnable zero-shot (see charge_trace).\n")
+        print("| adapt budget (fine-tune on duel) | duel held-out (±run-std) |")
+        print("|---|---|")
+        for p in curve:
+            tag = " (zero-shot)" if p.adapt_budget == 0 else ""
+            print(f"| {p.adapt_budget:,}{tag} | {p.duel_mean:.3f} ±{p.duel_std:.3f} |")
+        z0 = curve[0]
+        bar = z0.duel_mean + z0.duel_std
+        small = [p for p in curve if 0 < p.adapt_budget <= 50_000 and p.duel_mean > bar]
+        big = [p for p in curve if p.adapt_budget > 50_000 and p.duel_mean > bar]
+        if small:
+            verdict = (f"ADAPTS: ≤50k fine-tune lifts duel above zero-shot z0+σ0 "
+                       f"({z0.duel_mean:.2f}+{z0.duel_std:.2f}) — few-shot reaches duel fast.")
+        elif big:
+            verdict = (f"SLOW: only >50k fine-tune lifts duel above z0+σ0 "
+                       f"({z0.duel_mean:.2f}+{z0.duel_std:.2f}).")
+        else:
+            verdict = (f"NO: even max fine-tune stays within z0+σ0 "
+                       f"({z0.duel_mean:.2f}+{z0.duel_std:.2f}) — duel resists even few-shot.")
+        print(f"\nPre-registered verdict (vs this run's zero-shot z0+σ0): {verdict}\n"
+              f"⚠ Zero-shot ≠ few-shot (different claims). held-out eval seeds disjoint from "
+              f"fine-tune seeds. Single config, deterministic bosses — a signal, not a proof. "
+              f"See DESIGN §3.1.1.")
+        return 0
     improved_kw = (
         {"net_arch": [256, 256], "scale_obs": True} if args.improved else {}
     )
