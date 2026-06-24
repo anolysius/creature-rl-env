@@ -158,7 +158,7 @@ def make_step_fn(*, contact: bool, jit: bool = True) -> _StepFn:
 
     def step(
         state: OverworldState, action: jax.Array
-    ) -> "tuple[OverworldState, jax.Array, jax.Array]":
+    ) -> tuple[OverworldState, jax.Array, jax.Array]:
         return overworld_step(state, action, contact=contact)
 
     return jax.jit(step) if jit else step

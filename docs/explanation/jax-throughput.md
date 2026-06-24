@@ -68,14 +68,28 @@ stages** rather than porting everything at once.
 > counters (JAX x64 is off by default on Python 3.9); the env's value ranges fit int32, so this is
 > correct, not a shortcut.
 
+> **Update (jax-battle-port): the commit-mode champion battle is now ported too.** The battle sub-MDP's
+> load-bearing path — the *commit-mode champion fight* the env uses for gym bosses (`commit_battles=True`,
+> `CritterGym-commit-v0`; one committed champion vs one boss, no switching) — was ported functionally
+> (`critter_gym.jax_battle`, `jax.lax.cond` for speed order + `jnp.where` for faint/terminal). Parity
+> against the real `Battle(commit_mode=True)` is **exact (0 mismatch)** across 45 fixed-chart + 24 per-seed
+> (`vary`) configs, including the integer damage formula and the `max(0, ·)` hp clamp — *a parity bug
+> (unclamped negative hp) was caught by the pre-freeze pilot and fixed before implementation.* Throughput:
+> numpy ~112k steps/s → **jax vmap ~117M (b=1024), 1047× numpy** (the battle step is pure arithmetic, so it
+> vectorizes even better than the overworld). Still CPU/single-run, and the **full non-commit battle**
+> (3-creature party + SWITCH + ITEM + force-switch + party-wipe) remains for the follow-up
+> `jax-battle-full`. So overworld + commit-battle now cover *most* of the hot path's load-bearing surface.
+
 Why this is a *result* for a benchmark, not just plumbing: it converts "we *plan* to be fast" into
-"we have a parity-proven, vectorizable engine path with a measured ~100×+ CPU headroom" — a concrete
-step toward the adoption gate, with the honest boundary (battle, GPU) explicitly marked.
+"we have a parity-proven, vectorizable engine path (overworld + commit-mode battle) with measured
+~100–1000× CPU headroom" — a concrete step toward the adoption gate, with the honest boundary (full
+battle, GPU) explicitly marked.
 
 ## 5. Open questions — what a full M4 claim requires
 
-1. **Battle port** (`jax-battle-port`) — functional rewrite of the turn-based battle sub-MDP with
-   parity against the numpy battle. The harder half of the hot path.
+1. ~~**Battle port** (`jax-battle-port`)~~ — ✅ done for the **commit-mode champion** path (parity-proven,
+   1047× vmap). Remaining: **`jax-battle-full`** — the full non-commit battle (3-creature party + SWITCH +
+   ITEM + force-switch + party-wipe terminal), which needs dynamic party indexing and `lax.scan`.
 2. **Env integration** (`jax-env-integration`) — wrap the JAX step as a batched/vectorized Gymnasium
    surface so RL training loops actually consume it (not just a bench).
 3. **GPU throughput** (`vectorized-bench`) — measure M4-EC3's ≥10M steps/s on GPU (CPU vmap already
