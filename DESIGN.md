@@ -244,6 +244,13 @@ already clearing the ≥10M GPU target on CPU. Honest boundary: **battle is not 
 *partial*; M4-EC1 foundation), and a *single* jit env is slower than numpy (the win is entirely from vmap
 vectorization, not per-env speed). Next: `jax-battle-port` → env integration → GPU bench.
 
+*M4 follow-on (jax-battle-port → jax-env-integration → jax-rl-demo):* the commit-mode champion battle and
+the composed **full-episode env** are now ported too (`jax_battle` / `jax_env`, parity 0 mismatch incl. full
+obs, vmap ≈34–1047×), and a **JAX-native A2C** (`jax_train`) now **actually trains** family A on CPU **in
+seconds** — the learning curve rises (mean episode return ≈1.8 → ≈10.0) and training runs ≈170× the existing
+numpy/sb3 path (on-device vmap; CPU, single run, A2C-lite — a signal, not a tuned PPO). Remaining for a full
+M4: families B/C/D, the non-commit full battle, a tuned PPO, and GPU measurement (M4-EC3).
+
 ---
 
 ## 5. Benchmark & baselines (what ships with the paper)
