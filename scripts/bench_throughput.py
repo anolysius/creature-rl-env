@@ -140,6 +140,62 @@ def main() -> None:
         print(f"  {'jax ' + label:<22}{rate:>15,.0f} steps/s   ({rate / bn:.0f}x numpy)")
     print("\n  (battle step is pure arithmetic → vmap vectorizes even better than overworld)")
 
+    # --- full episode env (overworld + commit-battle composed) ---
+    print("\n== Full-episode env throughput (CPU, single run) ==")
+    fn = bench_numpy_full_env(n_steps)
+    print(f"  {'numpy single':<22}{fn:>15,.0f} steps/s   (baseline)")
+    try:
+        frows = _bench_jax_full_env(batches, steps_per_batch)
+    except ImportError:
+        print("  (JAX not installed — `pip install critter_gym[jax]` for the JAX rows)")
+        return
+    for label, rate in frows:
+        print(f"  {'jax ' + label:<22}{rate:>15,.0f} steps/s   ({rate / fn:.0f}x numpy)")
+    print("\n  (full-episode control flow diverges per env → lower multiplier than the")
+    print("   pure slices, but still a large vmap win; the RL loop consumes this surface)")
+
+
+def bench_numpy_full_env(n_steps: int) -> float:
+    """steps/s of the numpy full env, commit-mode family A (re-seed on episode end)."""
+    from critter_gym.envs.critter_env import CritterEnv
+
+    env = CritterEnv(commit_battles=True, vary=True, num_types=8)
+    env.reset(seed=0)
+    rng = np.random.default_rng(0)
+    start = time.perf_counter()
+    for i in range(n_steps):
+        _, _, term, trunc, _ = env.step(int(rng.integers(0, 6)))
+        if term or trunc:
+            env.reset(seed=i + 1)
+    return n_steps / (time.perf_counter() - start)
+
+
+def _bench_jax_full_env(batches: tuple[int, ...], steps_per_batch: int) -> list[str]:
+    import jax
+    import jax.numpy as jnp
+
+    from critter_gym.jax_env import jax_env_step, jax_reset
+    from critter_gym.region import generate_region
+
+    rows: list[str] = []
+    for batch in batches:
+        states = [jax_reset(generate_region(s, 10, 5, 3, vary=True, num_types=8))
+                  for s in range(batch)]
+        batched = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *states)
+        vstep = jax.jit(jax.vmap(jax_env_step))
+        acts = jnp.asarray(
+            np.random.default_rng(0).integers(0, 6, size=(steps_per_batch, batch)), jnp.int32
+        )
+        batched, _, _, _, _ = vstep(batched, acts[0])  # warm
+        jax.block_until_ready(batched.agent_pos)
+        start = time.perf_counter()
+        for i in range(steps_per_batch):
+            batched, _, _, _, _ = vstep(batched, acts[i])
+        jax.block_until_ready(batched.agent_pos)
+        rate = (batch * steps_per_batch) / (time.perf_counter() - start)
+        rows.append((f"vmap (batch={batch})", rate))
+    return rows
+
 
 def bench_numpy_battle(n_steps: int) -> float:
     """steps/s of the numpy commit-mode champion battle (re-seed a fresh fight on end)."""
