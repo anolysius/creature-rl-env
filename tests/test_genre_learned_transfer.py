@@ -143,3 +143,31 @@ def test_budget_ladder_configs() -> None:  # AC1 — budget ladder (transfer-bud
     # baseline net only — capacity was ruled out in #31, so the ladder isolates budget.
     assert all(c["net_arch"] is None for c in cfgs)
     assert all(f"{c['timesteps']:,}" in c["label"] for c in cfgs)
+
+
+def test_charge_degenerate_in_train_families() -> None:  # AC1 — zero-shot duel block mechanism
+    # The duel RPS mechanic depends on the charge obs keys; but across the train families
+    # (critter/forage/muster) those keys are CONSTANT 0 over a full rollout, so no gradient can
+    # teach their use — zero-shot transfer to duel is mechanism-blocked. duel itself drives
+    # charge > 0 during battle (the contrast that makes the point). numpy-only, deterministic.
+    script = _load()
+    for fam in ("critter", "forage", "muster"):
+        trace = script.charge_trace(fam, seed=0, steps=200)
+        assert max(trace) == 0, f"{fam} charge should be degenerate (0), got {max(trace)}"
+    duel_trace = script.charge_trace("duel", seed=0, steps=200)
+    assert max(duel_trace) > 0, "duel must drive charge > 0 during battle (non-degenerate)"
+
+
+def test_fewshot_adapt_curve_smoke() -> None:  # AC2 — few-shot adaptation curve
+    pytest.importorskip("stable_baselines3")
+    script = _load()
+    budgets = [0, 128, 256]
+    curve = script.fewshot_adapt_curve(
+        train_families=["critter", "forage", "muster"], target="duel",
+        base_timesteps=256, adapt_budgets=budgets, n_runs=2, n_heldout=2, base_seed=0,
+    )
+    assert [p.adapt_budget for p in curve] == budgets  # 0-adapt = zero-shot, then ladder
+    for p in curve:
+        assert p.n_runs == 2
+        assert math.isfinite(p.duel_mean) and math.isfinite(p.duel_std)
+        assert p.duel_std >= 0.0
