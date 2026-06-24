@@ -35,6 +35,7 @@ import warnings
 from dataclasses import dataclass
 
 import gymnasium as gym
+import numpy as np
 
 from critter_gym.env_family import REQUIRED_OBS_KEYS, make_family
 from critter_gym.generalization import evaluate, split_train_pool
@@ -208,6 +209,71 @@ def train_and_transfer_loo(
     return reports
 
 
+@dataclass(frozen=True)
+class MultiRunFoldReport:
+    """One LOO fold aggregated across ``n_runs`` independent training seeds.
+
+    The single-run gap (held-in − held-out family) is a point estimate; running the fold over
+    several seeds and reporting mean ± **std across runs** tells us whether the transfer signal
+    is stable or just run-to-run noise (transfer-rigor task). The gap metric is unchanged from
+    #26/#27 — only its run-variance is now quantified.
+    """
+
+    heldout_family: str
+    train_families: tuple[str, ...]
+    n_runs: int
+    heldin_mean: float
+    heldin_std: float
+    heldout_mean: float
+    heldout_std: float
+    gap_mean: float
+    gap_std: float
+
+
+def train_and_transfer_loo_multirun(
+    families: list[str] = ALL_FAMILIES,
+    timesteps: int = 60_000,
+    *,
+    n_runs: int = 3,
+    n_heldin: int = N_HELDIN,
+    n_heldout: int = N_HELDOUT,
+    base_seed: int = 0,
+) -> list[MultiRunFoldReport]:
+    """Multi-run widened-train LOO — each fold repeated over ``n_runs`` seeds, aggregated.
+
+    For every held-out family we run :func:`train_and_transfer_loo`'s fold ``n_runs`` times
+    (seeds ``base_seed + i``) and report the per-fold held-in / held-out / gap as mean ± **std
+    across runs**. This robustifies #27's single-run signal: a narrow gap that holds within the
+    run-to-run std is a stronger signal; a gap whose sign flips across runs is noise.
+
+    Honest scope: still one config, modest N/budget, deterministic bosses — run-variance is
+    quantified, but this is not a proof. Read gap_mean WITH gap_std and the absolute columns.
+    """
+    assert_obs_compatible(families)
+    out: list[MultiRunFoldReport] = []
+    for held in families:
+        train = tuple(f for f in families if f != held)
+        runs = [
+            train_and_transfer(
+                list(train), held, timesteps=timesteps,
+                n_heldin=n_heldin, n_heldout=n_heldout, seed=base_seed + i,
+            )
+            for i in range(n_runs)
+        ]
+        hin = [r.heldin_mean for r in runs]
+        hout = [r.heldout_mean for r in runs]
+        gaps = [r.gap for r in runs]
+        out.append(
+            MultiRunFoldReport(
+                heldout_family=held, train_families=train, n_runs=n_runs,
+                heldin_mean=float(np.mean(hin)), heldin_std=float(np.std(hin)),
+                heldout_mean=float(np.mean(hout)), heldout_std=float(np.std(hout)),
+                gap_mean=float(np.mean(gaps)), gap_std=float(np.std(gaps)),
+            )
+        )
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timesteps", type=int, default=60_000)
@@ -215,7 +281,51 @@ def main() -> int:
         "--loo", action="store_true",
         help="widened-train leave-one-out over all 4 families (incl. duel), vs the #26 baseline",
     )
+    parser.add_argument(
+        "--runs", type=int, default=1,
+        help="repeat the LOO over N seeds and report per-fold mean ± std across runs "
+             "(transfer-rigor; implies --loo). N=1 is the single-run --loo table.",
+    )
     args = parser.parse_args()
+
+    if args.runs > 1:
+        try:
+            mfolds = train_and_transfer_loo_multirun(timesteps=args.timesteps, n_runs=args.runs)
+        except ImportError:
+            print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
+            return 2
+        print(
+            f"multi-run widened-train LOO | PPO timesteps={args.timesteps:,} | "
+            f"runs={args.runs} (seeds 0..{args.runs - 1})\n"
+        )
+        print("Per-fold mean ± std ACROSS RUNS. Same gap metric as #26/#27 (held-in − held-out).\n")
+        print(
+            "| train → held-out family | held-in (±run-std) "
+            "| held-out (±run-std) | gap (±run-std) |"
+        )
+        print("|---|---|---|---|")
+        label, b_in, b_out, b_gap = BASELINE_26
+        print(f"| {label} | {b_in:.3f} | {b_out:.3f} | {b_gap:+.3f} (single run) |")
+        for f in mfolds:
+            train_lbl = "{" + ",".join(f.train_families) + "}"
+            print(
+                f"| train{train_lbl} → {f.heldout_family} (3-family) "
+                f"| {f.heldin_mean:.3f} ±{f.heldin_std:.3f} "
+                f"| {f.heldout_mean:.3f} ±{f.heldout_std:.3f} "
+                f"| {f.gap_mean:+.3f} ±{f.gap_std:.3f} |"
+            )
+        print(
+            f"\nReported, not pass/fail. gap_mean WITH gap_std: a narrow gap that holds within "
+            f"its run-std is a stronger signal than #27's single run; a gap whose sign flips "
+            f"across runs is noise.\n"
+            f"⚠ Honest caveats: (1) read gap WITH the absolute held-in column — if held-in did "
+            f"NOT rise vs #27 (~1.1–2.0) at higher budget, the generalist-mediocrity confound "
+            f"STANDS (absolute skill is bottlenecked by policy/obs/env, not compute), so a "
+            f"narrow/negative gap is not proof of strong transfer. (2) Single config, "
+            f"N={N_HELDIN}/{N_HELDOUT}, deterministic bosses — run-variance is quantified, not a "
+            f"proof. See DESIGN §3.1.1."
+        )
+        return 0
 
     if args.loo:
         try:
