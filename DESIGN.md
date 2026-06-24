@@ -218,6 +218,14 @@ property labs care about for RLVR-style training.
 **Performance targets (v1):** structured-obs, ≥ 50k steps/s/core CPU; JAX path ≥ 10M steps/s on
 one consumer GPU.
 
+*M4 progress (jax-hotpath-foundation, foundation/de-risk — see [explanation/jax-throughput.md](explanation/jax-throughput.md)):*
+the **overworld** step is ported to a functional JAX form (`critter_gym.jax_overworld`), is **parity-proven
+against the numpy env** (0 mismatch, same seed → same trajectory), and **vmap-vectorizes to ~186× numpy on
+CPU** (numpy ~410k → jax-vmap 76.5M steps/s at batch 16384; single-run direction, not a tuned benchmark) —
+already clearing the ≥10M GPU target on CPU. Honest boundary: **battle is not yet ported** (hot-path port is
+*partial*; M4-EC1 foundation), and a *single* jit env is slower than numpy (the win is entirely from vmap
+vectorization, not per-env speed). Next: `jax-battle-port` → env integration → GPU bench.
+
 ---
 
 ## 5. Benchmark & baselines (what ships with the paper)

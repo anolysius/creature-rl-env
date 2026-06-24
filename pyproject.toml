@@ -39,6 +39,14 @@ viz = [
 render = [
     "imageio>=2.31",
 ]
+# Optional — only needed for the JAX hot-path port (critter_gym.jax_overworld, M4)
+# and the throughput benchmark's JAX rows (scripts/bench_throughput.py). Kept out of
+# core/dev so the default test suite + CI stay numpy-only (parity test importorskips).
+# jax<=0.4.30 is the last line supporting Python 3.9 (this repo's floor).
+jax = [
+    "jax>=0.4,<0.4.31",
+    "jaxlib>=0.4,<0.4.31",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/critter_gym"]
@@ -62,7 +70,7 @@ warn_redundant_casts = true
 no_implicit_optional = true
 
 [[tool.mypy.overrides]]
-module = ["gymnasium.*", "matplotlib.*", "imageio.*"]
+module = ["gymnasium.*", "matplotlib.*", "imageio.*", "jax.*", "jaxlib.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
