@@ -77,6 +77,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         boss_atk: int = 12,
         boss_def: int = 12,
         commit_battles: bool = False,
+        min_gyms: int | None = None,
         render_mode: str | None = None,
     ) -> None:
         super().__init__()
@@ -88,6 +89,10 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.grid_size = grid_size
         self.num_creatures = num_creatures
         self.num_gyms = num_gyms
+        # min_gyms (vary mode): raise the per-episode gym-count floor to widen the
+        # score's dynamic range → finer capability discrimination (difficulty-dynamic-
+        # range / DESIGN §3.1.1). None = historical floor (1); validated by region.
+        self.min_gyms = min_gyms
         self.max_steps = max_steps
         self.patch_radius = patch_radius
         # num_types: size of the active type pool (3 = M1 fixed; ≥12 = procgen depth,
@@ -171,6 +176,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             vary=self.vary,
             num_types=self.num_types,
             super_mult=self.super_mult,
+            min_gyms=self.min_gyms,
         )
 
         self._creatures = set(region.creatures)
