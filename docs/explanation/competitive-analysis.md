@@ -105,7 +105,7 @@ readiness before release."
 
 | We can't yet claim… | because… | needed feature | unblocks |
 |---|---|---|---|
-| "competitively fast" | numpy CPU engine; peers are JAX-GPU. **Partly de-risked** (`jax-hotpath-foundation` + `jax-battle-port`): overworld step **and commit-mode champion battle** ported to functional JAX, parity-proven (0 mismatch), vmap **~186× / ~1047× numpy on CPU** (single-run direction) — full non-commit battle + env integration + GPU still ahead | **finish JAX port** (`jax-battle-full` → env integration → GPU bench) | throughput/adoption (Craftax lesson); §4 perf target; M4 |
+| "competitively fast" | numpy CPU engine; peers are JAX-GPU. **Substantially de-risked** (`jax-hotpath-foundation` + `jax-battle-port` + `jax-env-integration`): overworld, commit-mode battle, **and the composed full-episode env** (family A) ported to functional JAX, parity-proven (0 mismatch incl. full obs), vmap **~34–1047× numpy on CPU** (single-run direction) — an RL loop can train on it. Remaining: families B/C/D, full non-commit battle, GPU | **finish JAX port** (`jax-battle-full`, other families → GPU bench) | throughput/adoption (Craftax lesson); §4 perf target; M4 |
 | "a hard benchmark" | env is toy; gap≈0 on easy task | **scale difficulty while keeping the seed split** ("hard-and-gap≈0") | DESIGN §3.1.1 roadmap; meaningful (A) |
 | "generalizes within the genre" | 4 families = foundation; no learned policy on held-out family | **more structurally-distinct families + a *learned* policy tested on an unseen family** | (B) claim; **M5** genre-generalization surface; moat layer 2 |
 | "robust learnability result" | single-run, modest-N signal | **multi-run / multi-seed learnability + learning curves** | tightens (A); arXiv numbers |
