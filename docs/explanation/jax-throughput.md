@@ -80,20 +80,38 @@ stages** rather than porting everything at once.
 > (3-creature party + SWITCH + ITEM + force-switch + party-wipe) remains for the follow-up
 > `jax-battle-full`. So overworld + commit-battle now cover *most* of the hot path's load-bearing surface.
 
+> **Update (jax-env-integration): the overworld and commit-battle ports are now composed into a single
+> full-episode vectorized env.** `critter_gym.jax_env` exposes `jax_env_step(state, action) -> (state,
+> obs, reward, terminated, truncated)` — a `lax.cond` mode dispatch (overworld branch: move/catch/
+> battle-entry; battle branch: commit-window cycle or one commit-mode turn, with gym-defeat, level-up,
+> evolution) — so an RL loop can `vmap` thousands of full episodes. Parity against the real
+> `CritterEnv(commit_battles=True)` (family A) is **exact (0 mismatch)** on **every obs key including the
+> 5×5 egocentric `local_patch`, reward, terminated and truncated**, across random and gym-clearing
+> policies on fixed and per-seed charts. Throughput: numpy ~130k steps/s → **jax vmap ~34× (b=1024) to
+> ~73× (b=4096)** — lower than the pure slices because full-episode control flow diverges per env (some
+> in battle, some in overworld), an honest cost of composition, but still a large win on the surface the
+> RL loop actually consumes. *Three bugs were caught by layered verification before/at review: two by the
+> pre-freeze pilot (a tracer-indexing error; champions wrongly attacking on NOOP/SWITCH), one latent
+> variable-gym-count bug found in implementation (fixed with a `gym_active` mask), and one `truncated`-
+> semantics gap (numpy computes terminated/truncated independently — both can be True) caught by the
+> adversarial L3 reviewer. Multi-layer review caught edges a single pass would miss.* Remaining: families
+> B/C/D, the full non-commit battle (`jax-battle-full`), and GPU measurement.
+
 Why this is a *result* for a benchmark, not just plumbing: it converts "we *plan* to be fast" into
-"we have a parity-proven, vectorizable engine path (overworld + commit-mode battle) with measured
-~100–1000× CPU headroom" — a concrete step toward the adoption gate, with the honest boundary (full
-battle, GPU) explicitly marked.
+"we have a parity-proven, vectorizable **full-episode env** (family A) an RL loop can train on, with
+measured ~34–1000× CPU headroom across the stack" — a concrete step toward the adoption gate, with the
+honest boundary (other families, full battle, GPU) explicitly marked.
 
 ## 5. Open questions — what a full M4 claim requires
 
 1. ~~**Battle port** (`jax-battle-port`)~~ — ✅ done for the **commit-mode champion** path (parity-proven,
    1047× vmap). Remaining: **`jax-battle-full`** — the full non-commit battle (3-creature party + SWITCH +
    ITEM + force-switch + party-wipe terminal), which needs dynamic party indexing and `lax.scan`.
-2. **Env integration** (`jax-env-integration`) — wrap the JAX step as a batched/vectorized Gymnasium
-   surface so RL training loops actually consume it (not just a bench).
+2. ~~**Env integration** (`jax-env-integration`)~~ — ✅ done for **family A commit-mode**: a composed
+   full-episode `jax_env_step` with full obs+reward+term+trunc parity, vmap-batchable (34–73×). Remaining:
+   families B/C/D, and a thin Gymnasium `VectorEnv` adapter if an off-the-shelf loop needs the gym API.
 3. **GPU throughput** (`vectorized-bench`) — measure M4-EC3's ≥10M steps/s on GPU (CPU vmap already
-   clears it, but the EC is stated for GPU).
+   clears it on the slices, but the EC is stated for GPU).
 4. **Spec-stability watch** — if the (A) difficulty-scaling work changes env mechanics (starters,
    bosses, reward economy), the port needs updating. The foundation deliberately ports only the stable
    overworld core to minimize this, but the risk is non-zero (DESIGN §4 gates M4 on "spec stable").
