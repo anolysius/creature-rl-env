@@ -119,11 +119,32 @@ stages** rather than porting everything at once.
 > parallel sb3 processes would narrow the ratio but stay below on-device vmap); GPU still unmeasured.
 > So "fast enough to train on" is no longer a plan — it is a demonstrated, parity-backed loop.
 
+> **Update (jax-difficulty-report / R5): the JAX env is now config-driven, so the higher-gym
+> *dynamic-range* difficulty config trains under `vmap` too.** The port had baked the world's shape
+> constants (grid, step budget, **max gym count**, boss stats) as module globals, so it could only run
+> the default 3-gym world — not the `difficulty-dynamic-range` config (8 gyms) where capability
+> discrimination is sharper. Those constants are now a `JaxEnvConfig` captured by `make_jax_env(cfg)`'s
+> closures (JAX needs static shapes, so the config is compile-time, not a traced arg); the module-level
+> `jax_env_step`/`jax_reset`/`encode_obs` are the **default-config instances**, so existing imports,
+> parity tests and the benchmark are byte-for-byte unchanged. **Parity re-established at the high-gym
+> config** (grid 6, **8 gyms**, `patch_radius=5` → an 11×11 patch *larger than the grid*, num_types 12,
+> super_mult 3.0, boss 150/16): **0 mismatch** vs the real `CritterEnv(**cfg)` on every obs key + reward
+> + terminated + truncated, across random and gym-clearing policies on training and held-out seeds
+> (`tests/test_jax_difficulty_parity.py`). `jax_train` is config-aware (it derives the obs dim from the
+> env — the larger patch changes it — and trains on either config), so the high-gym learned-gap that was
+> a slow sb3 run (`difficulty_generalization --range-gap`) now runs on the JAX engine: measured **~196k
+> env-steps/s vmap vs ~3.1k for sb3 on the same config = ~63× faster** (CPU, single run; lower than the
+> default world's multiplier because the longer, more-divergent 8-gym episodes vectorize less uniformly —
+> an honest cost). So the two threads compose: the sharper-discrimination difficulty config is now also
+> the fast-to-train one. *Scope kept honest: this re-ports family-A commit at the high-gym config; the
+> scripted resolution arms (oracle/blind) stay numpy (they peek env internals), and GPU / other families
+> / a tuned PPO remain future work.*
+
 Why this is a *result* for a benchmark, not just plumbing: it converts "we *plan* to be fast" into
-"we have a parity-proven, vectorizable **full-episode env** (family A) an RL loop **actually trains
-on** — a JAX-native A2C learns it on CPU in seconds, ~170× the existing numpy/sb3 path" — a concrete
-step toward the adoption gate, with the honest boundary (other families, full battle, GPU, tuned PPO)
-explicitly marked.
+"we have a parity-proven, vectorizable **full-episode env** (family A, **now config-driven**) an RL loop
+**actually trains on** — a JAX-native A2C learns the default world on CPU in seconds (~170× sb3) and the
+sharper high-gym difficulty config ~63× sb3" — a concrete step toward the adoption gate, with the honest
+boundary (other families, full battle, GPU, tuned PPO, scripted-arm JAX-ification) explicitly marked.
 
 ## 5. Open questions — what a full M4 claim requires
 
@@ -146,7 +167,8 @@ explicitly marked.
 
 - `DESIGN.md` §4 — throughput target + measured direction.
 - `src/critter_gym/jax_overworld.py` — `OverworldState` pytree + functional `overworld_step` + parity bridge.
-- `src/critter_gym/jax_train.py` — JAX-native A2C (region bank + `lax.scan` rollout + manual Adam) + `learning_verdict` (pre-registered R1 rule) + `evaluate`.
-- `tests/test_jax_parity.py` / `tests/test_jax_train.py` — numpy↔JAX parity + train-loop smoke (`importorskip`, CI numpy-only).
+- `src/critter_gym/jax_env.py` — `JaxEnvConfig` + `make_jax_env(cfg)` factory (config-driven; default-config module-level fns preserved).
+- `src/critter_gym/jax_train.py` — JAX-native A2C (region bank + `lax.scan` rollout + manual Adam) + `EnvSpec`/`difficulty_env_spec` (config-aware) + `learning_verdict` (pre-registered R1 rule) + `evaluate`.
+- `tests/test_jax_parity.py` / `tests/test_jax_train.py` / `tests/test_jax_difficulty_parity.py` — numpy↔JAX parity (default + high-gym config) + train-loop smoke (`importorskip`, CI numpy-only).
 - `scripts/bench_throughput.py` / `scripts/jax_rl_demo.py` — step throughput (honest framing) / RL learning demo (curve + train-throughput vs sb3).
 - `docs/explanation/competitive-analysis.md` — gap register ("competitively fast" row).
