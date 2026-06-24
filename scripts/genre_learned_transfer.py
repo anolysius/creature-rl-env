@@ -402,6 +402,19 @@ def held_in_sweep(
     return rows
 
 
+def budget_ladder_configs(budgets: list[int]) -> list[dict]:
+    """Baseline-net configs at each budget — the budget ladder (transfer-budget-recovery).
+
+    Capacity (a bigger net) was ruled out as a lever in transfer-capacity-budget (it underfits),
+    so the ladder fixes ``net_arch=None`` and varies only the PPO budget to find where held-in
+    recovery (≥ RECOVERY_THRESHOLD) plateaus.
+    """
+    return [
+        {"label": f"baseline-net @{b:,}", "net_arch": None, "timesteps": int(b)}
+        for b in budgets
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timesteps", type=int, default=60_000)
@@ -426,10 +439,53 @@ def main() -> int:
              "fold vs the prior-task held-in ceilings + pre-registered recovery threshold.",
     )
     parser.add_argument("--runs-n", type=int, default=5, help="seeds per sweep config (--sweep)")
+    parser.add_argument(
+        "--budgets", type=str, default="",
+        help="(transfer-budget-recovery) comma-separated budgets for a baseline-net budget "
+             "ladder on the muster fold (e.g. 250000,400000,500000); capacity ruled out in #31.",
+    )
     args = parser.parse_args()
     improved_kw = (
         {"net_arch": [256, 256], "scale_obs": True} if args.improved else {}
     )
+
+    if args.budgets:
+        budgets = [int(b) for b in args.budgets.split(",") if b.strip()]
+        try:
+            rows = held_in_sweep(budget_ladder_configs(budgets), n_runs=args.runs_n)
+        except ImportError:
+            print('This experiment needs the [rl] extra:  pip install -e ".[rl]"', file=sys.stderr)
+            return 2
+        print(
+            f"budget ladder (baseline-net, capacity ruled out) | muster anchor fold | "
+            f"runs={args.runs_n}\n"
+        )
+        print("Held-in ceilings from prior tasks (same metric):")
+        for name, val in HELD_IN_CEILINGS:
+            print(f"  {name:28s} held-in {val:.2f}")
+        print("  #31 budget-only @250k        held-in 2.44")
+        print(f"  pre-registered recovery threshold: held-in ≥ {RECOVERY_THRESHOLD}\n")
+        print("| config | held-in (±run-std) | held-out (±run-std) | gap (±run-std) |")
+        print("|---|---|---|---|")
+        for r in rows:
+            print(
+                f"| {r.label} | {r.heldin_mean:.3f} ±{r.heldin_std:.3f} "
+                f"| {r.heldout_mean:.3f} ±{r.heldout_std:.3f} "
+                f"| {r.gap_mean:+.3f} ±{r.gap_std:.3f} |"
+            )
+        best = max(rows, key=lambda r: r.heldin_mean)
+        if best.heldin_mean >= RECOVERY_THRESHOLD:
+            verdict = (f"RECOVERY: best held-in {best.heldin_mean:.2f} ≥ {RECOVERY_THRESHOLD} "
+                       f"({best.label}) — re-measure the full-LOO confound-reduced gap.")
+        elif best.heldin_mean > 2.44 + best.heldin_std:
+            verdict = (f"APPROACHING: best held-in {best.heldin_mean:.2f} (>2.44 #31, "
+                       f"<{RECOVERY_THRESHOLD}) — budget still helping, no full recovery yet.")
+        else:
+            verdict = (f"PLATEAU: best held-in {best.heldin_mean:.2f} ≤ ~2.44 within run-std — "
+                       f"more budget does NOT recover held-in; the budget lever has flattened.")
+        print(f"\nPre-registered verdict (read WITH run-std): {verdict}\n"
+              f"⚠ Single anchor fold, deterministic bosses — a signal, not a proof. DESIGN §3.1.1.")
+        return 0
 
     if args.sweep:
         configs = [

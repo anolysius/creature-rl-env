@@ -134,3 +134,12 @@ def test_held_in_sweep_smoke() -> None:  # AC1 — capacity×budget sweep (trans
         assert math.isfinite(r.heldin_mean) and math.isfinite(r.heldin_std)
         assert math.isfinite(r.gap_mean)
         assert r.heldin_std >= 0.0
+
+
+def test_budget_ladder_configs() -> None:  # AC1 — budget ladder (transfer-budget-recovery)
+    script = _load()
+    cfgs = script.budget_ladder_configs([250_000, 400_000, 500_000])
+    assert [c["timesteps"] for c in cfgs] == [250_000, 400_000, 500_000]
+    # baseline net only — capacity was ruled out in #31, so the ladder isolates budget.
+    assert all(c["net_arch"] is None for c in cfgs)
+    assert all(f"{c['timesteps']:,}" in c["label"] for c in cfgs)
