@@ -33,6 +33,9 @@ def main() -> int:
     parser.add_argument("--quick", action="store_true", help="fast smoke (small sizes)")
     parser.add_argument("--no-sb3", action="store_true", help="skip the numpy/sb3 baseline")
     parser.add_argument("--no-eval", action="store_true", help="skip held-out eval")
+    parser.add_argument("--difficulty", action="store_true",
+                        help="train on the high-gym dynamic-range config (8 gyms, "
+                             "jax-difficulty-report/R5) instead of the default world.")
     args = parser.parse_args()
 
     try:
@@ -45,19 +48,23 @@ def main() -> int:
     batch = 64 if args.quick else args.batch
     cfg = jax_train.TrainConfig(batch=batch, iters=iters)
     train_seeds = tuple(range(batch))
+    spec = jax_train.difficulty_env_spec() if args.difficulty else jax_train.default_env_spec()
+    sb3_cfg = _DIFFICULTY_SB3_CFG if args.difficulty else None
+    label = "family A commit, HIGH-GYM (8 gyms, dynamic range)" if args.difficulty \
+        else "family A commit (default world, 3 gyms)"
 
     print("== CritterGym JAX-native RL demo (CPU, single run — a signal, not a headline) ==")
-    print(f"   family A commit-mode | batch(vmap)={batch} | rollout={cfg.rollout_len} "
-          f"| iters={iters}\n")
+    print(f"   {label} | batch(vmap)={batch} | rollout={cfg.rollout_len} | iters={iters}\n")
 
-    result = jax_train.train(train_seeds, cfg, seed=0)
+    result = jax_train.train(train_seeds, cfg, seed=0, spec=spec)
 
+    scale = spec.env.config.max_steps  # ep-return scale = this config's step budget
     # (1) learning curve
     print("-- learning curve (mean reward / env-step) --")
     every = max(1, iters // 10)
     for i, r in enumerate(result.curve):
         if i % every == 0 or i == iters - 1:
-            print(f"   iter {i:4d}   reward/step={r:.4f}   ep_return~={r * 200:.2f}")
+            print(f"   iter {i:4d}   reward/step={r:.4f}   ep_return~={r * scale:.2f}")
     branch, rise, std_late = jax_train.learning_verdict(result.curve)
     early = sum(result.curve[: max(1, iters // 5)]) / max(1, iters // 5)
     late = sum(result.curve[-max(1, iters // 5):]) / max(1, iters // 5)
@@ -66,14 +73,15 @@ def main() -> int:
                "no clear rise vs noise — branch (b): report throughput, learning=partial")
     print(f"\n   pre-registered R1 rule: rise={rise:.4f}  vs  std_late={std_late:.4f}")
     print(f"   verdict: {verdict}")
-    print(f"   ep_return~  early={early * 200:.2f} -> late={late * 200:.2f}")
+    print(f"   ep_return~  early={early * scale:.2f} -> late={late * scale:.2f}")
 
     # (2) throughput
     print("\n-- training throughput --")
     print(f"   jax vmap training-rollout : {result.env_steps_per_s:>14,.0f} env-steps/s "
           f"({result.total_env_steps:,} steps / {result.wall_time_s:.2f}s)")
     if not args.no_sb3:
-        sps = _bench_sb3_collection(batch, n_steps=2048 if args.quick else 4096)
+        sps = _bench_sb3_collection(batch, n_steps=2048 if args.quick else 4096,
+                                    env_kw=sb3_cfg)
         if sps is not None:
             faster = result.env_steps_per_s > sps
             print(f"   numpy sb3 collection (repo): {sps:>14,.0f} env-steps/s "
@@ -87,8 +95,8 @@ def main() -> int:
         from critter_gym.region import heldout_seeds
         n_eval = 8 if args.quick else 16
         heldout = tuple(int(s) for s in heldout_seeds(n_eval))
-        held = jax_train.evaluate(result.params, heldout)
-        seen = jax_train.evaluate(result.params, train_seeds[:n_eval])
+        held = jax_train.evaluate(result.params, heldout, spec=spec)
+        seen = jax_train.evaluate(result.params, train_seeds[:n_eval], spec=spec)
         print("\n-- generalization (greedy policy, episode return) --")
         print(f"   held-in (train seeds) : {seen:.2f}")
         print(f"   held-out (unseen seeds): {held:.2f}   "
@@ -99,8 +107,21 @@ def main() -> int:
     return 0
 
 
-def _bench_sb3_collection(n_envs_seeds: int, n_steps: int) -> float | None:
-    """Throughput of the repo's existing numpy/sb3 training path (single DummyVecEnv)."""
+# The high-gym dynamic-range config as CritterEnv kwargs (for the matched sb3 baseline).
+_DIFFICULTY_SB3_CFG = dict(
+    grid_size=6, num_creatures=5, num_gyms=8, max_steps=160, patch_radius=5, vary=True,
+    num_types=12, super_mult=3.0, boss_hp=150, boss_atk=16, commit_battles=True, min_gyms=8,
+)
+
+
+def _bench_sb3_collection(
+    n_envs_seeds: int, n_steps: int, env_kw: dict | None = None
+) -> float | None:
+    """Throughput of the repo's existing numpy/sb3 training path (single DummyVecEnv).
+
+    ``env_kw`` selects the CritterEnv config so the baseline matches the JAX env config
+    being demoed (default world, or the high-gym dynamic-range config).
+    """
     try:
         import warnings
         warnings.filterwarnings("ignore")
@@ -112,6 +133,8 @@ def _bench_sb3_collection(n_envs_seeds: int, n_steps: int) -> float | None:
     except ImportError:
         print("   (sb3 not installed — skip baseline; `pip install -e \".[rl]\"`)")
         return None
+
+    kw = env_kw or dict(commit_battles=True, vary=True, num_types=8)
 
     class _Seeded(gym.Wrapper):  # type: ignore[type-arg]
         def __init__(self, env: gym.Env, seeds: tuple[int, ...]) -> None:
@@ -125,10 +148,7 @@ def _bench_sb3_collection(n_envs_seeds: int, n_steps: int) -> float | None:
             return self.env.reset(seed=s, options=options)
 
     def mk() -> gym.Env:
-        return _Seeded(
-            CritterEnv(commit_battles=True, vary=True, num_types=8),
-            tuple(range(n_envs_seeds)),
-        )
+        return _Seeded(CritterEnv(**kw), tuple(range(n_envs_seeds)))
 
     model = PPO("MultiInputPolicy", DummyVecEnv([mk]), n_steps=512, verbose=0, seed=0)
     start = time.perf_counter()
