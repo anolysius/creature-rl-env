@@ -80,3 +80,21 @@ def test_widened_train_loo_smoke() -> None:  # AC1/AC3 — widened-train LOO inc
     duel_fold = next(f for f in folds if f.heldout_family == "duel")
     assert "duel" not in duel_fold.train_families
     assert any("duel" in f.train_families for f in folds if f.heldout_family != "duel")
+
+
+def test_widened_train_loo_multirun_smoke() -> None:  # AC1/AC3 — multi-run robustness
+    pytest.importorskip("stable_baselines3")
+    script = _load()
+    families = ["critter", "forage", "duel", "muster"]
+    folds = script.train_and_transfer_loo_multirun(
+        families, timesteps=256, n_runs=2, n_heldin=2, n_heldout=2, base_seed=0,
+    )
+    assert [f.heldout_family for f in folds] == families
+    for f in folds:
+        assert f.n_runs == 2
+        # per-fold aggregates across runs: mean + std (run-to-run variance) are finite.
+        assert math.isfinite(f.gap_mean) and math.isfinite(f.gap_std)
+        assert math.isfinite(f.heldin_mean) and math.isfinite(f.heldin_std)
+        assert math.isfinite(f.heldout_mean) and math.isfinite(f.heldout_std)
+        assert f.gap_std >= 0.0
+        assert f.heldout_family not in f.train_families
