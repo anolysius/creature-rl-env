@@ -155,6 +155,30 @@ the *gap* side:** gap≈0 holds robustly at a capable skill level, but making th
 inference load) is the next lever, and it would touch env mechanics (hence a JAX re-port; M4 is gated on spec
 stability).
 
+*Discrimination resolution (difficulty-dynamic-range).* The first attempt at the *hard* side — diversifying the
+starter party to "raise the oracle ceiling" — was **falsified by its pre-freeze pilot**, a useful negative
+result worth recording: (1) winnability was never the cap (the scripted **oracle already clears ~all gyms
+present**: ≈2.06 gym-clears at an episode mean of ≈2.0 gyms — the "~0.6" was a fraction of the *max* count of 3,
+not of the gyms actually placed); (2) capability is **already discriminated** — scripted oracle vs `type_blind`
+differ by ≈+1.0 gym-clear; (3) starter diversification does **not** help, because a single fixed champion
+super-counters ≈half of a random *tournament* chart by chance, so widening the boss pool barely moves
+`type_blind`; and (4) reducing type *recurrence* is forbidden — the per-seed chart is regenerated each seed, so
+without in-episode recurrence inference becomes impossible and the moat collapses. The confirmed lever is
+instead the score's **dynamic range**: with only ≈2 gyms/episode the oracle-vs-blind spread is compressed, so
+raising and *fixing* the gym count widens it ~proportionally. Measured (scripted arms, held-out, gym-clear-only,
+exact gym counts via the new `min_gyms` knob): the oracle−`type_blind` spread grows **+1.31 (3 gyms) → +2.56
+(5) → +4.88 (8)** while the oracle still clears **0.88** of 8 gyms (winnability preserved at scale) — a
+monotone, pre-registered "resolution-up" result (a *larger, finer score range for capability*, **not** a task a
+learned policy can no longer solve — making PPO unable to reach oracle is deeper future work, explicitly out of
+scope). On this config `infer ≈ oracle` (one sighting suffices), so the metric shows inference *suffices*, not
+that it is solely load-bearing (that is the scripted gate's job, below). The redesign is **numpy-first**; the
+JAX port (`jax_env`/`jax_train`, currently 3-gym hardcoded) is a deliberate follow-up once the spec is
+validated (M4-R5). A learned-policy run at the wider range (PPO 60k, 3 runs, 8 gyms) keeps **gap≈0**
+(held-in 1.67 vs held-out 1.85, gap −0.19 ±0.60 — `gap≈0-signal` by the pre-registered `classify_gap`), i.e.
+the sharper resolution does **not** break generalization; note the learned policy (≈1.7/8) sits far below the
+oracle (≈7/8), so the wider range exposes large capability headroom to discriminate. *(Caveat: single machine,
+scripted resolution + a single learned config, N=16, multi-run — a signal, not a tuned number.)*
+
 **Is infer-the-meta *load-bearing*? — yes, under the team-commit battle economy (scripted-arm proven).**
 The hidden per-seed type chart is meant to force *online rule inference*. Depth alone (3 → 12 types, boss
 types recurring within an episode) did **not** make inference load-bearing: a first pilot found that with
