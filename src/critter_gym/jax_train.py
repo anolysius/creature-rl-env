@@ -31,15 +31,63 @@ import jax.numpy as jnp
 import numpy as np
 from jax import Array, random
 
-from critter_gym.jax_env import JaxEnvState, encode_obs, jax_env_step, jax_reset
-from critter_gym.region import generate_region
+from critter_gym.jax_env import (
+    DEFAULT_CONFIG,
+    JaxEnv,
+    JaxEnvConfig,
+    JaxEnvState,
+    make_jax_env,
+)
+from critter_gym.region import Region, generate_region
 
-# obs flatten dimension: agent_pos(2) + local_patch 5x5(25) + 11 scalar keys.
-OBS_DIM = 2 + 25 + 11  # 38
+# obs flatten dimension for the DEFAULT config: agent_pos(2) + local_patch 5x5(25) + 11.
+# Other configs (e.g. a larger patch_radius) have a different patch size, so `train`
+# derives the obs dim from the actual env at run time (see `_obs_dim`).
+OBS_DIM = 2 + 25 + 11  # 38 (default config)
 N_ACTIONS = 6
-_MAX_STEPS = 200  # mirrors jax_env._MAX_STEPS (episode return scale)
+_MAX_STEPS = 200  # default-config episode-return scale (eval window)
 
 Params = dict[str, Array]
+
+
+class EnvSpec(NamedTuple):
+    """A config-bound JAX env + the per-seed numpy region factory feeding its reset.
+
+    Bundles the two halves that must agree on shape (gym count, grid, etc.) so `train`/
+    `evaluate` can run on any config — the default world or the high-gym dynamic-range
+    difficulty config (`difficulty_env_spec`) — with one argument.
+    """
+
+    env: JaxEnv
+    region_fn: Callable[[int], Region]
+
+
+def default_env_spec(*, num_types: int = 8) -> EnvSpec:
+    """The default family-A commit world (grid 10, 3 gyms) — the jax-rl-demo config."""
+    return EnvSpec(
+        make_jax_env(DEFAULT_CONFIG),
+        lambda s: generate_region(s, 10, 5, 3, vary=True, num_types=num_types),
+    )
+
+
+def difficulty_env_spec(
+    *, num_gyms: int = 8, num_types: int = 12, super_mult: float = 3.0,
+    grid: int = 6, max_creatures: int = 5, max_steps: int = 160, patch_radius: int = 5,
+    boss_hp: int = 150, boss_atk: int = 16,
+) -> EnvSpec:
+    """The high-gym *dynamic-range* difficulty config (difficulty-dynamic-range), now
+    JAX-vmappable (jax-difficulty-report / R5). gym count is fixed (``min_gyms==num_gyms``)
+    so the wider, finer score range trains under ``vmap`` like the default world."""
+    cfg = JaxEnvConfig(
+        grid=grid, patch_radius=patch_radius, max_steps=max_steps, max_gyms=num_gyms,
+        boss_hp=boss_hp, boss_atk=boss_atk,
+    )
+    return EnvSpec(
+        make_jax_env(cfg),
+        lambda s: generate_region(s, grid, max_creatures, num_gyms, vary=True,
+                                  num_types=num_types, super_mult=super_mult,
+                                  min_gyms=num_gyms),
+    )
 
 
 class TrainConfig(NamedTuple):
@@ -106,16 +154,21 @@ def apply_policy(params: Params, x: Array) -> tuple[Array, Array]:
     return logits, value
 
 
-def build_region_bank(seeds: tuple[int, ...], *, num_types: int = 8) -> JaxEnvState:
+def build_region_bank(seeds: tuple[int, ...], spec: EnvSpec) -> JaxEnvState:
     """Bridge a fixed pool of seeds into one batched :class:`JaxEnvState` (the bank).
 
     Procgen runs in numpy once per seed here (not on the hot path); the result is
     stacked so the batched state has leading dim ``len(seeds)``. Returned as the
     auto-reset target *and* the rollout's initial state.
     """
-    states = [jax_reset(generate_region(s, 10, 5, 3, vary=True, num_types=num_types))
-              for s in seeds]
+    states = [spec.env.reset(spec.region_fn(s)) for s in seeds]
     return jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *states)
+
+
+def _obs_dim(spec: EnvSpec, seed: int) -> int:
+    """Flattened obs length for ``spec`` (depends on patch size → derived, not hardcoded)."""
+    obs = spec.env.encode_obs(spec.env.reset(spec.region_fn(seed)))
+    return int(flatten_obs(obs).shape[0])
 
 
 def _reset_where(done: Array, fresh: Array, cur: Array) -> Array:
@@ -128,16 +181,16 @@ _Traj = tuple[Array, Array, Array, Array]
 _Rollout = Callable[[Params, JaxEnvState, Array], tuple[JaxEnvState, _Traj]]
 
 
-def make_rollout(init_state: JaxEnvState) -> _Rollout:
-    """Build a jittable ``(params, state, keys) -> (state, traj)`` A2C rollout.
+def make_rollout(init_state: JaxEnvState, env: JaxEnv) -> _Rollout:
+    """Build a jittable ``(params, state, keys) -> (state, traj)`` A2C rollout for ``env``.
 
     ``traj`` = (flat_obs, actions, rewards, dones), each leading-dim ``rollout_len``.
     Auto-reset returns done envs to their own bank-initial state, so the rollout is a
     single ``lax.scan`` over a continuing batch of full episodes.
     """
-    venc = jax.vmap(encode_obs)
+    venc = jax.vmap(env.encode_obs)
     vflat = jax.vmap(flatten_obs)
-    vstep = jax.vmap(jax_env_step)
+    vstep = jax.vmap(env.step)
 
     def scan_step(
         carry: tuple[JaxEnvState, Params], key: Array
@@ -220,15 +273,19 @@ _DEFAULT_CONFIG = TrainConfig()
 
 def train(
     seeds: tuple[int, ...], config: TrainConfig = _DEFAULT_CONFIG, *, seed: int = 0,
+    spec: EnvSpec | None = None,
 ) -> TrainResult:
     """Train the A2C demo on a region bank of ``seeds``; return params + measurements.
 
     Everything inside the loop (rollout + grad + Adam) is ``jit``-compiled and ``vmap``-
-    batched over ``config.batch`` envs. The learning curve is mean reward-per-env-step
-    per iteration. Raises ImportError only transitively (callers gate with importorskip).
+    batched over ``config.batch`` envs. ``spec`` selects the env config (default world or
+    `difficulty_env_spec()` for the high-gym dynamic-range config); the obs dim is derived
+    from it. The learning curve is mean reward-per-env-step per iteration. Raises
+    ImportError only transitively (callers gate with importorskip).
     """
-    bank = build_region_bank(seeds)
-    rollout = jax.jit(make_rollout(bank))
+    spec = spec or default_env_spec()
+    bank = build_region_bank(seeds, spec)
+    rollout = jax.jit(make_rollout(bank, spec.env))
 
     def grad_fn(p: Params, flat: Array, a: Array, r: Array, d: Array) -> Params:
         return jax.grad(a2c_loss)(
@@ -239,7 +296,7 @@ def train(
 
     key = random.PRNGKey(seed)
     key, pk = random.split(key)
-    params = init_params(pk, OBS_DIM, config.hidden)
+    params = init_params(pk, _obs_dim(spec, seeds[0]), config.hidden)
     opt = _adam_init(params)
     state = bank
 
@@ -287,16 +344,21 @@ def learning_verdict(curve: tuple[float, ...]) -> tuple[str, float, float]:
     return ("a" if rise >= std_late else "b"), rise, std_late
 
 
-def evaluate(params: Params, seeds: tuple[int, ...], *, steps: int = _MAX_STEPS) -> float:
+def evaluate(
+    params: Params, seeds: tuple[int, ...], *, steps: int = _MAX_STEPS,
+    spec: EnvSpec | None = None,
+) -> float:
     """Mean episode return of the greedy policy over ``seeds`` (no reset, masked at done).
 
     Used to report held-out-seed performance (seeds disjoint from training) — ties the
-    speed demo to the generalization story. Deterministic (argmax actions).
+    speed demo to the generalization story. Deterministic (argmax actions). ``spec``
+    selects the env config (default world unless given).
     """
-    bank = build_region_bank(seeds)
-    venc = jax.vmap(encode_obs)
+    spec = spec or default_env_spec()
+    bank = build_region_bank(seeds, spec)
+    venc = jax.vmap(spec.env.encode_obs)
     vflat = jax.vmap(flatten_obs)
-    vstep = jax.vmap(jax_env_step)
+    vstep = jax.vmap(spec.env.step)
 
     def step(
         carry: tuple[JaxEnvState, Array, Array], _: Array
