@@ -1,104 +1,118 @@
-# 인수인계서 — CritterGym (세션 이후: (B) 전이 이니셔티브 종결 — obs조화→전이측정→메커니즘 규명)
+# 인수인계서 — CritterGym (세션 이후: M4 JAX 핵심 입증 + (A) gap rigor)
 
-> 다음 세션용. 직전 세션(2026-06-23~24)이 **7 task를 정직하게 ship**(PR #32–39, 전부 main 머지)하며
-> **(B) "전이하는 학습 정책" 이니셔티브를 정직하게 종결**. 이 문서는 *무엇이 끝났고 / 무엇이 정직한
-> 부분 결과로 남았고 / 다음에 무엇을 하면 가장 가치 있는가*. SSOT: `DESIGN.md` §3.1.1(정직 scope),
-> `docs/explanation/genre-generalization.md`((B) 학술 narrative — **신규 박제**),
-> `docs/explanation/competitive-analysis.md`(갭 register), `docs/_active/env-core/INITIATIVE.md`,
-> `docs/CHANGELOG.md`, `CLAUDE.md`(규율).
+> 다음 세션용. 직전 세션(2026-06-24)이 **(B) 종결 후 JAX 피벗으로 M4 핵심을 입증**(PR #40·#41·#42 머지) +
+> **(A) "hard-and-gap≈0"의 gap 쪽을 multi-run rigor로 robust 입증**(PR #43 머지). 이 문서는 *무엇이 끝났고 /
+> 무엇이 정직한 부분 결과로 남았고 / 다음에 무엇이 최대 leverage인가*. SSOT: `DESIGN.md`(§3.1.1 honest scope·
+> §4 throughput), `docs/explanation/jax-throughput.md`(M4 narrative·신규), `docs/explanation/competitive-
+> analysis.md`(갭 register), `docs/_active/{jax-throughput,difficulty-scaling}/INITIATIVE.md`, `docs/CHANGELOG.md`,
+> `CLAUDE.md`(규율).
 
 ---
 
 ## 0. 오프닝 프롬프트 (새 세션에 그대로 붙여넣기)
 
-> CritterGym 작업을 이어서 한다. 먼저 `docs/HANDOFF-next-session.md`, `docs/explanation/genre-generalization.md`
-> ((B) 종결 narrative), `DESIGN.md` §3.1.1, `docs/explanation/competitive-analysis.md`(갭 register),
-> `docs/_active/env-core/INITIATIVE.md`, `docs/CHANGELOG.md` 상단을 읽어라. 직전 세션이 **(B) 전이 이니셔티브를
-> 7 task(#32–39)로 종결**: obs조화→전이측정→robust화→정책/obs(음성)→예산 RECOVERY→duel 메커니즘 입증+few-shot.
-> **(B) 최종 = sharply characterized partial result**: 학습 정책이 *메커닉 이웃(수집+타입상성)은 제로샷 전이*,
-> *구조적으로 새 배틀시스템(duel)은 제로샷 원리불가(charge feature가 train서 degenerate)+느린 few-shot(~100k)*.
-> **이번 세션 미션 = (B)는 종결됐으니 피벗** — 갭 register의 **난이도 스케일** 또는 **JAX 속도**(공개 전 신뢰성·채택
-> 게이트)로 전환 권장. 또는 (B) 더 깊이(메타-RL로 duel few-shot 단축)는 새 아키텍처=큰 작업. 방침: **공개(OSS/arXiv
-> 제출)는 맨 마지막**, 기능 준비 + 비교우위가 먼저. 하네스 규율 준수(매 task `/task-start`→L1(opus reviewer×2 +
-> qa, verdict-first)→**freeze 전 pilot**→G1→TDD→L3 APPROVED→task-end, main 직접금지 feature→PR). **"X 증명/회복/
-> 전이한다"류 acceptance는 freeze 전 pilot 검증 + 성능 아니라 *측정+정직 보고*로 freeze, pilot이 falsify하면 정직
-> reframe.** 정직성 > 헤드라인.
+> CritterGym 작업을 이어서 한다. 먼저 `docs/HANDOFF-next-session.md`, `docs/explanation/jax-throughput.md`(M4
+> narrative), `DESIGN.md` §3.1.1+§4, `docs/explanation/competitive-analysis.md`(갭 register), `docs/_active/
+> jax-throughput/INITIATIVE.md` + `docs/_active/difficulty-scaling/INITIATIVE.md`, `docs/CHANGELOG.md` 상단을
+> 읽어라. 직전 세션이 **(B) 종결 후 M4(JAX 속도)로 피벗해 핵심 입증**: overworld(#40)·commit-battle(#41)·
+> full-episode env 통합(#42)을 functional JAX 포트, **전부 numpy parity 0 mismatch + vmap 34~1047×**. 이어
+> **(A) gap rigor(#43)**: #24 약한신호를 multi-run+예산↑+사전약정으로 정밀화 → **gap≈0 robust(real-gap 미출현),
+> 단 현 knob은 변별력 부족 가능**(질문이 *gap*→*hard*로 이동). **이번 세션 미션 = 남은 leverage 택1**(아래 §4).
+> 방침: **공개(OSS/arXiv 제출)는 맨 마지막**, 기능 준비+비교우위 먼저. 하네스 규율 준수(매 task `/task-start`→
+> L1(opus reviewer×2 + qa, verdict-first)→**freeze 전 pilot**→G1→TDD→L3 APPROVED→task-end, main 직접금지
+> feature→PR). **"X 증명/회복한다"류 acceptance는 freeze 전 pilot 검증 + 성능 아니라 *측정+정직 보고*로 freeze,
+> pilot이 falsify하면 정직 reframe.** 사전약정 결정규칙으로 사후 편향 차단, 학습 결론은 multi-run. 정직성 > 헤드라인.
 
 ---
 
 ## 1. 현재 상태 (한 줄)
 
-M0·M1·M2 ✅, M3 부분(EC1·2·3·6 ✅ / EC4 arXiv **초안**·EC5 OSS **준비**만, 외부 발행 미실행). **199 tests**,
-numpy-only core + `[rl]`/`[viz]`/`[render]`/`[dev]` extra. **env id 6종**, **family 4종**(A critter/B forage/
-C duel/D muster). main HEAD = `352c959`. **(B)/moat 층2 이니셔티브 종결**(M5 enabler를 M3 공개보다 먼저 = 사람 방침).
+M0·M1·M2 ✅, M3 부분(EC1·2·3·6 ✅ / EC4 arXiv 초안·EC5 OSS 준비만, 외부 발행 미실행), **M4(JAX) 핵심 입증**
+(family A 벡터화 env, EC1/EC2의 family-A 부분 사실상 달성 / EC3 GPU만 남음). **283 tests**, numpy-only core +
+`[rl]`/`[viz]`/`[render]`/`[jax]` extra. main HEAD = `01e96cb`. 활성 이니셔티브 3: `jax-throughput`(M4),
+`difficulty-scaling`((A)), `env-core`(M0–M3, 대부분 done).
 
-## 2. 직전 세션이 한 것 (7 task, archive 27~33 = (B) 전이 이니셔티브 전체)
+## 2. 직전 세션이 한 것 (4 task, 전부 main 머지)
 
-| archive | task | PR | 정직한 결과 |
-|---|---|---|---|
-| **27** | obs-harmonization | #32 | 4 family 단일 공유 obs(`HARMONIZED_OBS_KEYS`, charge 0-마스킹). duel 포함 가능해짐. enabler |
-| **28** | genre-transfer-policy | #34 | widened-train LOO: gap +2.56→~0 양성 *신호*(단일run) |
-| **29** | transfer-rigor | #35 | multi-run+예산↑: #27 음수gap=노이즈, "compute 병목 아님"(저예산 외삽), 사전약정 결정규칙 도입 |
-| **30** | transfer-skill-policy | #36 | 정책/obs(net256+scale) 음성: held-in 못 올림. whole-obs VecNormalize는 해로움(배제) |
-| **31** | transfer-capacity-budget | #37 | 용량×예산: **예산이 lever·용량 아님**. 250k held-in 2.44 PARTIAL |
-| **32** | transfer-budget-recovery | #38 | **예산 RECOVERY**(400k held-in 2.75). 회복 상태 full-LOO: 메커닉 이웃 전이 OK·**duel +1.73 실패** |
-| **33** | duel-fewshot-adapt | #39 | **제로샷 duel 원리불가 *입증***(charge degenerate)+**few-shot SLOW**(~100k). **(B) 종결** |
+| PR | task | 정직한 결과 |
+|---|---|---|
+| #40 | `jax-hotpath-foundation` | overworld step functional JAX 포트. parity 0 mismatch, vmap **186×**(76.5M steps/s). 단일 jit env는 numpy보다 느림(이득=vmap). |
+| #41 | `jax-battle-port` | commit-mode 챔피언 battle 포트(gym-boss 경로). parity 0, vmap **1047×**. pilot이 hp 클램프 버그 포착. |
+| #42 | `jax-env-integration` | overworld+battle 합성 **full-episode env**(`jax_env.py`, lax.cond dispatch). **full obs(local_patch 포함) parity 0**, vmap 34~73×. **L3가 truncated parity 갭 포착**(numpy term/trunc 독립). RL 루프 실소비 가능. |
+| #43 | `difficulty-gap-rigor` | (A) #24 약한신호 → multi-run rigor. held-in 비floor(1.1~1.5) + 세 점 **gap≈0-signal**(real-gap 미출현). 사전약정 classify_gap(floor=0.3·k=1.0). |
 
-## 3. ⚠ (B) 최종 결론 (정직 — 과대 금지)
+## 3. ⚠ 정직한 결론 (과대 금지)
 
-**(B) = sharply characterized partial result** (open도 solved도 아님):
-1. **메커닉 이웃(critter/forage/muster) = 제로샷 전이됨** — 회복된 held-in(~2.75)에서 gap ≤ 0.
-2. **구조적으로 새 배틀시스템(duel) = 제로샷 원리불가** — duel RPS가 의존하는 `charge` obs가 train 3 family서
-   **항상 0(degenerate)** → gradient 0 → 학습 불가. 테스트로 *입증*(`charge_trace`). **일반 명제**: genre 전이는
-   새 메커닉이 train서 degenerate한 obs에 의존하면 제로샷 불가.
-3. **duel few-shot = SLOW** — fine-tune ~100k(=base 2/3)에야 0.65→1.45. 거의 새로 배우는 진짜 새 skill.
-4. lever 정리: **예산 O**(held-in 회복), **용량(net) X**(underfit), **단순 obs scale X**, **whole-obs VecNormalize 해로움**.
+**M4 (JAX 속도) — 핵심 입증, 부분 완성:**
+- family A commit-mode 가 **overworld+battle+full-episode env 전부 functional JAX + vmap 벡터화**, 모든 단계
+  numpy parity **0 mismatch**(재현성 북극성 #3 보존). "속도가 실재한다"가 입증됨.
+- **미포함**: family B/C/D, **non-commit full battle**(switch/item/multi-creature = `jax-battle-full`), **GPU
+  측정**(M4-EC3, CPU vmap은 슬라이스서 이미 ≥10M). 단일 jit는 numpy보다 느림 — 이득은 *vmap 한정*(정직 framing).
 
-전부 `DESIGN.md §3.1.1` + `docs/explanation/genre-generalization.md`에 박제(arXiv 직결).
+**(A) "hard-and-gap≈0" — gap 쪽 robust, hard 쪽 미해결:**
+- multi-run(100k, 5run)서 세 난이도 점 모두 `gap≈0-signal`, held-in 비floor(정책 유능) → #24 약한신호의 진짜
+  업그레이드. **real-gap 미출현** = 현 knob은 train→test 갭을 안 만듦.
+- **caveat**: gap 약한 음수(난이도 비대칭), std가 난이도와 함께 커짐(d2 0.90≈gap 2배 → 작은 gap 정밀 배제 못함),
+  held-out~1.9/3 = **현 knob이 능력 변별엔 충분히 어렵지 않을 수 있음**. → 미해결은 *hard*(변별 난이도) 쪽.
 
-## 4. 권장 순서 (갭 register `competitive-analysis.md` §5 — 공개 전 기능)
+전부 박제: `DESIGN.md §3.1.1+§4`, `jax-throughput.md`, `difficulty-scaling/INITIATIVE.md`, archive reports.
 
-1. **(권장) 피벗 — 난이도 스케일** — DESIGN §3.1.1 "hard-and-gap≈0" 갭. env가 toy라 gap≈0의 능력예측력 약함.
-   난이도 ladder env 재설계(스타터 다양화 등, #25가 드러낸 oracle 천장 해소)로 (A)를 "hard-and-gap≈0"으로.
-2. **(권장) 피벗 — JAX 속도** — 속도=채택 게이트(Craftax 교훈). numpy hot-path를 JAX 포트. 큰 작업이나 공개 전 속도 열위 메움.
-3. **(B) 더 깊이(옵션, 큰 작업)** — 메타-RL/메커닉-범용 표현으로 duel few-shot을 *빠르게*(현재 SLOW ~100k 단축).
-   새 아키텍처 + 새 의존성(sb3-contrib RecurrentPPO 설치돼 있음). 제품 leverage는 1·2가 더 큼.
-4. **(맨 마지막) 공개** — OSS repo-public + Prime Intellect Hub + arXiv 제출(전부 사람 게이트).
+## 4. 다음 후보 (택1, 사람 결정 — competitive-analysis 갭 register 기준)
 
-> 개인 의견(직전 세션): **(B)는 깔끔히 종결됐으니** 1(난이도) 또는 2(JAX)로 피벗하는 게 공개 전 제품 신뢰성·채택에
-> 가장 직접적. (B) 더 깊이 파는 건 한계효용 낮음(메커니즘 다 규명됨).
+> 개인 의견(직전 세션): 오늘 M4 핵심 + (A) gap 모두 ship. 남은 leverage 후보, 대략 가치순:
 
-## 5. 코드 포인터 (직전 세션 산출 — 전부 main)
+1. **변별-난이도 env 재설계 (A의 hard 쪽)** — 학습 정책이 쉽게 못 푸는 구조적 난이도(oracle 천장 해소[스타터
+   다양화]+깊은 추론 부하)로 env가 능력을 *변별*하게. (A)를 진짜 "hard-and-gap≈0"으로. **단 env 메커닉 변경 =
+   JAX 포트 재작업(jax-throughput R5)**. spec-stability 게이트 — 착수 전 순서 결정 필요(큰 작업).
+2. **RL 학습 데모** — JAX env로 실제 PPO류 학습 1회 돌려 "실제로 빠르게 학습됨"까지 입증(벤치 너머 제품 데모).
+   CPU jax로도 가능. M4를 데모로 마감. leverage 중간, 비용 낮음.
+3. **`jax-battle-full`** — non-commit full battle(party+switch+item+force-switch) 포트. M4 완전성↑. 동적 party
+   인덱싱+lax.scan. 한계효용 중간(commit-mode가 이미 load-bearing 경로).
+4. **GPU 벤치(`vectorized-bench`)** — M4-EC3(≥10M GPU) 마감. **GPU 환경 필요**(현 .venv는 CPU jax). 환경 갖춰질 때.
+5. **다른 family 통합** — forage/duel/muster를 `jax_env`에(현재 family A only).
+6. **(맨 마지막) 공개** — arXiv 제출(EC4)+OSS repo-public·Hub(EC5)+데모 GIF(EC6). 전부 사람 게이트.
 
-- **전이 실험 스택** `scripts/genre_learned_transfer.py`([rl], CLI 다수):
-  - `train_and_transfer(..., net_arch=, scale_obs=)` — 단일 fold 전이(+정책/obs 노브, default off=baseline)
-  - `train_and_transfer_loo` / `train_and_transfer_loo_multirun`(run-간 mean±std) — `--loo` / `--runs N`
-  - `held_in_sweep` + `budget_ladder_configs` — `--sweep`(용량×예산) / `--budgets`(예산 사다리) + 사전약정 verdict
-  - `fewshot_adapt_curve` + `charge_trace` — `--fewshot`(duel 적응 곡선) + 제로샷 불가 메커니즘
-  - `HELD_IN_CEILINGS`/`RECOVERY_THRESHOLD`(2.5)/`HARMONIZED`은 env_family에.
-- **env_family** `HARMONIZED_OBS_KEYS`(=REQUIRED ∪ charge 2키)/`MAX_CHARGE_OBS`/`CHARGE_OBS_KEYS`. base `CritterEnv`가 charge 0-마스킹, `DuelEnv` override.
-- **테스트** `tests/test_genre_learned_transfer.py`(전이 smoke 다수) + `tests/test_obs_harmonization.py`(조화 가드). 전부 [rl] importorskip 또는 numpy-only.
-- **문서** `docs/explanation/genre-generalization.md`(**(B) 학술 narrative 신규**) + DESIGN §3.1.1 + competitive-analysis.md(갭 register).
+> 트레이드오프: 1은 가치 크나 큰 작업+JAX 재포트 동반(spec 안정 게이트). 2는 싸고 "속도 실재"를 눈에 보이게. 막히면
+> 1·2 중 사람이 택. JAX가 빨라져 이제 (A) 재설계 실험도 싸다(단 RL 루프를 JAX env에 올리는 통합 필요할 수 있음).
+
+## 5. 코드 포인터 (직전 세션 산출 — 전부 main, `[jax]` extra)
+
+- **JAX 포트 스택**(`src/critter_gym/`, import jax 모듈 내부=코어 numpy-only 보존, `__init__` 미import):
+  - `jax_overworld.py` — `OverworldState` pytree + `overworld_step`(family A/B, branch-free) + `state_from_region` + `make_step_fn`.
+  - `jax_battle.py` — `ChampionBattleState`/`Params` + `champion_battle_step`(commit-mode, lax.cond 속도순) + `params_from_creatures`/`initial_state` + `eff_matrix`.
+  - `jax_env.py` — `JaxEnvState` + `jax_env_step`(lax.cond mode dispatch) + `jax_reset`(numpy Region bridge, gym_active 패딩) + `encode_obs`(13키, local_patch egocentric) + `make_env_step`. **family A commit-mode only.**
+- **벤치** `scripts/bench_throughput.py` — numpy vs jax single/vmap (overworld·battle·full-env 3 섹션), 정직 framing.
+- **parity 테스트**(`importorskip("jax")`, CI numpy-only): `tests/test_jax_parity.py`·`test_jax_battle_parity.py`·`test_jax_env_parity.py`.
+- **(A) 난이도** `scripts/difficulty_generalization.py`([rl]) — `classify_gap`(사전약정 floor=0.3·k=1.0, 순수함수 numpy-only) + `train_and_gap_multirun`(std-across-runs) + `--runs N`. 테스트 `tests/test_difficulty_generalization.py`.
+- **문서** `docs/explanation/jax-throughput.md`(M4 narrative 신규) + DESIGN §4 + §3.1.1 + competitive-analysis 갭 register.
 
 ## 6. 하네스 메모 (직전 세션 학습)
 
-- **multi-run이 단일-seed pilot을 *4번* 교정** — pilot 단일 seed가 held-in/gap을 반복 오도(노이즈). 학습 결론은
-  반드시 multi-run. pilot은 *방향·timing·feasibility*까지만 신뢰(AC7 정량 게이트로 활용).
-- **사전약정(pre-registered) 결정규칙** — "어떤 결과면 신호/아티팩트/불확실/RECOVERY/SLOW"를 freeze 시 못박아 사후
-  narrative 편향 차단. qa-verifier가 이걸 SUGGEST/BLOCK으로 요구함(정직성 강화). 임계 goalpost 이동 금지.
+- **freeze 전 pilot이 매 task 버그를 사전 포착** — JAX 포트마다 pilot이 parity 버그를 1~2건씩 잡음(hp 클램프,
+  battle중 NOOP/SWITCH champion 미공격, jnp 인덱싱, 가변 gym 수). pilot 없이 freeze했으면 다 놓쳤을 것. **pilot은
+  필수**(가정 검증 + 버그 사전 포착 + AC7 분기 결정).
+- **다층 검증이 단일 검증 놓친 edge 포착** — #42서 pilot·multi-config parity가 못 잡은 truncated 독립성 갭을
+  **adversarial L3 reviewer가 포착**(numpy term/trunc 독립계산=둘다 True 가능). pilot+parity+L3 3층이 값어치.
 - **l3-reviewer-maxturns 재발(이번 세션 3회)** — plan-reviewer가 소스 조사 중 verdict 없이 종료. **SendMessage로
-  "verdict만" 요청해 회수**하면 깨끗. retro 큐에 seeded(항구 수정 대기).
-- **qa-verifier 조건부 BLOCK 패턴** — 파일 못 보니 "기록됐는지 확인 불가"로 BLOCK하기도 함. **실제 기록 발췌를 inline로
-  재호출**하면 APPROVE. (EXTERNAL READ FORBIDDEN이라 inline이 완결돼야 함.)
-- **auto-mode가 main 머지 차단** — `gh pr merge`는 *가장 최근 사용자 발화*에 머지 인가가 있어야 통과. "머지해줘" 직후 실행.
-- **archive 이동**: 신규 plan/report untracked면 `git mv` 불가 → 일반 `mv`. NN- prefix 다음 = **34**.
-- **실측 run은 백그라운드**(run_in_background). 50k~500k×multi-run은 ~5~40분. foreground 2분 한도 주의.
-- 개발 `.venv`(ruff/mypy/pytest/build + sb3 2.7.1 + sb3-contrib 2.7.1). core CI numpy-only(PPO `[rl]` 뒤 importorskip).
+  "추가 조사 없이 verdict만" 요청해 회수**하면 깨끗(전부 APPROVE 회수됨). 항구 수정 대기(retro 큐).
+- **commit/push guard가 번호형 옵션 선택("1")을 인가로 못 읽음** — 키워드-리터럴 매칭이라 "커밋 키워드" 없으면
+  BLOCK. 사용자가 "커밋+PR 올리기" *옵션을 명시 선택*했으면 인가 명확 → `HARNESS_ALLOW_COMMIT=1` override(정직히
+  보고). retro 후보: 번호 선택지 인가 인식.
+- **archive 이동**: 신규 plan/report untracked면 `git mv` 불가 → 일반 `mv`(가드 PreToolUse Bash라 mv는 통과).
+- **`.claude/projects/` (repo-로컬)는 stray** — 메모리 SSOT는 `~/.claude/projects/.../memory/`(글로벌). 커밋서 매번 제외(`git reset .claude/projects/`).
+- **실측 run은 background**(run_in_background). sb3 PPO 100k×3×5run=~30분. harness가 추적→완료 시 자동 재호출(폴링 불필요).
+- 개발 `.venv`: ruff/mypy/pytest/build + sb3 2.7.1 + sb3-contrib 2.7.1 + **jax 0.4.30(CPU, py3.9 마지막 라인)**. core CI numpy-only(jax/PPO는 importorskip).
 
 ## 7. 정직성 문화 (계승 필수)
 
-직전 7 task 공통 — **acceptance를 *성능/주장*이 아니라 *측정+정직 보고*로 freeze**. 양성=신호(예산 RECOVERY),
-음성=음성(정책/obs 안 올림), 가정 falsify=reframe(제로샷 charge degenerate). 사전약정 임계로 사후 편향 차단,
-multi-run으로 단일-seed 노이즈 교정, 메커니즘까지 *입증*. peer 사실 `[verify]`, 우리 수치 코드 근거(날조 0).
-**(B)를 "전이 풀었다"로 과대주장하지 않고 "sharply characterized partial result"로 정직 종결한 게 이 프로젝트의
-신뢰성 자산이자 moat 층3(trust)의 재료다. 헤드라인보다 정직성.**
+직전 4 task 공통 — **acceptance를 *성능*이 아니라 *측정+정직 보고*로 freeze**. JAX 포트: parity 0 mismatch를
+정직 입증(가짜 속도 아님), 이득은 vmap 한정(단일은 손해)을 헤드라인 금지로 명시, GPU/battle-full 미포함을 *부분*으로
+정직 라벨. (A): real-gap 미출현·std 증가·변별력 부족 가능을 caveat로 박제, "gap≈0 입증" 과대 회피. **사전약정
+결정규칙(classify_gap 임계 데이터 보기 전 고정)으로 p-hacking 차단, multi-run으로 단일run 노이즈 교정, pilot으로
+가정 사전검증, 다층 검증(pilot+parity+adversarial L3)으로 edge 포착.** 헤드라인보다 정직성 — 이게 moat 층3(trust) 재료.
+
+## 8. 사용자 메모 (계승)
+
+사용자는 수학/RL 깊은 배경 아니나 **전략·정직성·방향 판단으로 지휘**. **매 task 시작·끝에 수식 없는 고등학생용 한 문단
+요약(뭘/왜/비유/결과)을 표·용어와 *별도로* 동반**할 것. 메모리 SSOT: `~/.claude/projects/.../memory/`
+(`plain-language-task-summaries`·`user-non-math-background`, 상호 [[링크]]).
