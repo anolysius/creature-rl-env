@@ -105,7 +105,7 @@ readiness before release."
 
 | We can't yet claim… | because… | needed feature | unblocks |
 |---|---|---|---|
-| "competitively fast" | numpy CPU engine; peers are JAX-GPU | **JAX port of the hot path** | throughput/adoption (Craftax lesson); §4 perf target |
+| "competitively fast" | numpy CPU engine; peers are JAX-GPU. **Partly de-risked** (`jax-hotpath-foundation`): overworld step ported to functional JAX, parity-proven, vmap **~186× numpy on CPU** (76.5M steps/s, single-run direction) — but **battle not yet ported** (port partial) | **finish JAX port of hot path** (battle → env integration → GPU bench) | throughput/adoption (Craftax lesson); §4 perf target; M4 |
 | "a hard benchmark" | env is toy; gap≈0 on easy task | **scale difficulty while keeping the seed split** ("hard-and-gap≈0") | DESIGN §3.1.1 roadmap; meaningful (A) |
 | "generalizes within the genre" | 4 families = foundation; no learned policy on held-out family | **more structurally-distinct families + a *learned* policy tested on an unseen family** | (B) claim; **M5** genre-generalization surface; moat layer 2 |
 | "robust learnability result" | single-run, modest-N signal | **multi-run / multi-seed learnability + learning curves** | tightens (A); arXiv numbers |
