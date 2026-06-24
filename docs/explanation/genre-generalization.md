@@ -81,6 +81,13 @@ Every layer of rigor we added exists to separate cause (1) from cause (2):
   across 5 seeds the muster fold is +0.22 ± 0.45 / +0.44 ± 0.72 — the run-std *exceeds* the gap, so the sign
   is unstable. This is exactly the Henderson et al. ("Deep RL that Matters") lesson — single-seed RL
   conclusions are unreliable.
+- **Budget ladder** (transfer-capacity-budget). transfer-rigor's "compute is not the bottleneck" was an
+  over-extrapolation from 50k→150k. Extending the **budget** to 250k keeps lifting held-in (2.07 → **2.44**,
+  with *tightening* run-std), approaching the recovery bar — while a **bigger net robustly *hurts*** at the
+  same budget (it underfits). So among the cheap levers, **budget is still working and capacity is ruled
+  out**; the pre-registered verdict is **PARTIAL** (held-in <2.5), and at 250k the anchor fold shows held-in
+  2.44 / held-out 2.49 / **gap ≈ 0** — the first point with non-mediocre held-in *and* a zero gap, an
+  encouraging but single-config signal, not a claim.
 - **Pre-registered decision rules** (transfer-rigor). The "signal / artifact / inconclusive" thresholds
   were fixed *before* seeing the data, to block post-hoc narrative bias (the RL analogue of p-hacking).
 - **Intervention/ablation** (transfer-skill-policy). Directly test whether the confound is *removable*:
@@ -111,10 +118,13 @@ Why this is a *result*, not a *failure*, for a benchmark:
 
 ## 6. Open questions — what an actual (B) *claim* would require
 
-The cheap paths are now closed; the remaining paths are expensive and may also return negative:
+Status update (transfer-capacity-budget): the cheap paths are **not all closed** — *budget* is still
+lifting held-in (2.07→2.44 out to 250k, PARTIAL recovery, std tightening), while *capacity* (bigger net)
+is ruled out (it underfits). So the honest near-term probe is **more budget**, watching for diminishing
+returns; the genuinely *expensive/different* paths below remain for if budget plateaus before recovery:
 
-1. **Capacity + budget *together*** — the ablation raised net size but not budget (50k), so the bigger net
-   underfit. Scaling both is the one untested cheap-ish point.
+1. **More budget on the baseline net** — the only cheap lever still climbing; push past 250k toward the
+   ≥2.5 recovery bar (diminishing-returns watch), then re-measure the full-LOO confound-reduced gap.
 2. **Mechanic-general representation** — obs/network that encodes environment structure (a family/task
    embedding, structured features) so the policy can *condition* on the mechanic instead of averaging over
    it (cf. contextual MDPs / task-conditioned policies).
