@@ -47,17 +47,20 @@ env step 이 Python dict(`self._creatures` 위치-키 set/dict, `self._gym_tiles
 
 | 6 | `jax-battle-full` | ✅ done (→ `_archive/2026-Q2/jax-throughput/06-jax-battle-full/`) | **non-commit full battle JAX 포트** — 핫패스 배틀 남은 절반. `jax_battle_full.py`(`FullBattleState`/`FullBattleParams`+`full_battle_step`: party P + SWITCH + ITEM(potion) + 기절 force-switch + party-wipe, branch-free·동적 party gather·argmax next-alive). **freeze 전 pilot parity 0 mismatch**: numpy `Battle(commit_mode=False)`(starter 3 vs boss 1) 대비 배터리(attack/switch/item-heal/force-switch/party-wipe/truncation)+random 40seed(fixed+vary), 매 턴 party_a_hp·active·boss_hp·winner·turn·done 일치. **실측**: numpy 96k/s · **jax vmap 43.5M/s(b=1024)=452×**(순수 산술). **한계효용 정직**: gym-boss 실경로는 commit(이미 포트)·non-commit full-env 통합은 별도 후속. standalone(jax_env 무변경). 310→328(+18 importorskip, 회귀 0), mypy(27)/ruff/build clean. jax-throughput.md(§5 #1)+DESIGN §4 갱신 |
 
-(이후 task 는 /task-start 로 append — 예정: `vectorized-bench`[GPU], 다른 family 통합, non-commit full-env 통합, tuned PPO)
+| 7 | `jax-noncommit-env-integration` | ✅ done (→ `_archive/2026-Q2/jax-throughput/07-jax-noncommit-env-integration/`) | **non-commit full battle을 jax_env에 통합** — `jax_battle_full`(standalone, parity0)의 턴 로직을 `jax_env` battle branch에 연결. `make_jax_env(JaxEnvConfig(commit=False))`가 numpy `CritterEnv(commit_battles=False)`(env **기본** 경로 `CritterGym-v0`/`-procgen-v0`)를 미러. action 매핑(`<4`→MOVE·`4`→SWITCH cyclic-next-alive·`5`→wasted ITEM) + Phase1/2/3(force-switch=first-in-order, SWITCH=cyclic — **freeze 전 pilot이 두 순서 차이 포착**) + party-wipe/boss-dead/battle-trunc + 승리시 gym_defeated·레벨·evolve. **parity 0 mismatch**: 13 obs+reward+term+trunc, full 에피소드, fixed+vary, 4 정책(random·gym-clearing·switch-heavy·never-attack[패배 경로]) + **non-vacuity 가드**(force-switch·party-wipe 실자극 증명). **실측**: numpy 139k/s · **jax vmap 5.08M(b=1024)=36× / 8.35M(b=16384)=60×**(commit full-env와 동급). 정직 범위: family A·CPU·single·vmap-only·potion inert(action space 미방출)·GPU/tuned PPO 후속. 328→360(+32 importorskip parity, 회귀 0; default commit=True byte-identical), mypy(27)/ruff/build clean. jax-throughput.md(§4 Update+§5 #1)+DESIGN §4 갱신 |
+
+(이후 task 는 /task-start 로 append — 예정: `vectorized-bench`[GPU], 다른 family 통합, tuned PPO)
 
 ## 다음 task
-**task 1·2·3·4·5·6 종결** — overworld + commit-battle + 통합 env + 실학습 데모 + config화(고-gym) + **non-commit full battle** 포트 완료(전부 parity 0). 배틀 엔진 두 경로(commit/non-commit) 모두 JAX 벡터화. M4-EC1/EC2 family-A 달성(GPU·다른 family·non-commit full-env 통합·tuned PPO 만).
+**task 1·2·3·4·5·6·7 종결** — overworld + commit-battle + 통합 env + 실학습 데모 + config화(고-gym) +
+non-commit full battle 포트 + **non-commit full-env 통합** 완료(전부 parity 0). 배틀 엔진 두 경로
+(commit/non-commit) 모두 *standalone뿐 아니라 full-episode env까지* JAX 벡터화. M4-EC1/EC2 family-A
+**commit·non-commit 양 경로 달성**(남은 건 GPU·다른 family·tuned PPO).
 - **다음(택1)**:
   - **`vectorized-bench`** — M4-EC3(≥10M steps/s GPU) 측정. CPU vmap 은 슬라이스에서 이미 통과, full-env 는
-    34–73×. GPU 환경 필요(현 .venv 는 CPU jax). EC 마무리.
-  - **`jax-battle-full`** — full non-commit battle(party + SWITCH + ITEM + force-switch + party-wipe).
-    동적 party 인덱싱 + `lax.scan`. env 기본(non-commit) 경로 커버.
-  - **RL 학습 루프 데모** — JAX 엔진으로 실제 PPO류 학습 1회(벤치 넘어 "실제 빠르게 학습됨" 입증). 제품 데모 가치.
-  - **다른 family 통합** — forage/duel/muster 를 `jax_env` 에(현재 family A only).
+    36–73×. GPU 환경 필요(현 .venv 는 CPU jax). EC 마무리.
+  - **다른 family 통합** — forage/duel/muster 를 `jax_env` 에(현재 family A only). (B) 연결.
+  - **tuned PPO** — A2C-lite를 제대로 된 PPO로(jax_train), 고-gym서 학습이 oracle에 얼마나 닿나 측정. (A) headroom.
 - **spec-stability watch**: 난이도(A) 작업이 env 메커닉(보스 stat·reward) 바꾸면 포트 재작업(R5). DESIGN §4
   가 M4 를 "spec 안정 후"로 게이트 — 메커닉 변경 계획 있으면 순서 재검토.
 - **피벗 고려**: M4 핵심(속도 실재) 입증됨. 갭 register 의 또 다른 축 **난이도 스케일(A)** 로 피벗하거나, M4 를
