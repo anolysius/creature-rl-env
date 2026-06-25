@@ -132,23 +132,45 @@ def flatten_obs(obs: dict[str, Array]) -> Array:
     ])
 
 
-def init_params(key: Array, obs_dim: int = OBS_DIM, hidden: int = 64) -> Params:
-    """A tiny shared-trunk MLP: obs → tanh hidden → (policy logits, value)."""
-    k1, k2, k3 = random.split(key, 3)
+def init_params(
+    key: Array, obs_dim: int = OBS_DIM, hidden: int = 64, depth: int = 1
+) -> Params:
+    """A shared-trunk MLP: obs → (tanh hidden) × ``depth`` → (policy logits, value).
+
+    ``depth=1`` (default) is the original single-hidden-layer net — its param keys
+    (``w1``/``b1``/``wpi``/``wv``…) and values are **byte-identical** to the prior version,
+    so the A2C demo and existing PPO are unchanged. ``depth≥2`` (headroom-baseline-strength)
+    adds extra trunk layers ``w2``/``b2``… for a *credibly stronger* baseline; the number of
+    trunk layers is a compile-time constant inferred from the param dict by ``apply_policy``.
+    """
+    if depth < 1:
+        raise ValueError("depth must be >= 1")
     scale = 0.1
-    return {
-        "w1": random.normal(k1, (obs_dim, hidden)) * scale,
+    keys = random.split(key, depth + 2)
+    params: Params = {
+        "w1": random.normal(keys[0], (obs_dim, hidden)) * scale,
         "b1": jnp.zeros((hidden,)),
-        "wpi": random.normal(k2, (hidden, N_ACTIONS)) * scale,
-        "bpi": jnp.zeros((N_ACTIONS,)),
-        "wv": random.normal(k3, (hidden, 1)) * scale,
-        "bv": jnp.zeros((1,)),
     }
+    for li in range(2, depth + 1):  # extra trunk layers (depth>=2)
+        params[f"w{li}"] = random.normal(keys[li - 1], (hidden, hidden)) * scale
+        params[f"b{li}"] = jnp.zeros((hidden,))
+    params["wpi"] = random.normal(keys[depth], (hidden, N_ACTIONS)) * scale
+    params["bpi"] = jnp.zeros((N_ACTIONS,))
+    params["wv"] = random.normal(keys[depth + 1], (hidden, 1)) * scale
+    params["bv"] = jnp.zeros((1,))
+    return params
 
 
 def apply_policy(params: Params, x: Array) -> tuple[Array, Array]:
-    """(..., OBS_DIM) → (logits (..., N_ACTIONS), value (...,))."""
+    """(..., OBS_DIM) → (logits (..., N_ACTIONS), value (...,)).
+
+    Applies each trunk layer ``w1,w2,…`` (count inferred from the param dict, a compile-time
+    constant under ``jit``) with a tanh, then the policy/value heads."""
     h = jnp.tanh(x @ params["w1"] + params["b1"])
+    li = 2
+    while f"w{li}" in params:  # extra trunk layers (depth>=2); compile-time unrolled
+        h = jnp.tanh(h @ params[f"w{li}"] + params[f"b{li}"])
+        li += 1
     logits = h @ params["wpi"] + params["bpi"]
     value = (h @ params["wv"] + params["bv"])[..., 0]
     return logits, value
@@ -340,6 +362,7 @@ class PPOConfig(NamedTuple):
     rollout_len: int = 32
     iters: int = 150
     hidden: int = 64
+    depth: int = 1  # trunk hidden layers (headroom-baseline-strength: a stronger baseline)
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip: float = 0.2
@@ -470,7 +493,7 @@ def train_ppo(
 
     key = random.PRNGKey(seed)
     key, pk = random.split(key)
-    params = init_params(pk, _obs_dim(spec, seeds[0]), config.hidden)
+    params = init_params(pk, _obs_dim(spec, seeds[0]), config.hidden, config.depth)
     opt = _adam_init(params)
     state = bank
 

@@ -121,16 +121,102 @@ def _run_config(name: str, *, batch: int, n_eval: int, iters: int, runs: int) ->
     print(f"  R1 learn={r1_branch}  R2 {r2}  R3 {r3}")
 
 
+def _run_strength_compare(
+    name: str, *, batch: int, n_eval: int, runs: int, base_iters: int, long_iters: int,
+) -> None:
+    """headroom-baseline-strength: does the oracle headroom survive a *stronger* PPO?
+
+    Sweeps a small capacity×budget grid (the literature's levers: width / depth / budget)
+    on the SAME held-out seeds, takes the **best** config as the credible "strong baseline"
+    (not the deepest/longest — depth/over-budget can underfit), and applies the
+    pre-registered 3-branch rule to that best config's runs. A non-vacuity guard
+    (best-strong > tiny) blocks a hollow "robust" verdict from an underfit net. The full
+    sweep is printed so the capacity/budget *non-monotonicity* (if any) is visible.
+    """
+    from critter_gym.jax_train import (
+        PPOConfig,
+        evaluate_gym_clears,
+        train_ppo,
+    )
+
+    spec, factory, steps, num_gyms = _config(name)
+    pool = tuple(range(batch))
+    learn, _heldin = split_train_pool(pool, n_eval)
+    heldout = tuple(int(s) for s in heldout_seeds(n_eval))
+
+    def train_eval(**kw: int) -> list[float]:
+        cfg = PPOConfig(batch=len(learn), **kw)
+        return [evaluate_gym_clears(train_ppo(learn, cfg, seed=r, spec=spec).params,
+                                    heldout, steps=steps, spec=spec) for r in range(runs)]
+
+    # tiny = the published net; sweep = width / depth / budget scaled along the std levers.
+    sweep = [
+        ("tiny d1/h64 ", dict(hidden=64, depth=1, iters=base_iters)),
+        ("wide d1/h256", dict(hidden=256, depth=1, iters=long_iters)),
+        ("deep d2/h256", dict(hidden=256, depth=2, iters=long_iters)),
+    ]
+    res = {label: train_eval(**kw) for label, kw in sweep}
+    oracle_gc = _oracle_gym_clears(factory, "oracle", heldout)
+    blind_gc = _oracle_gym_clears(factory, "type_blind", heldout)
+    means = {k: float(np.mean(v)) for k, v in res.items()}
+
+    tiny_m = means["tiny d1/h64 "]
+    # the "strong baseline" = the BEST non-tiny config (honest: best of the scaling sweep).
+    strong_label = max((k for k in means if not k.startswith("tiny")), key=means.get)
+    strong_gc = res[strong_label]
+    sm, ss = float(np.mean(strong_gc)), float(np.std(strong_gc))
+    hv = classify_headroom(strong_gc, oracle_gc, frac=HEADROOM_FRAC, k=1.0)
+    non_vacuous = sm > tiny_m
+    if sm > oracle_gc:
+        branch = "(c) EXCEEDS oracle -> scripted oracle is not a valid ceiling"
+    elif not non_vacuous:
+        branch = "(!) VACUOUS -> best strong config did not beat tiny; verdict withheld"
+    elif hv.verdict == "hard-and-learnable":
+        branch = "(a) headroom-ROBUST -> hard even for the best scaled baseline"
+    elif hv.verdict == "ppo-closes":
+        branch = "(b) headroom-CLOSES -> prior headroom was partly baseline-weakness"
+    else:
+        branch = f"(?) inconclusive ({hv.verdict})"
+
+    print(f"\n== {name} config (commit-mode, {num_gyms} gyms, CPU, runs={runs}) ==")
+    print(f"  oracle {oracle_gc:.2f}   type_blind {blind_gc:.2f}   "
+          f"(0.75*oracle = {HEADROOM_FRAC * oracle_gc:.2f})")
+    for label, _ in sweep:
+        m = means[label]
+        mark = "  <- best strong" if label == strong_label else ""
+        print(f"  {label}  held-out {m:.2f}  ({m / max(oracle_gc, 1e-9):.0%} of oracle){mark}")
+    print(f"  non-vacuity (best-strong > tiny): {sm:.2f} > {tiny_m:.2f} -> {non_vacuous}")
+    print(f"  best-strong opt-bound {sm + ss:.2f}  vs  0.75*oracle "
+          f"{HEADROOM_FRAC * oracle_gc:.2f}")
+    print(f"  verdict: {branch}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quick", action="store_true", help="fast smoke (small budget)")
     parser.add_argument("--runs", type=int, default=1, help="PPO/A2C runs to average")
     parser.add_argument("--configs", nargs="+", default=["default", "hard"])
+    parser.add_argument("--strong", action="store_true",
+                        help="headroom-baseline-strength: tiny-vs-strong headroom comparison")
     args = parser.parse_args()
 
     batch = 96 if args.quick else 192
     n_eval = 16 if args.quick else 32
     iters = 60 if args.quick else 200
+
+    if args.strong:
+        print("== Does the oracle headroom survive a STRONGER PPO baseline? "
+              "(headroom-baseline-strength) ==")
+        print("   sweep width/depth/budget (literature: capacity+budget are the levers),")
+        print("   take the BEST as the strong baseline; pre-registered 3-branch (frac=0.75):")
+        print("   (a) robust / (b) closes / (c) exceeds. non-vacuity guard: best-strong > tiny.")
+        long_iters = 300 if args.quick else 600
+        for name in args.configs:
+            _run_strength_compare(
+                name, batch=batch, n_eval=n_eval, runs=args.runs,
+                base_iters=iters, long_iters=long_iters,
+            )
+        return
 
     print("== PPO baseline + oracle-headroom (a baseline/signal, not a SOTA sweep) ==")
     print("   pre-registered: R1 learns / R2 PPO>=A2C / R3 PPO<0.75*oracle => headroom")

@@ -197,6 +197,33 @@ stages** rather than porting everything at once.
 > This is the benchmark's results-table substance: competitively fast **and** a verifiably
 > hard-yet-learnable generalization task with a real RL baseline and large measured headroom.
 
+> **Update (headroom-baseline-strength): the headroom survives a *stronger* baseline — it is
+> not a tiny-net artifact, and it is not closeable by cheap scaling.** The 21–28%-of-oracle
+> figure was measured on a *tiny* MLP (1 layer, hidden 64, ~150–200 iters), so the honest
+> follow-up question is whether a *stronger* baseline closes the gap. A configurable-depth net
+> (`init_params`/`apply_policy` gain a default-preserving `depth` knob — `depth=1` is
+> byte-identical, so the A2C demo and the existing PPO are unchanged) lets `ppo_baseline.py
+> --strong` sweep the literature's levers (width / depth / budget; the Craftax/Procgen lesson is
+> that capacity scaling is *the* lever for procgen performance) and take the **best** config as a
+> credible strong baseline, judged by the *same pre-registered classifier* (frac=0.75). **Measured
+> (CPU, 3 runs):** the best strong PPO (wider net, `d1/h256`) reaches **41% of oracle on default
+> and 25% on hard** — non-vacuously above the tiny baseline (a non-vacuity guard blocks a hollow
+> "robust" from an underfit net) — and **plateaus there**: a budget ladder out to ~20M env-steps
+> (i600→i4000) does *not* climb toward the threshold, and **adding depth (`d1→d2`) actively
+> *hurts*** (replicating the (A)-thread's "capacity is not the lever / a bigger net underfits"
+> finding, now in the single-config headroom setting). So the pre-registered verdict is **(a)
+> headroom-ROBUST on both configs**: the large oracle headroom is *not* an artifact of an
+> under-powered net, and is *not* closed by the cheap capacity/compute levers. **Honest boundary
+> (the key caveat):** this rules out *cheap feedforward MLP scaling* as the gap-closer — it does
+> **not** rule out a fundamentally stronger agent (recurrent/memory nets per the POPGym/Craftax
+> lesson, much larger models, a better algorithm like RND/world-models, or extensive HP tuning),
+> which could still close it; the oracle remains a scripted ceiling proxy; 3 seeds, CPU,
+> feedforward only. So "robust" means *robust to standard cheap scaling*, not "unbeatable" — and a
+> deeper **absolute-difficulty** lever (partial observability, etc.) is still the motivated next
+> step if one wants headroom against a *strong* agent. *What it does settle: the cheap diagnostic
+> comes before the expensive spec-changing difficulty work — and the env is demonstrably not
+> trivially toy for the current baseline class.*
+
 > **Update (jax-family-integration): two more families (forage, muster) vectorize too —
 > family breadth on one JAX engine.** The port had only family A (`critter`); `make_jax_env(JaxEnvConfig(
 > family=…))` now also mirrors **forage** (B — contact-collect: stepping onto a creature collects it,

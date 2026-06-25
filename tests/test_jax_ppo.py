@@ -14,12 +14,16 @@ import pytest
 pytest.importorskip("jax")
 
 import jax.numpy as jnp  # noqa: E402
+from jax import random  # noqa: E402
 
 from critter_gym.jax_train import (  # noqa: E402
+    OBS_DIM,
     PPOConfig,
+    apply_policy,
     default_env_spec,
     evaluate_gym_clears,
     gae,
+    init_params,
     learning_verdict,
     train_ppo,
 )
@@ -107,3 +111,42 @@ def test_evaluate_gym_clears_in_range() -> None:
     spec = default_env_spec()
     gc = evaluate_gym_clears(res.params, tuple(range(64, 80)), steps=200, spec=spec)
     assert 0.0 <= gc <= 3.0  # default config has up to 3 gyms
+
+
+# -- headroom-baseline-strength: a configurable-depth net for a stronger baseline --
+
+def test_init_params_depth1_byte_identical() -> None:
+    """depth=1 (default) must reproduce the original single-layer net byte-for-byte, so the
+    A2C demo + existing PPO (and their tests) are unchanged."""
+    p = init_params(random.PRNGKey(0), OBS_DIM, 64, depth=1)
+    assert set(p) == {"w1", "b1", "wpi", "bpi", "wv", "bv"}
+    # the original used random.split(key, 3) → k1,k2,k3 for w1,wpi,wv at scale 0.1
+    k1, _k2, _k3 = random.split(random.PRNGKey(0), 3)
+    assert np.allclose(np.asarray(p["w1"]), np.asarray(random.normal(k1, (OBS_DIM, 64)) * 0.1))
+
+
+def test_init_params_depth_adds_trunk_layers() -> None:
+    p2 = init_params(random.PRNGKey(0), OBS_DIM, 256, depth=2)
+    assert p2["w1"].shape == (OBS_DIM, 256) and p2["w2"].shape == (256, 256)
+    assert "w3" not in p2
+    p3 = init_params(random.PRNGKey(1), OBS_DIM, 128, depth=3)
+    assert "w3" in p3 and "w4" not in p3
+
+
+def test_apply_policy_depth_forward_shapes() -> None:
+    for depth, hidden in ((1, 64), (2, 256), (3, 128)):
+        p = init_params(random.PRNGKey(depth), OBS_DIM, hidden, depth=depth)
+        logits, value = apply_policy(p, jnp.zeros((5, OBS_DIM)))
+        assert logits.shape == (5, 6) and value.shape == (5,)
+    with pytest.raises(ValueError):
+        init_params(random.PRNGKey(0), OBS_DIM, 64, depth=0)
+
+
+def test_train_ppo_depth2_learns_smoke() -> None:
+    """A deeper net (depth=2) trains on-device and the curve rises (pre-registered R1)."""
+    cfg = PPOConfig(batch=64, rollout_len=16, iters=60, hidden=64, depth=2,
+                    epochs=2, num_minibatches=2)
+    res = train_ppo(tuple(range(64)), cfg, seed=0)
+    assert len(res.curve) == cfg.iters
+    branch, rise, _ = learning_verdict(res.curve)
+    assert branch == "a", f"depth-2 PPO did not learn (rise={rise:.4f})"
