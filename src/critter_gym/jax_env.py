@@ -53,6 +53,12 @@ _CATCH = 4  # action enum: MOVE_N/S/E/W=0-3, CATCH=4, NOOP=5
 _PATCH_CREATURE, _PATCH_GYM = 1, 2
 _MODE_OVERWORLD, _MODE_BATTLE = 0, 1
 
+# family enum (jax-family-integration): 0 critter (action-collect), 1 forage
+# (contact-collect), 2 muster (action-collect + caught buffs party attack). duel (C) is a
+# distinct RPS battle engine — a separate port, not here.
+_FAM_CRITTER, _FAM_FORAGE, _FAM_MUSTER = 0, 1, 2
+_MUSTER_ATK = 12.0  # muster_env.MUSTER_ATK — attack added to every party member per catch
+
 _TYPES = list(ElementType)
 _NUM_TYPES = len(_TYPES)
 _TYPE_TO_INT = {t: i for i, t in enumerate(_TYPES)}
@@ -88,6 +94,7 @@ class JaxEnvConfig(NamedTuple):
     commit: bool = True
     potions: int = 2
     battle_max_turns: int = 200
+    family: int = _FAM_CRITTER
 
 
 DEFAULT_CONFIG = JaxEnvConfig()
@@ -142,6 +149,7 @@ class JaxEnvState(NamedTuple):
     steps: jax.Array  # () int32
     items: jax.Array  # () int32 — potion stock (non-commit; dead in commit mode)
     battle_turn: jax.Array  # () int32 — turns in the current battle (non-commit trunc cap)
+    party_atk_boost: jax.Array  # (PARTY,) float32 — muster attack buff (catch +12; evolve resets)
 
 
 def _eff_matrix(chart: TypeChart) -> jax.Array:
@@ -189,6 +197,7 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
     commit = config.commit
     potions = config.potions
     battle_max_turns = config.battle_max_turns
+    family = config.family
 
     def reset(region: Region) -> JaxEnvState:
         cm = np.zeros((grid, grid), dtype=bool)
@@ -222,6 +231,7 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             steps=jnp.asarray(0, dtype=jnp.int32),
             items=jnp.asarray(0, dtype=jnp.int32),
             battle_turn=jnp.asarray(0, dtype=jnp.int32),
+            party_atk_boost=jnp.zeros((_PARTY,), dtype=jnp.float32),
         )
 
     def overworld_branch(s: JaxEnvState, action: jax.Array) -> tuple[JaxEnvState, jax.Array]:
@@ -231,10 +241,20 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
         nc = jnp.clip(s.agent_pos[1] + delta[1], 0, grid - 1)
         new_pos = jnp.where(is_move, jnp.array([nr, nc], dtype=jnp.int32), s.agent_pos)
 
-        r0, c0 = s.agent_pos[0], s.agent_pos[1]
-        catch = (action == _CATCH) & s.creature_mask[r0, c0]
-        cm = s.creature_mask.at[r0, c0].set(jnp.where(catch, False, s.creature_mask[r0, c0]))
-        reward = jnp.where(catch, 1.0, 0.0)
+        # -- collection (family-specific; `family` is a compile-time constant) --
+        if family == _FAM_FORAGE:
+            # contact-collect: stepping onto a creature tile collects it; CATCH is inert.
+            # A collected step does not also enter a gym (numpy ForageEnv returns early).
+            got = is_move & s.creature_mask[new_pos[0], new_pos[1]]
+            cm = s.creature_mask.at[new_pos[0], new_pos[1]].set(
+                jnp.where(got, False, s.creature_mask[new_pos[0], new_pos[1]])
+            )
+        else:
+            # critter / muster: explicit CATCH on the *current* tile.
+            r0, c0 = s.agent_pos[0], s.agent_pos[1]
+            got = (action == _CATCH) & s.creature_mask[r0, c0]
+            cm = s.creature_mask.at[r0, c0].set(jnp.where(got, False, s.creature_mask[r0, c0]))
+        reward = jnp.where(got, 1.0, 0.0)
 
         on_gym = jnp.asarray(False)
         gym_idx = jnp.asarray(-1, dtype=jnp.int32)
@@ -248,12 +268,21 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             )
             on_gym = on_gym | hit
             gym_idx = jnp.where(hit, i, gym_idx)
+        if family == _FAM_FORAGE:
+            on_gym = on_gym & (~got)  # a contact-collect step skips the gym check
+
+        # muster: each catch buffs every party member's attack (+_MUSTER_ATK).
+        if family == _FAM_MUSTER:
+            new_boost = s.party_atk_boost + got.astype(jnp.float32) * _MUSTER_ATK
+        else:
+            new_boost = s.party_atk_boost
 
         healed = jnp.where(s.party_evolved, _EVO_STATS[:, 0], _BASE_STATS[:, 0])
         s = s._replace(
             agent_pos=new_pos,
             creature_mask=cm,
-            caught=s.caught + catch.astype(jnp.int32),
+            caught=s.caught + got.astype(jnp.int32),
+            party_atk_boost=new_boost,
             mode=jnp.where(on_gym, _MODE_BATTLE, _MODE_OVERWORLD).astype(jnp.int32),
             # commit mode opens the champion-select window on entry; non-commit never does.
             commit_window=on_gym & commit,
@@ -266,6 +295,24 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             battle_turn=jnp.where(on_gym, jnp.int32(0), s.battle_turn),
         )
         return s, reward
+
+    def attack_of(s: JaxEnvState, idx: jax.Array) -> jax.Array:
+        """Party member ``idx``'s attack, incl. the muster buff (0 for other families)."""
+        base = _stat(s, idx, 1)
+        if family == _FAM_MUSTER:
+            return base + s.party_atk_boost[idx]
+        return base
+
+    def reset_boost_on_evolve(
+        s: JaxEnvState, act: jax.Array, can_evolve: jax.Array
+    ) -> jax.Array:
+        """Mirror numpy `evolve()` (`attack = form.attack`): a muster buff is wiped on
+        evolution. No-op for non-muster families (boost stays 0)."""
+        if family == _FAM_MUSTER:
+            return s.party_atk_boost.at[act].set(
+                jnp.where(can_evolve, 0.0, s.party_atk_boost[act])
+            )
+        return s.party_atk_boost
 
     def battle_branch(s: JaxEnvState, action: jax.Array) -> tuple[JaxEnvState, jax.Array]:
         def cycle(s: JaxEnvState) -> tuple[JaxEnvState, jax.Array]:
@@ -287,7 +334,7 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             c_dt = _stat(s, act, 6).astype(jnp.int32)
             champ_dmg = jnp.where(
                 action < 4,
-                _damage(_stat(s, act, 4), _stat(s, act, 1), jnp.float32(boss_def_f),
+                _damage(_stat(s, act, 4), attack_of(s, act), jnp.float32(boss_def_f),
                         s.eff[c_mt, btype]),
                 0.0,
             )
@@ -329,6 +376,7 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
                 party_evolved=s.party_evolved.at[act].set(
                     jnp.where(can_evolve, True, s.party_evolved[act])
                 ),
+                party_atk_boost=reset_boost_on_evolve(s, act, can_evolve),
                 evolved=s.evolved + can_evolve.astype(jnp.int32),
                 mode=jnp.where(done_battle, _MODE_OVERWORLD, _MODE_BATTLE).astype(jnp.int32),
             )
@@ -371,7 +419,7 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
 
         # -- Phase 2: moves. Boss always MOVEs; player MOVEs only on an ACT_MOVE turn. --
         a_hp = s.party_hp[active]
-        a_atk, a_def = _stat(s, active, 1), _stat(s, active, 2)
+        a_atk, a_def = attack_of(s, active), _stat(s, active, 2)
         a_spd, a_pow = _stat(s, active, 3), _stat(s, active, 4)
         a_mt = _stat(s, active, 5).astype(jnp.int32)
         a_dt = _stat(s, active, 6).astype(jnp.int32)
@@ -423,6 +471,7 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             party_evolved=s.party_evolved.at[active].set(
                 jnp.where(can_evolve, True, s.party_evolved[active])
             ),
+            party_atk_boost=reset_boost_on_evolve(s, active, can_evolve),
             evolved=s.evolved + can_evolve.astype(jnp.int32),
             mode=jnp.where(battle_done, _MODE_OVERWORLD, _MODE_BATTLE).astype(jnp.int32),
         )

@@ -197,6 +197,22 @@ stages** rather than porting everything at once.
 > This is the benchmark's results-table substance: competitively fast **and** a verifiably
 > hard-yet-learnable generalization task with a real RL baseline and large measured headroom.
 
+> **Update (jax-family-integration): two more families (forage, muster) vectorize too —
+> family breadth on one JAX engine.** The port had only family A (`critter`); `make_jax_env(JaxEnvConfig(
+> family=…))` now also mirrors **forage** (B — contact-collect: stepping onto a creature collects it,
+> CATCH inert) and **muster** (D — CATCH-collect + each catch buffs every party member's attack by +12,
+> a *progression* axis). Muster's buff is the subtle one: it flows into battle damage, and `evolve()`
+> *wipes* it (`attack = form.attack`), so a naive `base + 12·caught` model would diverge — mirrored
+> exactly with a per-member `party_atk_boost` accumulator (catch → +12 all; that member's evolve → 0).
+> **Parity: 0 mismatch** vs the real `ForageEnv`/`MusterEnv` (non-commit) on every obs key + reward +
+> term + trunc, full episodes, fixed & per-seed charts, random + gym-clearing + catch-then-gym policies
+> (`tests/test_jax_family_parity.py`, 24 tests) — the muster buff is checked *through* the `enemy_hp`
+> parity it produces, with a non-vacuity guard asserting the battery actually catches (buff) **and**
+> evolves (reset). Family A stays byte-identical (the accumulator is inert for it). So three of the four
+> families (A/B/D — the type-matchup-battle families) now vectorize end-to-end; **duel (C) is a distinct
+> RPS/stamina battle engine and a separate port** (an explicit follow-up, like `jax_battle` was). *Honest
+> boundary: family A/B/D, non-commit, CPU, vmap-only; duel and GPU remain future work.*
+
 Why this is a *result* for a benchmark, not just plumbing: it converts "we *plan* to be fast" into
 "we have a parity-proven, vectorizable **full-episode env** (family A, **now config-driven**) an RL loop
 **actually trains on** — a JAX-native A2C learns the default world on CPU in seconds (~170× sb3) and the

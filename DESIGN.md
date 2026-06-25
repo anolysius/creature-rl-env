@@ -298,8 +298,13 @@ parity 0 mismatch vs `Battle(commit_mode=False)`, vmap ≈452× — completing b
 now **wired into the full-episode env** (`jax-noncommit-env-integration`): `make_jax_env(JaxEnvConfig(commit=
 False))` mirrors `CritterEnv(commit_battles=False)` — the env's **default** path — at parity 0 mismatch
 (13 obs keys + reward + term + trunc, full episodes, four policies incl. a force-switch/party-wipe loss),
-vmap ≈36–60× (CPU). So **both battle economies (commit & non-commit) now vectorize end-to-end**. Remaining
-for a full M4: families B/C/D, a tuned PPO, and GPU measurement (M4-EC3).
+vmap ≈36–60× (CPU). So **both battle economies (commit & non-commit) now vectorize end-to-end**. Family
+breadth followed (`jax-family-integration`): `make_jax_env(JaxEnvConfig(family=…))` mirrors **forage** (B,
+contact-collect) and **muster** (D, catch-buffs-attack — the buff flows into battle damage and is wiped by
+evolution, mirrored with a `party_atk_boost` accumulator) at parity 0 mismatch (24 tests), so **three of the
+four families (A/B/D — the type-matchup-battle families) now vectorize**; family A stays byte-identical.
+Remaining for a full M4: **duel (C)** — a distinct RPS/stamina battle engine, a separate port — a tuned PPO
+(done: `jax-ppo-tuned`), and GPU measurement (M4-EC3).
 
 ---
 
