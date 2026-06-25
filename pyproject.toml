@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "critter-gym"
-version = "0.0.1"
+version = "1.0.0rc1"
 description = "Procedurally-generated creature-collection RL environment for benchmarking long-horizon agency, strategic reasoning, and generalization."
 readme = "README.md"
 requires-python = ">=3.9"
