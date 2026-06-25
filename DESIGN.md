@@ -303,8 +303,13 @@ breadth followed (`jax-family-integration`): `make_jax_env(JaxEnvConfig(family=�
 contact-collect) and **muster** (D, catch-buffs-attack — the buff flows into battle damage and is wiped by
 evolution, mirrored with a `party_atk_boost` accumulator) at parity 0 mismatch (24 tests), so **three of the
 four families (A/B/D — the type-matchup-battle families) now vectorize**; family A stays byte-identical.
-Remaining for a full M4: **duel (C)** — a distinct RPS/stamina battle engine, a separate port — a tuned PPO
-(done: `jax-ppo-tuned`), and GPU measurement (M4-EC3).
+Finally **duel (C)** — the structurally distinct, type-AGNOSTIC RPS/stamina battle — is now ported too
+(`jax-duel-integration`): `make_jax_env(JaxEnvConfig(family=duel, commit=False))` mirrors `DuelEnv` (ATTACK/
+CHARGE/GUARD vs a deterministic boss, *simultaneous* damage, charge accumulation, a 40-turn stalemate cap)
+at parity 0 mismatch (13 obs keys incl. the duel-only `player_charge`/`enemy_charge` + reward + term + trunc,
+fixed & per-seed charts, incl. a scripted-optimal policy that wins → evolves), vmap ≈40–83× (CPU). So **all
+four families (A/B/C/D) now vectorize end-to-end** — full family breadth on one JAX engine. Remaining for a
+full M4: GPU measurement (M4-EC3).
 
 ---
 
