@@ -46,9 +46,24 @@ obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 ## What it measures
 
 - **Verifiable subgoals (RLVR):** catch ≥ C creatures · evolve ≥ 1 · defeat each gym · defeat the final boss.
+- **Competitively fast (JAX) — measured.** The hot path is ported to functional JAX
+  (`critter_gym.jax_env`) and **parity-proven against the numpy env (0 mismatch)**, so the
+  seed→trajectory reproducibility is preserved across the port. On **CPU** it vectorizes to
+  **≈27–60× numpy for full episodes and up to ≈1047× for the pure battle step** under `vmap`
+  (numpy ≈123–410k steps/s; a single jit env is *slower* — the win is entirely batched
+  vectorization). A JAX-native PPO **trains on it in seconds** (≈170× the numpy/sb3 path).
+  *Honest scope: CPU, single-run directions; the ≥10M steps/s GPU target (M4-EC3) is unmeasured.*
+- **All four env families vectorize (A/B/C/D).** critter (A), forage (B), **duel (C — a
+  type-agnostic RPS/stamina battle)**, and muster (D) all run on the one JAX engine at parity
+  0 — full family breadth, not just the baseline family.
 - **(A) Instance generalization — measured.** Held-out *seeds* give a new map + a new hidden
   type chart. A trained agent defeats bosses at **45% (held-out) vs 40% (held-in)** — a gap
-  ≈ 0 (generalization, not memorization). Engine throughput ≈ **266k steps/s/core**.
+  ≈ 0 (generalization, not memorization).
+- **Hard *and* learnable (measured headroom).** A tuned PPO baseline (GAE+clip, on-device JAX)
+  reaches only **21–28% of the scripted oracle** on held-out seeds (**5-run robust**; default
+  3-gym and hard 8-gym configs), generalizes (held-in ≈ held-out), and on the hard config sits
+  *below* the non-reasoning `type_blind` arm — a clear capability ladder (oracle ≫ type_blind >
+  PPO) with large measured headroom. *A baseline/signal at this budget, not a tuned SOTA sweep.*
 - **Rule inference is load-bearing.** Under the team-commit economy, a scripted four-arm gate
   (42 held-out seeds) freezes `oracle − type_blind ≥ 0.20` and `infer − probe ≥ 0.10`: knowing
   the chart is decisive, and *inferring* recurring matchups beats *probing* each fight. A
@@ -59,6 +74,16 @@ obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
   *policy-specific*: e.g. on the duel family an A-tuned policy fails to transfer (gap ≈ +3.9)
   while an appropriate policy transfers (≈ +0.2). This stands up the machinery — it is **not**
   a proof of genre generalization (that needs many more families).
+
+**Reproduce the two headline tables (throughput + oracle headroom) with one command:**
+
+```bash
+pip install -e ".[jax,rl]"
+python scripts/reproduce_results.py --quick    # fast smoke (seconds)
+python scripts/reproduce_results.py --runs 5   # full multi-run headroom (minutes)
+```
+
+Numbers are generated live (nothing hardcoded); each sub-bench prints its own honest framing.
 
 Full results, sources, and honest caveats: **[`docs/paper/critter-gym.md`](docs/paper/critter-gym.md)**
 (figure→source map in [`docs/paper/README.md`](docs/paper/README.md)). Scope SSOT: [`DESIGN.md`](DESIGN.md) §3.1.1.
@@ -94,9 +119,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup and the task lifecycle.
 
 ## Release status
 
+- **Version:** `1.0.0rc1` — a **release candidate**. The free open-source env is feature-complete
+  (M0–M2 ✅; M3 launch-readiness mostly ✅; M4 throughput ✅ on CPU), and the headline results are
+  parity-proven and reproducible.
+- **Remaining before a `1.0.0` tag (each an explicit gate):** the **≥10M steps/s GPU** measurement
+  (M4-EC3; CPU vmap already clears it on the pure slices), the **arXiv writeup** (M3-EC4, draft in
+  `docs/paper/`), and the **public OSS release** itself.
 - **License:** MIT (see [`LICENSE`](LICENSE)).
-- **Open-source publication** (listing on Prime Intellect Hub, making the repository public) is
-  a maintainer action, not yet performed — these local artifacts prepare the release.
+- **Open-source publication** (listing on a model/eval hub, making the repository public, pushing a
+  version tag) is a **maintainer action, deliberately not performed** — these local artifacts prepare
+  the release; the actual publish is a human decision.
 
 ## License
 
