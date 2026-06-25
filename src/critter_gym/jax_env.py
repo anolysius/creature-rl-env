@@ -16,12 +16,15 @@ factory's closures (not a traced argument). The module-level `jax_env_step` / `j
 boss 120/12/12) — preserved so existing imports, parity tests and the benchmark are
 unchanged.
 
-**Scope:** family A (`critter`) with `commit_battles=True`. The step dispatches by mode
-(`jax.lax.cond`): the overworld branch moves / catches / enters a gym battle (heals the
-party, opens the champion-select commit window); the battle branch cycles the champion
-during the commit window, otherwise resolves one commit-mode turn, and on a win marks
-the gym defeated, levels up and conditionally evolves the champion. Termination = all
-(real) gyms defeated; truncation = `max_steps`.
+**Scope:** family A (`critter`), either battle economy via `JaxEnvConfig.commit`. The step
+dispatches by mode (`jax.lax.cond`): the overworld branch moves / catches / enters a gym
+battle (heals the party, and in commit mode opens the champion-select commit window). The
+battle branch is `commit`-selected (a compile-time constant): **commit** cycles the champion
+during the commit window then resolves one commit-mode turn; **non-commit** (mirrors
+`CritterEnv(commit_battles=False)`, the env's default — `jax-noncommit-env-integration`)
+resolves one full-battle turn (SWITCH / speed-ordered moves / force-switch / party-wipe). On
+a win the active marks the gym defeated, levels up and conditionally evolves. Termination =
+all (real) gyms defeated; truncation = `max_steps`.
 
 **Parity contract:** for the same seed + same action sequence, this reproduces
 `CritterEnv(commit_battles=True)` exactly — every observation key (incl. the egocentric
@@ -65,6 +68,12 @@ class JaxEnvConfig(NamedTuple):
     Defaults reproduce ``CritterEnv``'s commit-mode family-A defaults, so the
     default-config env is bit-for-bit the prior behavior. ``num_types`` / ``super_mult``
     are *not* here — they flow through the per-seed ``Region.chart`` at reset.
+
+    ``commit`` picks the battle economy: ``True`` (default) = commit-mode champion
+    (mirrors ``CritterEnv(commit_battles=True)``); ``False`` = **non-commit full battle**
+    (party + SWITCH + force-switch + party-wipe, mirrors ``CritterEnv(commit_battles=False)``
+    — the env's *default* battle). ``potions`` / ``battle_max_turns`` are the non-commit
+    battle's potion stock and per-battle turn cap (dead constants in commit mode).
     """
 
     grid: int = 10
@@ -76,9 +85,13 @@ class JaxEnvConfig(NamedTuple):
     boss_def: int = 12
     boss_spd: int = 8
     boss_move_power: float = 30.0
+    commit: bool = True
+    potions: int = 2
+    battle_max_turns: int = 200
 
 
 DEFAULT_CONFIG = JaxEnvConfig()
+DEFAULT_NONCOMMIT_CONFIG = JaxEnvConfig(commit=False)
 
 
 def _party_stat_tables() -> tuple[jax.Array, jax.Array]:
@@ -100,7 +113,7 @@ _BASE_STATS, _EVO_STATS = _party_stat_tables()
 
 
 class JaxEnvState(NamedTuple):
-    """Full-episode env state pytree (jit/vmap-friendly). Family A, commit-mode.
+    """Full-episode env state pytree (jit/vmap-friendly). Family A, commit or non-commit.
 
     Per-episode constants (set at reset, immutable except ``gym_defeated``): ``gym_pos``,
     ``gym_type``, ``gym_active`` (real-gym mask — ``vary`` charts have 1..max_gyms gyms),
@@ -127,6 +140,8 @@ class JaxEnvState(NamedTuple):
     caught: jax.Array  # () int32
     evolved: jax.Array  # () int32
     steps: jax.Array  # () int32
+    items: jax.Array  # () int32 — potion stock (non-commit; dead in commit mode)
+    battle_turn: jax.Array  # () int32 — turns in the current battle (non-commit trunc cap)
 
 
 def _eff_matrix(chart: TypeChart) -> jax.Array:
@@ -171,6 +186,9 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
     boss_def_f = float(config.boss_def)
     boss_spd = config.boss_spd
     boss_move_power = config.boss_move_power
+    commit = config.commit
+    potions = config.potions
+    battle_max_turns = config.battle_max_turns
 
     def reset(region: Region) -> JaxEnvState:
         cm = np.zeros((grid, grid), dtype=bool)
@@ -202,6 +220,8 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             caught=jnp.asarray(0, dtype=jnp.int32),
             evolved=jnp.asarray(0, dtype=jnp.int32),
             steps=jnp.asarray(0, dtype=jnp.int32),
+            items=jnp.asarray(0, dtype=jnp.int32),
+            battle_turn=jnp.asarray(0, dtype=jnp.int32),
         )
 
     def overworld_branch(s: JaxEnvState, action: jax.Array) -> tuple[JaxEnvState, jax.Array]:
@@ -235,11 +255,15 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             creature_mask=cm,
             caught=s.caught + catch.astype(jnp.int32),
             mode=jnp.where(on_gym, _MODE_BATTLE, _MODE_OVERWORLD).astype(jnp.int32),
-            commit_window=on_gym,
+            # commit mode opens the champion-select window on entry; non-commit never does.
+            commit_window=on_gym & commit,
             battle_gym=jnp.where(on_gym, gym_idx, s.battle_gym).astype(jnp.int32),
             party_hp=jnp.where(on_gym, healed, s.party_hp),
             boss_hp=jnp.where(on_gym, jnp.float32(boss_hp_f), s.boss_hp),
             active=jnp.where(on_gym, 0, s.active).astype(jnp.int32),
+            # non-commit battle bookkeeping (reset on entry; dead in commit mode).
+            items=jnp.where(on_gym, jnp.int32(potions), s.items),
+            battle_turn=jnp.where(on_gym, jnp.int32(0), s.battle_turn),
         )
         return s, reward
 
@@ -313,6 +337,97 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
         do_cycle = s.commit_window & (action == 4)
         return jax.lax.cond(do_cycle, cycle, fight, s)
 
+    def noncommit_battle_branch(
+        s: JaxEnvState, action: jax.Array
+    ) -> tuple[JaxEnvState, jax.Array]:
+        """One non-commit battle turn, mirroring ``CritterEnv._step_battle`` (commit off).
+
+        Action map (``CritterEnv._to_battle_action``): ``<4`` → MOVE(0), ``4`` → SWITCH to
+        the next-alive party member (cyclic from active), ``5`` → ITEM(99) = a wasted turn
+        (potions are never usable via the env's action space, so ``items`` is inert — kept
+        only for an exact mirror). The single boss always MOVEs (``scripted_opponent`` only
+        ever returns a MOVE). Resolves like ``Battle.step`` (commit_mode=False): Phase 1
+        switch, Phase 2 speed-ordered moves (faint skip, tie → A), Phase 3 force-switch a
+        fainted active to the first alive bench member, then party-wipe / max-turns. On a
+        win the (post-force-switch) active clears the gym, levels up and conditionally
+        evolves — identical economy to the commit ``fight`` path.
+        """
+        turn = s.battle_turn + jnp.int32(1)
+        is_move = action < 4
+        is_switch = action == 4
+
+        # -- Phase 1: SWITCH to the next-alive member, cyclic from the active --
+        cur = s.active
+        nxt = cur
+        found = jnp.asarray(False)
+        for off in range(1, _PARTY + 1):
+            i = (cur + off) % _PARTY
+            alive = s.party_hp[i] > 0
+            take = alive & (~found)
+            nxt = jnp.where(take, i, nxt).astype(jnp.int32)
+            found = found | alive
+        # numpy _switch no-ops an illegal/fainted target; nxt is alive unless none are.
+        active = jnp.where(is_switch & (s.party_hp[nxt] > 0), nxt, cur).astype(jnp.int32)
+
+        # -- Phase 2: moves. Boss always MOVEs; player MOVEs only on an ACT_MOVE turn. --
+        a_hp = s.party_hp[active]
+        a_atk, a_def = _stat(s, active, 1), _stat(s, active, 2)
+        a_spd, a_pow = _stat(s, active, 3), _stat(s, active, 4)
+        a_mt = _stat(s, active, 5).astype(jnp.int32)
+        a_dt = _stat(s, active, 6).astype(jnp.int32)
+        btype = s.gym_type[s.battle_gym]
+        player_dmg = _damage(a_pow, a_atk, jnp.float32(boss_def_f), s.eff[a_mt, btype])
+        boss_dmg = _damage(
+            jnp.float32(boss_move_power), jnp.float32(boss_atk_f), a_def, s.eff[btype, a_dt]
+        )
+        player_first = a_spd >= boss_spd
+        nb_pf = jnp.maximum(0.0, s.boss_hp - player_dmg)
+        na_pf = jnp.where(nb_pf > 0, jnp.maximum(0.0, a_hp - boss_dmg), a_hp)
+        na_bf = jnp.maximum(0.0, a_hp - boss_dmg)
+        nb_bf = jnp.where(na_bf > 0, jnp.maximum(0.0, s.boss_hp - player_dmg), s.boss_hp)
+        na_move = jnp.where(player_first, na_pf, na_bf)
+        nb_move = jnp.where(player_first, nb_pf, nb_bf)
+        # switch / item turn: the player does not attack; only the boss strikes the active.
+        na = jnp.where(is_move, na_move, jnp.maximum(0.0, a_hp - boss_dmg))
+        nb = jnp.where(is_move, nb_move, s.boss_hp)
+        party_hp = s.party_hp.at[active].set(na)
+        boss_hp = nb
+
+        # -- Phase 3: force-switch a fainted active to the FIRST alive member (party order) --
+        alive_mask = party_hp > 0
+        any_alive = jnp.any(alive_mask)
+        first_alive = jnp.argmax(alive_mask.astype(jnp.int32)).astype(jnp.int32)
+        active = jnp.where((na <= 0) & any_alive, first_alive, active).astype(jnp.int32)
+
+        # -- terminal: party-wipe (both wiped → A loses) / boss dead / max-turns trunc --
+        a_wiped = ~jnp.any(party_hp > 0)
+        b_wiped = boss_hp <= 0
+        faint_done = a_wiped | b_wiped
+        trunc_battle = (~faint_done) & (turn >= battle_max_turns)
+        battle_done = faint_done | trunc_battle
+        win = b_wiped & (~a_wiped)
+
+        gym = s.battle_gym
+        new_level = s.party_level[active] + jnp.where(win, 1, 0)
+        can_evolve = win & (~s.party_evolved[active]) & (new_level >= 2)
+        reward = jnp.where(win, 1.0, 0.0) + jnp.where(can_evolve, 1.0, 0.0)
+        s = s._replace(
+            party_hp=party_hp,
+            boss_hp=boss_hp,
+            active=active,
+            battle_turn=turn,
+            gym_defeated=s.gym_defeated.at[gym].set(
+                jnp.where(win, True, s.gym_defeated[gym])
+            ),
+            party_level=s.party_level.at[active].set(new_level),
+            party_evolved=s.party_evolved.at[active].set(
+                jnp.where(can_evolve, True, s.party_evolved[active])
+            ),
+            evolved=s.evolved + can_evolve.astype(jnp.int32),
+            mode=jnp.where(battle_done, _MODE_OVERWORLD, _MODE_BATTLE).astype(jnp.int32),
+        )
+        return s, reward
+
     def encode_obs(state: JaxEnvState) -> dict[str, jax.Array]:
         gridv = state.creature_mask.astype(jnp.int8) * _PATCH_CREATURE
         for i in range(max_gyms):
@@ -363,7 +478,8 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             return overworld_branch(s, action)
 
         def bt(s: JaxEnvState) -> tuple[JaxEnvState, jax.Array]:
-            return battle_branch(s, action)
+            # commit is a compile-time constant → picks the battle economy statically.
+            return battle_branch(s, action) if commit else noncommit_battle_branch(s, action)
 
         state, reward = jax.lax.cond(state.mode == _MODE_OVERWORLD, ow, bt, state)
         state = state._replace(steps=steps)

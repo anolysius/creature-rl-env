@@ -140,6 +140,29 @@ stages** rather than porting everything at once.
 > scripted resolution arms (oracle/blind) stay numpy (they peek env internals), and GPU / other families
 > / a tuned PPO remain future work.*
 
+> **Update (jax-noncommit-env-integration): the env's *default* (non-commit) battle is now wired
+> into the full-episode JAX env — both battle economies vectorize end-to-end.** `jax-battle-full`
+> had ported the non-commit battle (party + SWITCH + force-switch + party-wipe) as a *standalone*
+> turn step; the unified `jax_env` itself stayed commit-only. `make_jax_env(JaxEnvConfig(commit=False))`
+> now dispatches a non-commit battle branch inside the composed step, mirroring `CritterEnv(commit_battles=
+> False)` — the env id `CritterGym-v0` / `CritterGym-procgen-v0` default. The integration is small but
+> exact: the in-battle action map (`<4`→MOVE, `4`→SWITCH to the *cyclic* next-alive, `5`→a wasted ITEM
+> turn), one non-commit turn (Phase-1 switch / Phase-2 speed-ordered moves with a fainted attacker
+> skipped / Phase-3 force-switch to the *first-in-order* alive member), party-wipe / boss-dead / battle
+> max-turns termination, and on a win the post-force-switch active clears the gym, levels up and evolves.
+> A subtlety the **freeze-time pilot** surfaced: Phase-1 SWITCH and Phase-3 force-switch use *different*
+> next-alive orders in numpy (cyclic-from-active vs first-in-party-order) — mirrored separately (a cyclic
+> loop vs `argmax`), the kind of off-by-one that silently breaks parity. **Parity: 0 mismatch** vs the
+> real `CritterEnv(commit_battles=False)` on every obs key + reward + terminated + truncated, over full
+> episodes, fixed & per-seed charts, under four policies (random, gym-clearing, switch-heavy, and a
+> never-attack policy that *loses* — exercising force-switch + party-wipe + the no-reward loss exit),
+> with a non-vacuity guard asserting the battery actually triggers those paths (`tests/test_jax_noncommit_env_parity.py`,
+> 32 tests). **Measured (CPU, single run, vmap-only):** numpy ~139k steps/s · jax vmap **5.08M (b=1024) =
+> 36× / 8.35M (b=16384) = 60×** — on par with the commit full-env row (same overworld, a different battle
+> economy). *Honest boundary: family A, CPU, single run; the speedup is vmap-only (a single jitted env is
+> slower); potions are inert because the env's action space never emits a valid ITEM index (mirrored
+> exactly); GPU / other families / tuned PPO remain future work.*
+
 Why this is a *result* for a benchmark, not just plumbing: it converts "we *plan* to be fast" into
 "we have a parity-proven, vectorizable **full-episode env** (family A, **now config-driven**) an RL loop
 **actually trains on** — a JAX-native A2C learns the default world on CPU in seconds (~170× sb3) and the
@@ -156,8 +179,10 @@ boundary (other families, full battle, GPU, tuned PPO, scripted-arm JAX-ificatio
    is **0 mismatch** (party hp / active idx / boss hp / winner / turn / done) across an action battery
    (attack/switch/item-heal/force-switch/party-wipe/truncation) + random sequences on fixed & per-seed
    charts; vmap **~452× numpy** (CPU). *Marginal-utility note: gym bosses use commit-mode (already the
-   load-bearing path); this completes battle coverage for the env's default (non-commit) path. Wiring it
-   into a non-commit `jax_env` full episode is a separate follow-up.*
+   load-bearing path); this completes battle coverage for the env's default (non-commit) path.* ~~Wiring it
+   into a non-commit `jax_env` full episode is a separate follow-up.~~ — ✅ done (`jax-noncommit-env-integration`):
+   `make_jax_env(JaxEnvConfig(commit=False))` composes it into the full episode at **0 mismatch** vs
+   `CritterEnv(commit_battles=False)` (the env's default), vmap **36–60×** (CPU).
 2. ~~**Env integration** (`jax-env-integration`)~~ — ✅ done for **family A commit-mode**: a composed
    full-episode `jax_env_step` with full obs+reward+term+trunc parity, vmap-batchable (34–73×).
    ~~**Trains on** (`jax-rl-demo`)~~ — ✅ a JAX-native A2C (`critter_gym.jax_train`) learns family A on
