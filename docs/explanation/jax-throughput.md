@@ -224,6 +224,27 @@ stages** rather than porting everything at once.
 > comes before the expensive spec-changing difficulty work — and the env is demonstrably not
 > trivially toy for the current baseline class.*
 
+> **Update (recurrent-baseline): memory is load-bearing under partial observability — and it
+> *qualifies* the Q1 "robust headroom".** Q1's caveat ("robust to cheap *feedforward* scaling;
+> recurrence *not* ruled out") was tested directly. A recurrent (GRU) actor-critic
+> (`train_recurrent` / `evaluate_gym_clears_recurrent` — a GRU hidden state threaded through the
+> A2C rollout `lax.scan`, reset per-env on `done`; the feedforward path untouched) was compared
+> to the feedforward A2C on a **partially observed** commit world (grid 10, a **5×5 egocentric
+> view** on the larger map, 3 gyms), on the *same* matched greedy-eval yardstick. **Measured (CPU,
+> 3 runs):** feedforward A2C reaches **18% of the scripted oracle (0.50/2.81)** while recurrent
+> reaches **46% (1.29/2.81)** — a **robust** memory effect (+0.79, std-separated, pre-registered
+> rule `rec−ff > max(std)`). Crucially the recurrent net is *narrower* (h128) than the feedforward
+> one (h256), so the gain is **memory, not capacity**. So the honest picture sharpens: **much of
+> the feedforward headroom was a *no-memory* limitation, which recurrence recovers (18% → 46%)** —
+> CritterGym's partial-observability difficulty is substantially a *memory* challenge, and the env
+> cleanly **discriminates memory-capable from memoryless agents** (a benchmark virtue). But
+> recurrence reaches only 46% — **meaningful headroom remains even for the memory agent**, so this
+> is "a memory-demanding partial-obs task a recurrent agent half-recovers," not "solved" and not
+> "absolutely hard". *Honest boundary: A2C (not a tuned/recurrent PPO — the clean recurrent-vs-
+> feedforward **PPO** comparison at Q1's exact config is the follow-up), 3 runs, CPU, one partial-
+> obs config; the oracle is a scripted proxy. (A bigger-map grid-16 config was scouted but A2C
+> can't learn it at all — inconclusive there; grid-10/5×5 is the measurable sweet spot.)*
+
 > **Update (jax-family-integration): two more families (forage, muster) vectorize too —
 > family breadth on one JAX engine.** The port had only family A (`critter`); `make_jax_env(JaxEnvConfig(
 > family=…))` now also mirrors **forage** (B — contact-collect: stepping onto a creature collects it,
