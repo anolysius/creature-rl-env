@@ -826,3 +826,190 @@ def evaluate_gym_clears_recurrent(
         return jax.vmap(spec.env.encode_obs)(final)["gyms_defeated"][:, 0]
 
     return float(run(bank).mean())
+
+
+# =====================================================================================
+# Recurrent (GRU) PPO — hard-benchmark/recurrent-ppo.
+#
+# `recurrent-baseline` showed memory is load-bearing *inside A2C* under partial
+# observability; Q1's headroom was measured with the stronger *PPO*. This closes the gap:
+# the same memory effect, re-measured with PPO, so "does recurrence close the PPO headroom"
+# is answered cleanly at Q1's exact partial-obs config.
+#
+# The hard part is the minibatch. Feedforward PPO flattens (T, B) and shuffles across
+# *time* — which would scramble a hidden-state sequence. Recurrent PPO instead minibatches
+# over the **env axis (B) only**: each env's full time sequence (T) stays intact, and the
+# loss replays the GRU from a stored per-env `h0` (reset on `done`). `recurrent_replay`
+# does that replay and is shared by the loss and the correctness tests (it is the same scan
+# `recurrent_a2c_loss` runs inline — duplicated, not refactored, so the A2C loss stays
+# byte-identical). The feedforward / A2C / tuned-PPO / recurrent-A2C paths are untouched.
+# =====================================================================================
+
+
+def recurrent_replay(
+    params: Params, flat: Array, dones: Array, h0: Array
+) -> tuple[Array, Array]:
+    """Replay the GRU over an in-order ``(T, B)`` trajectory from ``h0`` (reset on ``done``).
+
+    Returns ``(logits (T, B, N_ACTIONS), values (T, B))`` — the exact policy/value sequence
+    the rollout produced (with the same params). Shared by :func:`recurrent_ppo_loss` and
+    the correctness tests. Because the env (``B``) axis is a pure batch dim of independent
+    sequences, replaying any subset/permutation of envs gives the matching subset of
+    outputs — which is what makes env-axis minibatching sequence-preserving."""
+    def step(h: Array, x: tuple[Array, Array]) -> tuple[Array, tuple[Array, Array]]:
+        flat_t, done_t = x
+        h2 = gru_step(params, flat_t, h)
+        logits, value = recurrent_policy_value(params, h2)
+        return jnp.where(done_t[:, None], 0.0, h2), (logits, value)
+
+    _, (logits, values) = jax.lax.scan(step, h0, (flat, dones))
+    return logits, values
+
+
+_RecPPOTraj = tuple[Array, Array, Array, Array, Array, Array]
+_RecPPORollout = Callable[
+    [Params, JaxEnvState, Array, Array],
+    tuple[JaxEnvState, Array, _RecPPOTraj, Array, Array],
+]
+
+
+def make_recurrent_ppo_rollout(init_state: JaxEnvState, env: JaxEnv) -> _RecPPORollout:
+    """Build a jittable GRU PPO rollout: ``(params, state, h, keys) -> (state, h, traj,
+    last_value, h0)``.
+
+    ``traj`` = (flat, actions, logp_old, values, rewards, dones), leading-dim ``rollout_len``
+    — like :func:`make_ppo_rollout` but the policy/value come from a GRU hidden state ``h``
+    threaded through the scan (reset to 0 where an env auto-resets on ``done``). ``h0`` is the
+    hidden at rollout start (returned un-mutated so the loss can replay from it); ``last_value``
+    bootstraps GAE past the window (one more ``gru_step`` on the final obs)."""
+    venc = jax.vmap(env.encode_obs)
+    vflat = jax.vmap(flatten_obs)
+    vstep = jax.vmap(env.step)
+
+    def scan_step(
+        carry: tuple[JaxEnvState, Params, Array], key: Array
+    ) -> tuple[tuple[JaxEnvState, Params, Array], _RecPPOTraj]:
+        state, params, h = carry
+        flat = vflat(venc(state))
+        h2 = gru_step(params, flat, h)
+        logits, value = recurrent_policy_value(params, h2)
+        actions = random.categorical(key, logits)
+        logp = jnp.take_along_axis(
+            jax.nn.log_softmax(logits), actions[..., None], axis=-1
+        )[..., 0]
+        nstate, _, reward, term, trunc = vstep(state, actions)
+        done = term | trunc
+        nstate = jax.tree_util.tree_map(
+            lambda fresh, cur: _reset_where(done, fresh, cur), init_state, nstate
+        )
+        h_next = jnp.where(done[:, None], 0.0, h2)
+        return (nstate, params, h_next), (flat, actions, logp, value, reward, done)
+
+    def rollout(
+        params: Params, state: JaxEnvState, h: Array, keys: Array
+    ) -> tuple[JaxEnvState, Array, _RecPPOTraj, Array, Array]:
+        h0 = h
+        (state, _, h), traj = jax.lax.scan(scan_step, (state, params, h), keys)
+        flat_t = vflat(venc(state))
+        h_t = gru_step(params, flat_t, h)
+        _, last_value = recurrent_policy_value(params, h_t)
+        return state, h, traj, last_value, h0
+
+    return rollout
+
+
+def recurrent_ppo_loss(
+    params: Params, flat: Array, actions: Array, logp_old: Array, adv: Array,
+    returns: Array, dones: Array, h0: Array, clip: float, ent_coef: float, vf_coef: float,
+) -> Array:
+    """PPO clipped-surrogate loss for the GRU policy on an env-axis minibatch.
+
+    Replays the hidden sequence over the in-order ``(T, B_mb)`` trajectory from ``h0`` (so
+    the logits/values match the rollout's at the unchanged params), then the same clipped
+    surrogate + value MSE − entropy as :func:`ppo_loss`. Advantages are normalized over the
+    minibatch. ``adv``/``returns`` are the GAE outputs sliced to this minibatch's envs."""
+    logits, values = recurrent_replay(params, flat, dones, h0)
+    logp_all = jax.nn.log_softmax(logits)
+    logp = jnp.take_along_axis(logp_all, actions[..., None], axis=-1)[..., 0]
+    adv_n = (adv - adv.mean()) / (adv.std() + 1e-8)
+    ratio = jnp.exp(logp - logp_old)
+    unclipped = ratio * adv_n
+    clipped = jnp.clip(ratio, 1.0 - clip, 1.0 + clip) * adv_n
+    pg = -jnp.minimum(unclipped, clipped).mean()
+    vl = 0.5 * ((values - returns) ** 2).mean()
+    entropy = -(jnp.exp(logp_all) * logp_all).sum(-1).mean()
+    return pg + vf_coef * vl - ent_coef * entropy
+
+
+def train_recurrent_ppo(
+    seeds: tuple[int, ...], config: PPOConfig = _DEFAULT_PPO_CONFIG, *, seed: int = 0,
+    spec: EnvSpec | None = None,
+) -> TrainResult:
+    """Train a GRU PPO on a region bank of ``seeds`` (mirrors :func:`train_ppo`, recurrent).
+
+    Each iteration: one ``vmap`` rollout (hidden threaded, carried across windows) → GAE(λ)
+    over the ``(T, B)`` window → ``epochs`` passes of ``num_minibatches`` updates that shuffle
+    the **env axis only** (time order preserved), each replaying the GRU from that minibatch's
+    ``h0``. ``config.hidden`` sets the GRU width (``depth`` is unused — the GRU has its own
+    structure). ``num_minibatches`` must divide ``config.batch``. Eval reuses the matched
+    :func:`evaluate_gym_clears_recurrent`, so ff and rec PPO are on the same yardstick."""
+    spec = spec or default_env_spec()
+    bank = build_region_bank(seeds, spec)
+    rollout = jax.jit(make_recurrent_ppo_rollout(bank, spec.env))
+
+    @jax.jit
+    def update(
+        params: Params, opt: _AdamState, flat: Array, actions: Array, logp_old: Array,
+        adv: Array, returns: Array, dones: Array, h0: Array,
+    ) -> tuple[Params, _AdamState]:
+        grads = jax.grad(recurrent_ppo_loss)(
+            params, flat, actions, logp_old, adv, returns, dones, h0,
+            config.clip, config.ent_coef, config.vf_coef,
+        )
+        return _adam_step(params, grads, opt, config.lr)
+
+    key = random.PRNGKey(seed)
+    key, pk = random.split(key)
+    params = gru_init_params(pk, _obs_dim(spec, seeds[0]), config.hidden)
+    opt = _adam_init(params)
+    state = bank
+    b = config.batch
+    h = jnp.zeros((b, config.hidden))
+    mb = b // config.num_minibatches
+    curve: list[float] = []
+
+    # warm-up compile (excluded from timing)
+    key, rk = random.split(key)
+    state, h, traj, last_value, _h0 = rollout(
+        params, state, h, random.split(rk, config.rollout_len)
+    )
+    jax.block_until_ready(traj[0])
+
+    start = time.perf_counter()
+    for _ in range(config.iters):
+        key, rk = random.split(key)
+        h0 = h
+        state, h, traj, last_value, h0 = rollout(
+            params, state, h0, random.split(rk, config.rollout_len)
+        )
+        flat, actions, logp_old, values, rewards, dones = traj
+        adv, returns = gae(rewards, values, dones, last_value, config.gamma,
+                           config.gae_lambda)
+        for _e in range(config.epochs):
+            key, sk = random.split(key)
+            perm = random.permutation(sk, b)  # shuffle ENV axis only (time preserved)
+            for i in range(config.num_minibatches):
+                idx = perm[i * mb:(i + 1) * mb]
+                params, opt = update(
+                    params, opt, flat[:, idx], actions[:, idx], logp_old[:, idx],
+                    adv[:, idx], returns[:, idx], dones[:, idx], h0[idx],
+                )
+        curve.append(float(rewards.mean()))
+    jax.block_until_ready(params["wpi"])
+    wall = time.perf_counter() - start
+
+    total = config.iters * config.rollout_len * config.batch
+    return TrainResult(
+        params=params, curve=tuple(curve), total_env_steps=total,
+        wall_time_s=wall, env_steps_per_s=(total / wall if wall > 0 else 0.0),
+    )
