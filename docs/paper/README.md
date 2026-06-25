@@ -9,7 +9,10 @@ threshold). Honesty over headline: no figure is fabricated.
 
 | Claim (paper §) | Figure | Source | Tier |
 |---|---|---|---|
-| Throughput (§2) | ~266k steps/s/core (≈5× 50k target) | env-validation report (`docs/CHANGELOG.md` env-validation entry; `scripts`/baseline bench) | run-derived |
+| Throughput numpy (§2) | ~266k–410k steps/s/core (≈5–8× 50k target) | env-validation report; `scripts/bench_throughput.py` (numpy rows) | run-derived |
+| JAX vmap throughput (§6) | overworld ~186× / commit-battle ~1047× / non-commit-battle ~452× / full-env 34–73× / duel 40–83× (CPU) | `scripts/bench_throughput.py`; `scripts/reproduce_results.py`; archive `jax-throughput/0*-*/report.md` | run-derived |
+| numpy↔JAX parity (§6) | 0 mismatch (all obs+reward+term+trunc), 4 families | `tests/test_jax_{parity,env_parity,family_parity,duel_parity,...}.py` | **CI-reproducible** (parity) |
+| Oracle headroom (§4) | PPO 28% (default) / 21% (hard) of oracle, 5-run robust; hard: PPO < type_blind | `scripts/ppo_baseline.py --runs 5`; `critter_gym.headroom.classify_headroom`; archive `difficulty-scaling/03-ppo-headroom-rigor/report.md` | run-derived (classifier gate frac=0.75 is pre-registered) |
 | Instance gap≈0 (§3) | held-in 40% vs held-out 45% boss-defeat | `scripts/killer_demo.py`; `docs/CHANGELOG.md` M3-EC6 entry | run-derived |
 | Load-bearing gates (§4) | Gate0 `oracle−type_blind ≥ 0.20`, Gate1 `infer−probe ≥ 0.10`, 42 held-out seeds | `tests/test_reasoning_gate.py` (`GATE0_MIN`/`GATE1_MIN`, `HELD_OUT_SEEDS=range(1000,1042)`) | **CI-reproducible** (gates) |
 | Load-bearing margins (§4) | observed ≈ 0.48 / ≈ 0.36 (oracle 1.00/type_blind 0.52; infer 0.84/probe 0.47) | run means; `docs/CHANGELOG.md` reasoning-load-bearing entry; memory `team-commit-makes-inference-load-bearing` | run-derived (test freezes only the gates) |
@@ -26,5 +29,6 @@ proof**. Any update to the claims must keep that distinction.
 
 ## Status
 
-- **Draft.** Not a submission. Next steps (follow-up tasks): LaTeX/figures, more families +
-  a learned policy on a held-out family, JAX port for throughput, M3-EC5 OSS release.
+- **Draft.** Not a submission. The JAX port (throughput) and the tuned-PPO oracle-headroom are
+  now done and folded into §6 / §4. Next steps (follow-up tasks): LaTeX/figures, a GPU throughput
+  measurement (M4-EC3), more families + a learned policy on a held-out family, M3-EC5 OSS release.
