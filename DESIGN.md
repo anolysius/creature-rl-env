@@ -275,8 +275,11 @@ seconds** — the learning curve rises (mean episode return ≈1.8 → ≈10.0) 
 numpy/sb3 path (on-device vmap; CPU, single run, A2C-lite — a signal, not a tuned PPO). The env is now
 **config-driven** (`jax-difficulty-report`/R5): `make_jax_env(cfg)` re-establishes parity (0 mismatch) at the
 higher-gym *dynamic-range* difficulty config (8 gyms), which now also trains under `vmap` (≈63× sb3 on that
-config) — so the sharper-discrimination config is the fast-to-train one. Remaining for a full M4: families
-B/C/D, the non-commit full battle, a tuned PPO, and GPU measurement (M4-EC3).
+config) — so the sharper-discrimination config is the fast-to-train one. The **non-commit full battle**
+(party + switch/item/force-switch/party-wipe) is now ported too (`jax-battle-full`: `jax_battle_full`,
+parity 0 mismatch vs `Battle(commit_mode=False)`, vmap ≈452× — completing battle-engine coverage; wiring it
+into a non-commit full-env is a follow-up). Remaining for a full M4: families B/C/D, a tuned PPO, and GPU
+measurement (M4-EC3).
 
 ---
 

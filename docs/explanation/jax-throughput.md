@@ -149,8 +149,15 @@ boundary (other families, full battle, GPU, tuned PPO, scripted-arm JAX-ificatio
 ## 5. Open questions — what a full M4 claim requires
 
 1. ~~**Battle port** (`jax-battle-port`)~~ — ✅ done for the **commit-mode champion** path (parity-proven,
-   1047× vmap). Remaining: **`jax-battle-full`** — the full non-commit battle (3-creature party + SWITCH +
-   ITEM + force-switch + party-wipe terminal), which needs dynamic party indexing and `lax.scan`.
+   1047× vmap). ~~**Full non-commit battle** (`jax-battle-full`)~~ — ✅ done: `critter_gym.jax_battle_full`
+   ports the non-commit battle (P-creature party + SWITCH + ITEM(potion) + faint force-switch + party-wipe
+   terminal) as a branch-free `(state, action) -> state` turn step (dynamic party indexing via gather +
+   `argmax` next-alive, no `lax.scan` needed for the single-turn step). Parity vs `Battle(commit_mode=False)`
+   is **0 mismatch** (party hp / active idx / boss hp / winner / turn / done) across an action battery
+   (attack/switch/item-heal/force-switch/party-wipe/truncation) + random sequences on fixed & per-seed
+   charts; vmap **~452× numpy** (CPU). *Marginal-utility note: gym bosses use commit-mode (already the
+   load-bearing path); this completes battle coverage for the env's default (non-commit) path. Wiring it
+   into a non-commit `jax_env` full episode is a separate follow-up.*
 2. ~~**Env integration** (`jax-env-integration`)~~ — ✅ done for **family A commit-mode**: a composed
    full-episode `jax_env_step` with full obs+reward+term+trunc parity, vmap-batchable (34–73×).
    ~~**Trains on** (`jax-rl-demo`)~~ — ✅ a JAX-native A2C (`critter_gym.jax_train`) learns family A on
@@ -168,6 +175,7 @@ boundary (other families, full battle, GPU, tuned PPO, scripted-arm JAX-ificatio
 - `DESIGN.md` §4 — throughput target + measured direction.
 - `src/critter_gym/jax_overworld.py` — `OverworldState` pytree + functional `overworld_step` + parity bridge.
 - `src/critter_gym/jax_env.py` — `JaxEnvConfig` + `make_jax_env(cfg)` factory (config-driven; default-config module-level fns preserved).
+- `src/critter_gym/jax_battle.py` / `jax_battle_full.py` — commit-mode champion battle / non-commit full battle (party + switch/item/force-switch/party-wipe) functional ports (parity-proven).
 - `src/critter_gym/jax_train.py` — JAX-native A2C (region bank + `lax.scan` rollout + manual Adam) + `EnvSpec`/`difficulty_env_spec` (config-aware) + `learning_verdict` (pre-registered R1 rule) + `evaluate`.
 - `tests/test_jax_parity.py` / `tests/test_jax_train.py` / `tests/test_jax_difficulty_parity.py` — numpy↔JAX parity (default + high-gym config) + train-loop smoke (`importorskip`, CI numpy-only).
 - `scripts/bench_throughput.py` / `scripts/jax_rl_demo.py` — step throughput (honest framing) / RL learning demo (curve + train-throughput vs sb3).
