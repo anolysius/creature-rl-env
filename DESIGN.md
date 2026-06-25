@@ -277,9 +277,12 @@ numpy/sb3 path (on-device vmap; CPU, single run, A2C-lite — a signal, not a tu
 higher-gym *dynamic-range* difficulty config (8 gyms), which now also trains under `vmap` (≈63× sb3 on that
 config) — so the sharper-discrimination config is the fast-to-train one. The **non-commit full battle**
 (party + switch/item/force-switch/party-wipe) is now ported too (`jax-battle-full`: `jax_battle_full`,
-parity 0 mismatch vs `Battle(commit_mode=False)`, vmap ≈452× — completing battle-engine coverage; wiring it
-into a non-commit full-env is a follow-up). Remaining for a full M4: families B/C/D, a tuned PPO, and GPU
-measurement (M4-EC3).
+parity 0 mismatch vs `Battle(commit_mode=False)`, vmap ≈452× — completing battle-engine coverage), and is
+now **wired into the full-episode env** (`jax-noncommit-env-integration`): `make_jax_env(JaxEnvConfig(commit=
+False))` mirrors `CritterEnv(commit_battles=False)` — the env's **default** path — at parity 0 mismatch
+(13 obs keys + reward + term + trunc, full episodes, four policies incl. a force-switch/party-wipe loss),
+vmap ≈36–60× (CPU). So **both battle economies (commit & non-commit) now vectorize end-to-end**. Remaining
+for a full M4: families B/C/D, a tuned PPO, and GPU measurement (M4-EC3).
 
 ---
 
