@@ -327,6 +327,227 @@ def train(
     )
 
 
+# =====================================================================================
+# Tuned PPO (jax-ppo-tuned) — GAE(λ) + clipped surrogate + minibatch epochs + adv-norm.
+# Additive: the A2C `train` above is untouched (jax-rl-demo / its tests are unchanged).
+# =====================================================================================
+
+
+class PPOConfig(NamedTuple):
+    """PPO hyperparameters (small net by design; a baseline, not a SOTA sweep)."""
+
+    batch: int = 256
+    rollout_len: int = 32
+    iters: int = 150
+    hidden: int = 64
+    gamma: float = 0.99
+    gae_lambda: float = 0.95
+    clip: float = 0.2
+    lr: float = 3e-3
+    ent_coef: float = 0.01
+    vf_coef: float = 0.5
+    epochs: int = 4
+    num_minibatches: int = 4
+
+
+def gae(
+    rewards: Array, values: Array, dones: Array, last_value: Array,
+    gamma: float, lam: float,
+) -> tuple[Array, Array]:
+    """Generalized Advantage Estimation over a ``(T, B)`` rollout (jittable, pure).
+
+    ``last_value`` bootstraps past the window. Returns ``(advantages, returns)`` with
+    ``returns = advantages + values``. Identities: ``(γ=1, λ=1)`` → Monte-Carlo returns
+    (minus V), ``λ=0`` → 1-step TD residual — both covered by tests.
+    """
+    def step(carry: tuple[Array, Array], x: tuple[Array, Array, Array]
+             ) -> tuple[tuple[Array, Array], Array]:
+        gae_acc, next_value = carry
+        r, v, d = x
+        nonterm = 1.0 - d
+        delta = r + gamma * next_value * nonterm - v
+        gae_acc = delta + gamma * lam * nonterm * gae_acc
+        return (gae_acc, v), gae_acc
+
+    b = rewards.shape[1]
+    init = (jnp.zeros((b,)), last_value)
+    _, adv = jax.lax.scan(step, init, (rewards, values, dones.astype(jnp.float32)),
+                          reverse=True)
+    return adv, adv + values
+
+
+_PPOTraj = tuple[Array, Array, Array, Array, Array, Array]
+_PPORollout = Callable[
+    [Params, JaxEnvState, Array], tuple[JaxEnvState, _PPOTraj, Array]
+]
+
+
+def make_ppo_rollout(init_state: JaxEnvState, env: JaxEnv) -> _PPORollout:
+    """Build a jittable PPO rollout collecting ``(flat, actions, logp_old, values,
+    rewards, dones)`` + a bootstrap ``last_value`` at the final state. Auto-resets done
+    envs to their bank-initial state (single ``lax.scan``)."""
+    venc = jax.vmap(env.encode_obs)
+    vflat = jax.vmap(flatten_obs)
+    vstep = jax.vmap(env.step)
+
+    def scan_step(
+        carry: tuple[JaxEnvState, Params], key: Array
+    ) -> tuple[tuple[JaxEnvState, Params], _PPOTraj]:
+        state, params = carry
+        flat = vflat(venc(state))
+        logits, value = apply_policy(params, flat)
+        actions = random.categorical(key, logits)
+        logp = jnp.take_along_axis(
+            jax.nn.log_softmax(logits), actions[..., None], axis=-1
+        )[..., 0]
+        nstate, _, reward, term, trunc = vstep(state, actions)
+        done = term | trunc
+        nstate = jax.tree_util.tree_map(
+            lambda fresh, cur: _reset_where(done, fresh, cur), init_state, nstate
+        )
+        return (nstate, params), (flat, actions, logp, value, reward, done)
+
+    def rollout(
+        params: Params, state: JaxEnvState, keys: Array
+    ) -> tuple[JaxEnvState, _PPOTraj, Array]:
+        (state, _), traj = jax.lax.scan(scan_step, (state, params), keys)
+        _, last_value = apply_policy(params, vflat(venc(state)))
+        return state, traj, last_value
+
+    return rollout
+
+
+def ppo_loss(
+    params: Params, flat: Array, actions: Array, logp_old: Array, adv: Array,
+    returns: Array, clip: float, ent_coef: float, vf_coef: float,
+) -> Array:
+    """PPO clipped-surrogate loss (+ value MSE − entropy) on a minibatch.
+
+    Advantages are normalized per minibatch. ``ratio = exp(logp − logp_old)``; the
+    surrogate is ``min(ratio·A, clip(ratio, 1±ε)·A)`` (maximized → negated for descent).
+    """
+    logits, values = apply_policy(params, flat)
+    logp_all = jax.nn.log_softmax(logits)
+    logp = jnp.take_along_axis(logp_all, actions[..., None], axis=-1)[..., 0]
+    adv_n = (adv - adv.mean()) / (adv.std() + 1e-8)
+    ratio = jnp.exp(logp - logp_old)
+    unclipped = ratio * adv_n
+    clipped = jnp.clip(ratio, 1.0 - clip, 1.0 + clip) * adv_n
+    pg = -jnp.minimum(unclipped, clipped).mean()
+    vl = 0.5 * ((values - returns) ** 2).mean()
+    entropy = -(jnp.exp(logp_all) * logp_all).sum(-1).mean()
+    return pg + vf_coef * vl - ent_coef * entropy
+
+
+_DEFAULT_PPO_CONFIG = PPOConfig()
+
+
+def train_ppo(
+    seeds: tuple[int, ...], config: PPOConfig = _DEFAULT_PPO_CONFIG, *, seed: int = 0,
+    spec: EnvSpec | None = None,
+) -> TrainResult:
+    """Train a tuned PPO on a region bank of ``seeds``; return params + measurements.
+
+    Each iteration: one ``vmap`` rollout → GAE(λ) advantages → ``epochs`` passes of
+    ``num_minibatches`` clipped-surrogate updates (all on-device under ``jit``). ``spec``
+    selects the env config (default world or ``difficulty_env_spec()``); the obs dim is
+    derived from it. The curve is mean reward-per-env-step per iteration (same proxy as
+    the A2C demo, so the two are directly comparable)."""
+    spec = spec or default_env_spec()
+    bank = build_region_bank(seeds, spec)
+    rollout = jax.jit(make_ppo_rollout(bank, spec.env))
+
+    @jax.jit
+    def update(
+        params: Params, opt: _AdamState, flat: Array, actions: Array, logp_old: Array,
+        adv: Array, returns: Array,
+    ) -> tuple[Params, _AdamState]:
+        grads = jax.grad(ppo_loss)(
+            params, flat, actions, logp_old, adv, returns,
+            config.clip, config.ent_coef, config.vf_coef,
+        )
+        return _adam_step(params, grads, opt, config.lr)
+
+    key = random.PRNGKey(seed)
+    key, pk = random.split(key)
+    params = init_params(pk, _obs_dim(spec, seeds[0]), config.hidden)
+    opt = _adam_init(params)
+    state = bank
+
+    n = config.rollout_len * config.batch
+    mb = n // config.num_minibatches
+    curve: list[float] = []
+
+    # warm-up compile (excluded from timing)
+    key, rk = random.split(key)
+    state, traj, last_value = rollout(params, state, random.split(rk, config.rollout_len))
+    jax.block_until_ready(traj[0])
+
+    start = time.perf_counter()
+    for _ in range(config.iters):
+        key, rk = random.split(key)
+        state, traj, last_value = rollout(
+            params, state, random.split(rk, config.rollout_len)
+        )
+        flat, actions, logp_old, values, rewards, dones = traj
+        adv, returns = gae(rewards, values, dones, last_value, config.gamma,
+                           config.gae_lambda)
+        # flatten (T, B, ...) → (T*B, ...) for minibatching
+        fb = flat.reshape((n, -1))
+        ab, lb = actions.reshape((n,)), logp_old.reshape((n,))
+        advb, retb = adv.reshape((n,)), returns.reshape((n,))
+        for _e in range(config.epochs):
+            key, sk = random.split(key)
+            perm = random.permutation(sk, n)
+            for i in range(config.num_minibatches):
+                idx = perm[i * mb:(i + 1) * mb]
+                params, opt = update(
+                    params, opt, fb[idx], ab[idx], lb[idx], advb[idx], retb[idx]
+                )
+        curve.append(float(rewards.mean()))
+    jax.block_until_ready(params["w1"])
+    wall = time.perf_counter() - start
+
+    total = config.iters * config.rollout_len * config.batch
+    return TrainResult(
+        params=params, curve=tuple(curve), total_env_steps=total,
+        wall_time_s=wall, env_steps_per_s=total / wall,
+    )
+
+
+def evaluate_gym_clears(
+    params: Params, seeds: tuple[int, ...], *, steps: int = _MAX_STEPS,
+    spec: EnvSpec | None = None,
+) -> float:
+    """Mean gym-clear count of the greedy policy over ``seeds`` (no reset).
+
+    Reads ``gyms_defeated`` at the final step — monotonic within an episode and stable
+    after termination (a defeated gym can't be re-entered), so this is the episode's
+    gym-clear count. Matches the metric of the scripted oracle arms
+    (``learnability.measure_learnability`` gym-clear means), enabling an honest
+    PPO-vs-oracle *headroom* comparison on the same yardstick."""
+    spec = spec or default_env_spec()
+    bank = build_region_bank(seeds, spec)
+    venc = jax.vmap(spec.env.encode_obs)
+    vflat = jax.vmap(flatten_obs)
+    vstep = jax.vmap(spec.env.step)
+
+    def step(
+        carry: JaxEnvState, _: Array
+    ) -> tuple[JaxEnvState, None]:
+        logits, _v = apply_policy(params, vflat(venc(carry)))
+        actions = jnp.argmax(logits, axis=-1)
+        nstate, _o, _r, _t, _tr = vstep(carry, actions)
+        return nstate, None
+
+    @jax.jit
+    def run(state: JaxEnvState) -> Array:
+        final, _ = jax.lax.scan(step, state, jnp.arange(steps))
+        return jax.vmap(spec.env.encode_obs)(final)["gyms_defeated"][:, 0]
+
+    return float(run(bank).mean())
+
+
 def learning_verdict(curve: tuple[float, ...]) -> tuple[str, float, float]:
     """Pre-registered R1 decision rule (frozen before data) → branch + (rise, std_late).
 
