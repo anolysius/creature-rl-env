@@ -28,6 +28,7 @@ import numpy as np
 
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.generalization import split_train_pool
+from critter_gym.headroom import classify_headroom
 from critter_gym.learnability import reference_arm, run_episode
 from critter_gym.region import heldout_seeds
 
@@ -97,8 +98,14 @@ def _run_config(name: str, *, batch: int, n_eval: int, iters: int, runs: int) ->
     headroom = oracle_gc - p_out
     r1_branch = "a" if float(np.mean(rises)) > 0 else "b"
     r2 = "PPO>=A2C" if p_ret >= a_ret else "PPO<A2C (no-improve)"
-    r3 = ("hard-and-learnable" if p_out <= HEADROOM_FRAC * oracle_gc
-          else "PPO nearly closes (reframe)")
+    # R3 — robust across runs when runs>1 (pre-registered classifier, frac=0.75, k=1.0);
+    # single-run falls back to the point comparison.
+    if runs > 1:
+        hv = classify_headroom(ppo_out_gc, oracle_gc, frac=HEADROOM_FRAC, k=1.0)
+        r3 = f"{hv.verdict} (robust, mean±std {hv.ppo_mean:.2f}±{hv.ppo_std:.2f})"
+    else:
+        r3 = ("hard-and-learnable" if p_out <= HEADROOM_FRAC * oracle_gc
+              else "PPO nearly closes (reframe)")
 
     pm = (lambda xs: f"{np.mean(xs):.2f}±{np.std(xs):.2f}") if runs > 1 else (
         lambda xs: f"{np.mean(xs):.2f}")
