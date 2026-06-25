@@ -90,6 +90,26 @@ def difficulty_env_spec(
     )
 
 
+def hard_env_spec(
+    *, grid: int = 16, num_gyms: int = 5, num_types: int = 8, max_creatures: int = 6,
+    max_steps: int = 420, patch_radius: int = 2,
+) -> EnvSpec:
+    """The deep **memory-headroom** config (hard-benchmark/memory-headroom): a bigger map +
+    longer horizon under the *same* 5×5 egocentric view (grid 16, 5 gyms, 420 steps,
+    patch_radius 2) — so partial observability demands much more memory than the grid-10
+    sweet spot. Same machinery as :func:`difficulty_env_spec` (config-driven, no re-port);
+    boss stats are the defaults (matching `CritterEnv`), only map/horizon/gym-count scale.
+    `min_gyms == num_gyms` fixes the count so the score range is stable under ``vmap``.
+    Parity vs `CritterEnv(**same)` is gated by ``tests/test_jax_hard_config_parity.py``."""
+    cfg = JaxEnvConfig(grid=grid, patch_radius=patch_radius, max_steps=max_steps,
+                       max_gyms=num_gyms)
+    return EnvSpec(
+        make_jax_env(cfg),
+        lambda s: generate_region(s, grid, max_creatures, num_gyms, vary=True,
+                                  num_types=num_types, min_gyms=num_gyms),
+    )
+
+
 class TrainConfig(NamedTuple):
     """Hyperparameters for the A2C demo (small by design — visible learning in seconds)."""
 

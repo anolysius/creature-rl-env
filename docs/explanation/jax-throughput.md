@@ -277,6 +277,33 @@ stages** rather than porting everything at once.
 > oracle 2.81; this uses Q1's vary'd 1–3-gym `default`, oracle 1.94) so read the within-config
 > ff-vs-rec gap, not the cross-config absolute numbers.*
 
+> **Update (memory-headroom): the env is hard *even for the strongest agent we have* — a deeper
+> config keeps recurrent PPO at <½ of oracle.** #1/#2 showed memory recovers *part* of the
+> headroom (recurrent PPO ~53% of oracle at the grid-10 sweet spot — that config is *half-solved*
+> by a memory agent). The open question for "a hard benchmark" was whether the env is hard not
+> just for memoryless agents but for a **memory** agent too. So we went deeper — a bigger map +
+> longer horizon under the *same* 5×5 egocentric view (`hard_env_spec`: grid 16, 5 gyms, 420
+> steps) — and measured the strongest agent we have (recurrent PPO) against the scripted oracle.
+> The deeper config is a new env *shape*, so its **numpy↔JAX parity was re-established first**
+> (`tests/test_jax_hard_config_parity.py`, 0 mismatch on every obs key + reward + term + trunc,
+> random + gym-clearing policies, train & held-out seeds) — the oracle (numpy) and the learned
+> agent (JAX) are byte-identical envs, so the headroom is a real comparison. **Pre-registered
+> rule** (frozen before data): `classify_headroom(frac=0.75, k=1.0)` on the recurrent PPO's
+> held-out gym-clears. **Measured (CPU, 5 runs, 300 iters):** oracle 4.69 (winnable), feedforward
+> PPO 0.53±0.44 (**11%**), recurrent PPO 2.01±1.05 (**43%**) — optimistic bound (mean+std) 3.06
+> **well below** 0.75·oracle (3.52) → **(a) hard-for-memory-agent, robust** (the pre-registered
+> "memory-CLOSES (reframe)" branch did *not* fire). So going deeper makes the env **harder for the
+> memory agent too**: recurrent PPO recovers a *smaller* share than at grid 10 (43% < 53%) and the
+> **absolute** headroom is far larger (it misses ~2.7 of 4.69 gyms vs ~0.9 of 1.94), while the
+> memoryless feedforward PPO floors harder (11%). Memory is still load-bearing (rec−ff +1.49, ~4×
+> the feedforward), but is now far from solving the task. So CritterGym is not toy for a strong
+> *memory* agent — there is a deep, parity-proven config with large oracle headroom that a
+> recurrent PPO does not close. *Honest boundary: the "strong agent" is a recurrent PPO (a real
+> baseline, not SOTA — a bigger model / better algorithm / more tuning could still climb); CPU; 5
+> runs with **high seed variance** (std 1.05 — some seeds learn the long-horizon task much better
+> than others); ONE deep config (grid 16); the oracle is a scripted ceiling proxy; the recurrent
+> net is deliberately *narrower* (h128<h256) so the gain is memory not capacity.*
+
 > **Update (jax-family-integration): two more families (forage, muster) vectorize too —
 > family breadth on one JAX engine.** The port had only family A (`critter`); `make_jax_env(JaxEnvConfig(
 > family=…))` now also mirrors **forage** (B — contact-collect: stepping onto a creature collects it,
