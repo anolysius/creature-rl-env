@@ -16,15 +16,18 @@ factory's closures (not a traced argument). The module-level `jax_env_step` / `j
 boss 120/12/12) — preserved so existing imports, parity tests and the benchmark are
 unchanged.
 
-**Scope:** family A (`critter`), either battle economy via `JaxEnvConfig.commit`. The step
-dispatches by mode (`jax.lax.cond`): the overworld branch moves / catches / enters a gym
-battle (heals the party, and in commit mode opens the champion-select commit window). The
-battle branch is `commit`-selected (a compile-time constant): **commit** cycles the champion
-during the commit window then resolves one commit-mode turn; **non-commit** (mirrors
-`CritterEnv(commit_battles=False)`, the env's default — `jax-noncommit-env-integration`)
-resolves one full-battle turn (SWITCH / speed-ordered moves / force-switch / party-wipe). On
-a win the active marks the gym defeated, levels up and conditionally evolves. Termination =
-all (real) gyms defeated; truncation = `max_steps`.
+**Scope:** all four families via `JaxEnvConfig.family` — critter (A), forage (B), muster (D),
+and **duel (C)** — and either battle economy via `JaxEnvConfig.commit`. The step dispatches by
+mode (`jax.lax.cond`): the overworld branch moves / catches (family-specific collection) /
+enters a gym battle (heals the party, and in commit mode opens the champion-select commit
+window). The battle branch is selected by `family`/`commit` (compile-time constants):
+**duel** resolves one type-agnostic RPS/stamina turn (ATTACK/CHARGE/GUARD, simultaneous
+damage, charge accumulation, 40-turn stalemate cap — see `duel_battle_branch`); else
+**commit** cycles the champion during the commit window then resolves one commit-mode turn;
+**non-commit** (mirrors `CritterEnv(commit_battles=False)`, the env's default —
+`jax-noncommit-env-integration`) resolves one full-battle turn (SWITCH / speed-ordered moves /
+force-switch / party-wipe). On a win the active marks the gym defeated, levels up and
+conditionally evolves. Termination = all (real) gyms defeated; truncation = `max_steps`.
 
 **Parity contract:** for the same seed + same action sequence, this reproduces
 `CritterEnv(commit_battles=True)` exactly — every observation key (incl. the egocentric
@@ -53,11 +56,16 @@ _CATCH = 4  # action enum: MOVE_N/S/E/W=0-3, CATCH=4, NOOP=5
 _PATCH_CREATURE, _PATCH_GYM = 1, 2
 _MODE_OVERWORLD, _MODE_BATTLE = 0, 1
 
-# family enum (jax-family-integration): 0 critter (action-collect), 1 forage
-# (contact-collect), 2 muster (action-collect + caught buffs party attack). duel (C) is a
-# distinct RPS battle engine — a separate port, not here.
-_FAM_CRITTER, _FAM_FORAGE, _FAM_MUSTER = 0, 1, 2
+# family enum: 0 critter (action-collect), 1 forage (contact-collect), 2 muster
+# (action-collect + caught buffs party attack), 3 duel (jax-duel-integration — type-agnostic
+# RPS/stamina battle; overworld reuses critter CATCH-collect).
+_FAM_CRITTER, _FAM_FORAGE, _FAM_MUSTER, _FAM_DUEL = 0, 1, 2, 3
 _MUSTER_ATK = 12.0  # muster_env.MUSTER_ATK — attack added to every party member per catch
+
+# duel (C) battle constants (mirror duel_env.py).
+_DUEL_ATTACK, _DUEL_CHARGE, _DUEL_GUARD = 0, 1, 2
+_DUEL_MAX_CHARGE = 2  # duel_env.MAX_CHARGE
+_DUEL_TURN_CAP = 40  # duel_env._DUEL_TURN_CAP — a stalled duel (mutual guard/charge) = loss
 
 _TYPES = list(ElementType)
 _NUM_TYPES = len(_TYPES)
@@ -150,6 +158,8 @@ class JaxEnvState(NamedTuple):
     items: jax.Array  # () int32 — potion stock (non-commit; dead in commit mode)
     battle_turn: jax.Array  # () int32 — turns in the current battle (non-commit trunc cap)
     party_atk_boost: jax.Array  # (PARTY,) float32 — muster attack buff (catch +12; evolve resets)
+    player_charge: jax.Array  # () int32 — duel: player charge 0..MAX (always 0 on non-duel)
+    enemy_charge: jax.Array  # () int32 — duel: boss charge 0..MAX (always 0 on non-duel)
 
 
 def _eff_matrix(chart: TypeChart) -> jax.Array:
@@ -232,6 +242,8 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             items=jnp.asarray(0, dtype=jnp.int32),
             battle_turn=jnp.asarray(0, dtype=jnp.int32),
             party_atk_boost=jnp.zeros((_PARTY,), dtype=jnp.float32),
+            player_charge=jnp.asarray(0, dtype=jnp.int32),
+            enemy_charge=jnp.asarray(0, dtype=jnp.int32),
         )
 
     def overworld_branch(s: JaxEnvState, action: jax.Array) -> tuple[JaxEnvState, jax.Array]:
@@ -293,6 +305,9 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             # non-commit battle bookkeeping (reset on entry; dead in commit mode).
             items=jnp.where(on_gym, jnp.int32(potions), s.items),
             battle_turn=jnp.where(on_gym, jnp.int32(0), s.battle_turn),
+            # duel: charges reset on battle entry (dead for non-duel families = stay 0).
+            player_charge=jnp.where(on_gym, jnp.int32(0), s.player_charge),
+            enemy_charge=jnp.where(on_gym, jnp.int32(0), s.enemy_charge),
         )
         return s, reward
 
@@ -477,6 +492,103 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
         )
         return s, reward
 
+    def duel_battle_branch(
+        s: JaxEnvState, action: jax.Array
+    ) -> tuple[JaxEnvState, jax.Array]:
+        """One duel (family C) battle turn, mirroring ``DuelEnv._step_battle``.
+
+        Type-AGNOSTIC RPS/stamina (no type chart, no defense): ``0=ATTACK / 1=CHARGE /
+        2=GUARD`` (any other action → GUARD). The single active is ``party[0]`` (no
+        switching). The boss is deterministic (``_enemy_duel_action``): ATTACK if its
+        charge ≥ 1 else CHARGE — it never GUARDs. Resolution applies **both** damages
+        *simultaneously* every turn (numpy calls ``take_damage`` on both unconditionally —
+        there is NO speed order and no faint-skip, unlike the type-matchup battle): ATTACK
+        deals ``floor(attack × (1 + charge))`` (0 if the opponent GUARDs), then resets that
+        side's charge; CHARGE bumps charge (≤ MAX); GUARD does nothing. The damage is raw
+        stat-based — distinct from the min-1-clamped, type/defense-scaled :func:`_damage`.
+        Terminal = boss faint ∨ active faint ∨ ``battle_turn ≥ _DUEL_TURN_CAP`` (a stall =
+        loss). ``battle_turn`` (reset to 0 on entry) is the duel turn counter — the
+        non-commit branch is never reached for a duel config, so it is exclusively the duel
+        turn. On a win (boss fainted & active alive) the active clears the gym, levels up
+        and conditionally evolves — identical economy to the ``fight`` path.
+        """
+        turn = s.battle_turn + jnp.int32(1)
+        act = s.active  # always 0 in a duel (no switching)
+        p_act = jnp.where(action <= _DUEL_GUARD, action, jnp.int32(_DUEL_GUARD))
+        # boss: ATTACK if charged, else CHARGE (never GUARD).
+        e_act = jnp.where(
+            s.enemy_charge >= 1, jnp.int32(_DUEL_ATTACK), jnp.int32(_DUEL_CHARGE)
+        )
+
+        p_atk = _stat(s, act, 1)  # creature attack (evolved-aware); no muster buff in duel
+        p_is_attack = p_act == _DUEL_ATTACK
+        p_is_charge = p_act == _DUEL_CHARGE
+        p_is_guard = p_act == _DUEL_GUARD
+        e_is_attack = e_act == _DUEL_ATTACK
+
+        # player → boss: ATTACK only (boss never GUARDs, so no negation term needed).
+        p_dmg = jnp.where(
+            p_is_attack,
+            jnp.floor(p_atk * (1.0 + s.player_charge.astype(jnp.float32))),
+            0.0,
+        )
+        # boss → player: ATTACK, negated if the player GUARDs.
+        e_dmg = jnp.where(
+            e_is_attack & (~p_is_guard),
+            jnp.floor(jnp.float32(boss_atk_f) * (1.0 + s.enemy_charge.astype(jnp.float32))),
+            0.0,
+        )
+        # charge updates: ATTACK → 0, CHARGE → min(MAX, +1), GUARD → unchanged.
+        new_pcharge = jnp.where(
+            p_is_attack,
+            0,
+            jnp.where(
+                p_is_charge,
+                jnp.minimum(_DUEL_MAX_CHARGE, s.player_charge + 1),
+                s.player_charge,
+            ),
+        ).astype(jnp.int32)
+        new_echarge = jnp.where(
+            e_is_attack,
+            0,
+            jnp.minimum(_DUEL_MAX_CHARGE, s.enemy_charge + 1),  # boss only ATTACK/CHARGE
+        ).astype(jnp.int32)
+
+        # simultaneous damage (numpy: max(0, hp - max(0, dmg)) on both, unconditionally).
+        ch = s.party_hp[act]
+        nb = jnp.maximum(0.0, s.boss_hp - jnp.maximum(0.0, p_dmg))
+        nc = jnp.maximum(0.0, ch - jnp.maximum(0.0, e_dmg))
+
+        boss_fainted = nb <= 0
+        player_fainted = nc <= 0
+        win = boss_fainted & (~player_fainted)
+        faint_done = boss_fainted | player_fainted
+        trunc_battle = (~faint_done) & (turn >= _DUEL_TURN_CAP)
+        battle_done = faint_done | trunc_battle
+
+        gym = s.battle_gym
+        new_level = s.party_level[act] + jnp.where(win, 1, 0)
+        can_evolve = win & (~s.party_evolved[act]) & (new_level >= 2)
+        reward = jnp.where(win, 1.0, 0.0) + jnp.where(can_evolve, 1.0, 0.0)
+        s = s._replace(
+            party_hp=s.party_hp.at[act].set(nc),
+            boss_hp=nb,
+            battle_turn=turn,
+            gym_defeated=s.gym_defeated.at[gym].set(
+                jnp.where(win, True, s.gym_defeated[gym])
+            ),
+            party_level=s.party_level.at[act].set(new_level),
+            party_evolved=s.party_evolved.at[act].set(
+                jnp.where(can_evolve, True, s.party_evolved[act])
+            ),
+            evolved=s.evolved + can_evolve.astype(jnp.int32),
+            mode=jnp.where(battle_done, _MODE_OVERWORLD, _MODE_BATTLE).astype(jnp.int32),
+            # numpy resets both charges to 0 when the duel ends.
+            player_charge=jnp.where(battle_done, jnp.int32(0), new_pcharge),
+            enemy_charge=jnp.where(battle_done, jnp.int32(0), new_echarge),
+        )
+        return s, reward
+
     def encode_obs(state: JaxEnvState) -> dict[str, jax.Array]:
         gridv = state.creature_mask.astype(jnp.int8) * _PATCH_CREATURE
         for i in range(max_gyms):
@@ -513,8 +625,18 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             "player_level": p_lvl[jnp.newaxis],
             "enemy_hp": e_hp[jnp.newaxis],
             "enemy_type": e_ty[jnp.newaxis],
-            "player_charge": jnp.zeros((1,), dtype=jnp.int32),
-            "enemy_charge": jnp.zeros((1,), dtype=jnp.int32),
+            # duel exposes real charge state (playable from obs); non-duel families keep
+            # the harmonized charge keys 0-masked (byte-identical to the prior behavior).
+            "player_charge": (
+                state.player_charge[jnp.newaxis]
+                if family == _FAM_DUEL
+                else jnp.zeros((1,), dtype=jnp.int32)
+            ),
+            "enemy_charge": (
+                state.enemy_charge[jnp.newaxis]
+                if family == _FAM_DUEL
+                else jnp.zeros((1,), dtype=jnp.int32)
+            ),
         }
 
     def step(
@@ -527,7 +649,9 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             return overworld_branch(s, action)
 
         def bt(s: JaxEnvState) -> tuple[JaxEnvState, jax.Array]:
-            # commit is a compile-time constant → picks the battle economy statically.
+            # family / commit are compile-time constants → pick the battle economy statically.
+            if family == _FAM_DUEL:
+                return duel_battle_branch(s, action)
             return battle_branch(s, action) if commit else noncommit_battle_branch(s, action)
 
         state, reward = jax.lax.cond(state.mode == _MODE_OVERWORLD, ow, bt, state)

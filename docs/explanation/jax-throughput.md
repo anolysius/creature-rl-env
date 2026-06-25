@@ -213,6 +213,33 @@ stages** rather than porting everything at once.
 > RPS/stamina battle engine and a separate port** (an explicit follow-up, like `jax_battle` was). *Honest
 > boundary: family A/B/D, non-commit, CPU, vmap-only; duel and GPU remain future work.*
 
+> **Update (jax-duel-integration): the fourth family (duel) vectorizes too — all 4/4 families now
+> run on one JAX engine.** duel (C) is the structurally *distinct* family: a **type-agnostic
+> RPS/stamina battle** (no type chart at all), so it needed a separate battle branch rather than
+> a reuse of the type-matchup port. `make_jax_env(JaxEnvConfig(family=duel, commit=False))` mirrors
+> `DuelEnv(commit_battles=False)`: `0=ATTACK / 1=CHARGE / 2=GUARD` against a deterministic boss (ATTACK
+> if its charge ≥ 1 else CHARGE, never GUARD), with three duel-specific subtleties the type-matchup
+> branch does **not** have — (1) **simultaneous damage** (numpy applies both `take_damage` calls every
+> turn with *no* speed order and no faint-skip, so a turn can faint *both* combatants → a loss, not a
+> win), (2) **raw stat damage** `floor(attack × (1 + charge))` with no defense / type-effectiveness /
+> min-1 clamp (a distinct formula from `_damage`), and (3) the duel-only **`player_charge` / `enemy_charge`
+> obs** which are non-zero only here (the other families keep them 0-masked → `encode_obs` is family-aware,
+> non-duel byte-identical). The overworld reuses the family-A CATCH-collect path (`DuelEnv` doesn't override
+> it). `battle_turn` (reset on entry) doubles as the duel turn counter against the 40-turn stalemate cap —
+> safe because the non-commit branch is never reached for a duel config. **Parity: 0 mismatch** vs the real
+> `DuelEnv(commit_battles=False)` on every obs key (incl. both charge keys) + reward + term + trunc, over
+> full episodes, fixed & per-seed charts, under five policies (random / gym-seeking / charge-exploit /
+> all-GUARD stalemate / a **scripted-optimal** policy that exploits the deterministic boss to win and
+> evolve), with a non-vacuity guard asserting the battery actually drives all three battle actions, a
+> turn-cap loss, **and** the win → evolve path (`tests/test_jax_duel_parity.py`, 19 tests). *The pre-freeze
+> pilot proved 0 mismatch over 19,200 compared steps and surfaced that an always-attack policy never wins
+> — the tanky boss out-trades a charge-0 attacker, so winning requires RPS play; the scripted-optimal
+> policy was added to exercise the win/evolve economy.* **Measured (CPU, single run, vmap-only):** numpy
+> ~123k steps/s · jax vmap **4.96M (b=1024) = 40× / 10.15M (b=16384) = 83×** — on par with the other
+> non-commit family rows. So **all four families (A critter / B forage / C duel / D muster) now vectorize
+> end-to-end on one JAX engine** = full family breadth. *Honest boundary: CPU, single run, vmap-only (a
+> single jitted env is slower); GPU (M4-EC3) remains the last open M4 item.*
+
 Why this is a *result* for a benchmark, not just plumbing: it converts "we *plan* to be fast" into
 "we have a parity-proven, vectorizable **full-episode env** (family A, **now config-driven**) an RL loop
 **actually trains on** — a JAX-native A2C learns the default world on CPU in seconds (~170× sb3) and the
