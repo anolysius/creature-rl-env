@@ -45,12 +45,12 @@ env step 이 Python dict(`self._creatures` 위치-키 set/dict, `self._gym_tiles
 
 | 5 | `jax-difficulty-report` (R5) | ✅ done (→ `_archive/2026-Q2/jax-throughput/05-jax-difficulty-report/`) | **jax_env config화** — `difficulty-dynamic-range`의 고-gym(8) 동적 범위를 JAX 벡터화로 재포트. `JaxEnvConfig`+`make_jax_env(cfg)` factory(static-shape 클로저); module-level fns=default-config 인스턴스로 **보존**(기존 import·parity·bench byte-identical). `jax_train` config-aware(`EnvSpec`/`difficulty_env_spec`, obs_dim 동적). **freeze 전 pilot**: 고-gym parity **0 mismatch**(grid6·8gym·patch11×11>grid·num_types12·boss150/16, obs 13키+reward+term+trunc, random+gym-clearing, fixed+held-out) + 기존 parity 3종 무회귀. 고-gym 학습 jit/vmap OK(곡선 상승) / **실측 ~196k env-steps/s vmap vs sb3 ~3.1k = ~63× FASTER**(고-gym 발산으로 default보다 배율↓, 정직). `jax_rl_demo --difficulty`. **정직 범위**: family A commit·고-gym 재포트지 scripted resolution arms(env peek)는 numpy 유지·GPU/tuned PPO 후속. 294→310(+16 importorskip parity, 회귀 0), mypy(26)/ruff/build clean. jax-throughput.md(R5)+DESIGN §4 갱신 |
 
-(이후 task 는 /task-start 로 append — 예정: `jax-battle-full`, `vectorized-bench`[GPU], 다른 family 통합, tuned PPO)
+| 6 | `jax-battle-full` | ✅ done (→ `_archive/2026-Q2/jax-throughput/06-jax-battle-full/`) | **non-commit full battle JAX 포트** — 핫패스 배틀 남은 절반. `jax_battle_full.py`(`FullBattleState`/`FullBattleParams`+`full_battle_step`: party P + SWITCH + ITEM(potion) + 기절 force-switch + party-wipe, branch-free·동적 party gather·argmax next-alive). **freeze 전 pilot parity 0 mismatch**: numpy `Battle(commit_mode=False)`(starter 3 vs boss 1) 대비 배터리(attack/switch/item-heal/force-switch/party-wipe/truncation)+random 40seed(fixed+vary), 매 턴 party_a_hp·active·boss_hp·winner·turn·done 일치. **실측**: numpy 96k/s · **jax vmap 43.5M/s(b=1024)=452×**(순수 산술). **한계효용 정직**: gym-boss 실경로는 commit(이미 포트)·non-commit full-env 통합은 별도 후속. standalone(jax_env 무변경). 310→328(+18 importorskip, 회귀 0), mypy(27)/ruff/build clean. jax-throughput.md(§5 #1)+DESIGN §4 갱신 |
+
+(이후 task 는 /task-start 로 append — 예정: `vectorized-bench`[GPU], 다른 family 통합, non-commit full-env 통합, tuned PPO)
 
 ## 다음 task
-**task 1·2·3·4·5 종결 — overworld + commit-battle + 통합 env + 실학습 데모 + config화(고-gym 재포트) 완료**
-(전부 parity 0). family A commit-mode 가 **RL 루프가 실제로 학습하는 config-driven 벡터화 surface** 로 입증·확장됨
-— 속도 실재(데모) + 고-gym 변별 config도 JAX 가속(~63×). M4-EC1/EC2 family-A 사실상 달성(GPU·다른 family·tuned PPO 만).
+**task 1·2·3·4·5·6 종결** — overworld + commit-battle + 통합 env + 실학습 데모 + config화(고-gym) + **non-commit full battle** 포트 완료(전부 parity 0). 배틀 엔진 두 경로(commit/non-commit) 모두 JAX 벡터화. M4-EC1/EC2 family-A 달성(GPU·다른 family·non-commit full-env 통합·tuned PPO 만).
 - **다음(택1)**:
   - **`vectorized-bench`** — M4-EC3(≥10M steps/s GPU) 측정. CPU vmap 은 슬라이스에서 이미 통과, full-env 는
     34–73×. GPU 환경 필요(현 .venv 는 CPU jax). EC 마무리.
