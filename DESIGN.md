@@ -158,16 +158,19 @@ stability).
 *Tuned-PPO headroom — the "hard" side, measured (jax-ppo-tuned).* The above used scripted arms and an A2C
 *lite*; a proper **PPO** baseline (GAE(λ) + clipped surrogate + minibatch epochs, on-device JAX) now
 quantifies how far a learned policy is from the scripted-oracle ceiling on **held-out** seeds, on the same
-gym-clear yardstick (`scripts/ppo_baseline.py`, pre-registered rules). Measured (CPU, single run, 200 iters):
-on the **default** commit world PPO clears **0.59 of oracle's 1.84 gyms (32%)**; on the **hard** 8-gym config
-**1.06 of 7.28 (15%)** — with held-in≈held-out (gap≈0, generalizes) and PPO ≥ the A2C-lite at equal budget
-(on the hard config A2C nearly collapses). So the env is **hard-and-learnable**: a tuned baseline learns and
-generalizes but reaches only 15–32% of the oracle, and on the hard config even sits *below* the non-reasoning
-`type_blind` arm (PPO 1.06 < 2.03) — a clear capability ladder (oracle 7.28 ≫ type_blind 2.03 > PPO 1.06) the
-baseline can't climb. This is a *measured* large headroom (the "hard" side the rigor thread left open), with
-honest caveats: single run, a small MLP, CPU, 200 iters (more compute/tuning would raise PPO — headroom is at
-*this* budget), and the oracle is a scripted ceiling proxy. Multi-run rigor and stronger baselines are future
-work; the result is a baseline + a direction, not a closed claim.
+gym-clear yardstick (`scripts/ppo_baseline.py`, pre-registered rules). Measured (CPU, **5 runs**, 200 iters; `ppo-headroom-rigor`
+hardened the single-run read with a pre-registered classifier frozen before the data — frac=0.75, k=1.0):
+on the **default** commit world PPO clears **0.52 ± 0.06 of oracle's 1.84 gyms (28%)**; on the **hard** 8-gym
+config **1.52 ± 0.28 of 7.28 (21%)** — with held-in≈held-out (gap≈0, generalizes) and PPO ≥ the A2C-lite at
+equal budget (on the hard config A2C nearly collapses). The classifier finds the *optimistic* PPO bound
+(mean+std = 0.58 / 1.80) still far below 0.75·oracle (1.38 / 5.46) on **both** configs → **`hard-and-learnable`,
+robust across seeds** (not a lucky run). So the env is hard-and-learnable: a tuned baseline learns and
+generalizes but reaches only **21–28% of the oracle**, and on the hard config even sits *below* the
+non-reasoning `type_blind` arm (PPO 1.52 < 2.03) — a clear capability ladder (oracle 7.28 ≫ type_blind 2.03 >
+PPO 1.52) the baseline can't climb. This is a *measured, multi-run-robust* large headroom (the "hard" side the
+rigor thread left open), with honest caveats: a small MLP, CPU, 200 iters (more compute/tuning would raise PPO
+— headroom is at *this* budget), the oracle is a scripted ceiling proxy, and robustness is 5 runs (not a large
+sweep). Stronger baselines remain future work; the result is a baseline + a direction, not a closed claim.
 
 *Discrimination resolution (difficulty-dynamic-range).* The first attempt at the *hard* side — diversifying the
 starter party to "raise the oracle ceiling" — was **falsified by its pre-freeze pilot**, a useful negative
