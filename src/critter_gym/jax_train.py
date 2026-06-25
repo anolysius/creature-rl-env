@@ -624,3 +624,205 @@ def evaluate(
         return ret
 
     return float(run(init).mean())
+
+
+# =====================================================================================
+# Recurrent (GRU) A2C — hard-benchmark/recurrent-baseline.
+#
+# Under partial observability (a small egocentric view on a larger map) a *memoryless*
+# feedforward policy floors, while a recurrent one that remembers what it has seen does
+# far better — i.e. memory is *load-bearing*. This module adds a GRU actor-critic that
+# mirrors the feedforward A2C (`train`) but carries a hidden state through the rollout
+# `lax.scan` (reset per-env on `done`); the loss replays the same hidden sequence over the
+# in-order `(T, B)` trajectory (A2C uses the whole rollout — no minibatch shuffle — so the
+# replay is exact). The feedforward path (`init_params`/`apply_policy`/`train`/`train_ppo`/
+# `evaluate_gym_clears`) is untouched. PPO + recurrence (sequence-preserving minibatching)
+# is a separate follow-up.
+# =====================================================================================
+
+
+def gru_init_params(key: Array, obs_dim: int = OBS_DIM, hidden: int = 128) -> Params:
+    """A GRU cell (update/reset/candidate gates) + policy/value heads → a flat param dict."""
+    ks = random.split(key, 8)
+    s = 0.1
+    return {
+        "Wz": random.normal(ks[0], (obs_dim, hidden)) * s,
+        "Uz": random.normal(ks[1], (hidden, hidden)) * s, "bz": jnp.zeros((hidden,)),
+        "Wr": random.normal(ks[2], (obs_dim, hidden)) * s,
+        "Ur": random.normal(ks[3], (hidden, hidden)) * s, "br": jnp.zeros((hidden,)),
+        "Wn": random.normal(ks[4], (obs_dim, hidden)) * s,
+        "Un": random.normal(ks[5], (hidden, hidden)) * s, "bn": jnp.zeros((hidden,)),
+        "wpi": random.normal(ks[6], (hidden, N_ACTIONS)) * s, "bpi": jnp.zeros((N_ACTIONS,)),
+        "wv": random.normal(ks[7], (hidden, 1)) * s, "bv": jnp.zeros((1,)),
+    }
+
+
+def gru_hidden_size(params: Params) -> int:
+    """The GRU hidden width (from the policy head), so callers can size the initial state."""
+    return int(params["wpi"].shape[0])
+
+
+def gru_step(params: Params, x: Array, h: Array) -> Array:
+    """One GRU update: ``(x (..., obs_dim), h (..., hidden)) -> h' (..., hidden)``."""
+    z = jax.nn.sigmoid(x @ params["Wz"] + h @ params["Uz"] + params["bz"])
+    r = jax.nn.sigmoid(x @ params["Wr"] + h @ params["Ur"] + params["br"])
+    n = jnp.tanh(x @ params["Wn"] + r * (h @ params["Un"]) + params["bn"])
+    return (1.0 - z) * n + z * h
+
+
+def recurrent_policy_value(params: Params, h: Array) -> tuple[Array, Array]:
+    """GRU hidden ``h`` → (policy logits, value)."""
+    logits = h @ params["wpi"] + params["bpi"]
+    value = (h @ params["wv"] + params["bv"])[..., 0]
+    return logits, value
+
+
+_RecTraj = tuple[Array, Array, Array, Array]
+_RecRollout = Callable[[Params, JaxEnvState, Array, Array], tuple[JaxEnvState, Array, _RecTraj]]
+
+
+def make_recurrent_rollout(init_state: JaxEnvState, env: JaxEnv) -> _RecRollout:
+    """Build a jittable ``(params, state, h, keys) -> (state, h, traj)`` GRU A2C rollout.
+
+    Carries the per-env hidden state ``h`` (reset to 0 where an env auto-resets on ``done``)
+    alongside the env state. ``traj`` = (flat_obs, actions, rewards, dones), leading-dim
+    ``rollout_len`` — same shape the feedforward rollout returns, so ``_returns`` reuses."""
+    venc = jax.vmap(env.encode_obs)
+    vflat = jax.vmap(flatten_obs)
+    vstep = jax.vmap(env.step)
+
+    def scan_step(
+        carry: tuple[JaxEnvState, Params, Array], key: Array
+    ) -> tuple[tuple[JaxEnvState, Params, Array], _RecTraj]:
+        state, params, h = carry
+        flat = vflat(venc(state))
+        h2 = gru_step(params, flat, h)
+        logits, _ = recurrent_policy_value(params, h2)
+        actions = random.categorical(key, logits)
+        nstate, _o, reward, term, trunc = vstep(state, actions)
+        done = term | trunc
+        nstate = jax.tree_util.tree_map(
+            lambda fresh, cur: _reset_where(done, fresh, cur), init_state, nstate
+        )
+        h_next = jnp.where(done[:, None], 0.0, h2)
+        return (nstate, params, h_next), (flat, actions, reward, done)
+
+    def rollout(
+        params: Params, state: JaxEnvState, h: Array, keys: Array
+    ) -> tuple[JaxEnvState, Array, _RecTraj]:
+        (state, _, h), traj = jax.lax.scan(scan_step, (state, params, h), keys)
+        return state, h, traj
+
+    return rollout
+
+
+def recurrent_a2c_loss(
+    params: Params, flat: Array, actions: Array, rewards: Array, dones: Array,
+    h0: Array, gamma: float, ent_coef: float, vf_coef: float,
+) -> Array:
+    """A2C loss for the GRU policy: replays the hidden sequence over the in-order ``(T, B)``
+    trajectory from ``h0`` (resetting on ``done``) so the logits/values match the rollout's,
+    then policy-gradient + value MSE − entropy (same form as ``a2c_loss``)."""
+    def step(h: Array, x: tuple[Array, Array]) -> tuple[Array, tuple[Array, Array]]:
+        flat_t, done_t = x
+        h2 = gru_step(params, flat_t, h)
+        logits, value = recurrent_policy_value(params, h2)
+        return jnp.where(done_t[:, None], 0.0, h2), (logits, value)
+
+    _, (logits, values) = jax.lax.scan(step, h0, (flat, dones))
+    logp_all = jax.nn.log_softmax(logits)
+    logp = jnp.take_along_axis(logp_all, actions[..., None], axis=-1)[..., 0]
+    returns = _returns(rewards, dones, gamma)
+    adv = returns - values
+    pg = -(logp * jax.lax.stop_gradient(adv)).mean()
+    vl = 0.5 * (adv ** 2).mean()
+    entropy = -(jnp.exp(logp_all) * logp_all).sum(-1).mean()
+    return pg + vf_coef * vl - ent_coef * entropy
+
+
+def train_recurrent(
+    seeds: tuple[int, ...], config: TrainConfig = _DEFAULT_CONFIG, *, seed: int = 0,
+    spec: EnvSpec | None = None,
+) -> TrainResult:
+    """Train the GRU A2C on a region bank of ``seeds`` (mirrors :func:`train`, recurrent).
+
+    The hidden state threads across rollout windows (truncated BPTT within each window) and
+    resets per-env on ``done``. ``config.hidden`` sets the GRU width. Returns the same
+    :class:`TrainResult` (params + honest measurements) as the feedforward ``train``."""
+    spec = spec or default_env_spec()
+    bank = build_region_bank(seeds, spec)
+    rollout = jax.jit(make_recurrent_rollout(bank, spec.env))
+
+    def grad_fn(p: Params, flat: Array, a: Array, r: Array, d: Array, h0: Array) -> Params:
+        return jax.grad(recurrent_a2c_loss)(
+            p, flat, a, r, d, h0, config.gamma, config.ent_coef, config.vf_coef
+        )
+
+    jgrad = jax.jit(grad_fn)
+
+    key = random.PRNGKey(seed)
+    key, pk = random.split(key)
+    params = gru_init_params(pk, _obs_dim(spec, seeds[0]), config.hidden)
+    opt = _adam_init(params)
+    state = bank
+    h = jnp.zeros((config.batch, config.hidden))
+
+    curve: list[float] = []
+    key, rk = random.split(key)  # warm-up compile (excluded from timing)
+    state, h, traj = rollout(params, state, h, random.split(rk, config.rollout_len))
+    jax.block_until_ready(traj[0])
+
+    start = time.perf_counter()
+    for _ in range(config.iters):
+        key, rk = random.split(key)
+        h0 = h
+        state, h, traj = rollout(params, state, h0, random.split(rk, config.rollout_len))
+        flat, actions, rewards, dones = traj
+        grads = jgrad(params, flat, actions, rewards, dones, h0)
+        params, opt = _adam_step(params, grads, opt, config.lr)
+        curve.append(float(rewards.mean()))
+    jax.block_until_ready(params["wpi"])
+    wall = time.perf_counter() - start
+
+    total = config.iters * config.rollout_len * config.batch
+    return TrainResult(
+        params=params, curve=tuple(curve), total_env_steps=total,
+        wall_time_s=wall, env_steps_per_s=(total / wall if wall > 0 else 0.0),
+    )
+
+
+def evaluate_gym_clears_recurrent(
+    params: Params, seeds: tuple[int, ...], *, steps: int = _MAX_STEPS,
+    spec: EnvSpec | None = None,
+) -> float:
+    """Mean gym-clear count of the greedy **GRU** policy over ``seeds``.
+
+    Identical eval protocol to :func:`evaluate_gym_clears` (argmax-greedy, no env reset,
+    reads ``gyms_defeated`` at the final step) — only the action selection is recurrent —
+    so feedforward and recurrent numbers are on the **same yardstick** (a matched
+    comparison). The hidden state resets per-env on ``done``."""
+    spec = spec or default_env_spec()
+    bank = build_region_bank(seeds, spec)
+    venc = jax.vmap(spec.env.encode_obs)
+    vflat = jax.vmap(flatten_obs)
+    vstep = jax.vmap(spec.env.step)
+    hidden = gru_hidden_size(params)
+
+    def step(
+        carry: tuple[JaxEnvState, Array], _: Array
+    ) -> tuple[tuple[JaxEnvState, Array], None]:
+        state, h = carry
+        h2 = gru_step(params, vflat(venc(state)), h)
+        logits, _v = recurrent_policy_value(params, h2)
+        actions = jnp.argmax(logits, axis=-1)
+        nstate, _o, _r, term, trunc = vstep(state, actions)
+        h_next = jnp.where((term | trunc)[:, None], 0.0, h2)
+        return (nstate, h_next), None
+
+    @jax.jit
+    def run(state: JaxEnvState) -> Array:
+        (final, _h), _ = jax.lax.scan(step, (state, jnp.zeros((len(seeds), hidden))),
+                                      jnp.arange(steps))
+        return jax.vmap(spec.env.encode_obs)(final)["gyms_defeated"][:, 0]
+
+    return float(run(bank).mean())
