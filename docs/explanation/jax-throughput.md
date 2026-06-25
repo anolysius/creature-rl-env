@@ -373,8 +373,21 @@ boundary (other families, full battle, GPU, tuned PPO, scripted-arm JAX-ificatio
    CPU in seconds (≈170× the existing numpy/sb3 path; learning curve rises, held-out gap ≈ 0).
    Remaining: families B/C/D, a thin Gymnasium `VectorEnv` adapter if an off-the-shelf loop needs the
    gym API, and a tuned PPO.
-3. **GPU throughput** (`vectorized-bench`) — measure M4-EC3's ≥10M steps/s on GPU (CPU vmap already
-   clears it on the slices, but the EC is stated for GPU).
+3. **GPU throughput** (`gpu-bench-colab`) — measure M4-EC3's ≥10M steps/s on GPU (CPU vmap already
+   clears it on the slices — `scripts/gpu_bench.py`'s *fused `lax.scan`* rollout hits ~480M steps/s
+   overworld / ~22M full-episode on CPU at batch 1024 — but the EC is stated for GPU).
+   **Local Apple-Silicon GPU is not a viable route (empirically settled, 2026-06-25).** On an
+   M5 Pro / macOS 26.5, `jax-metal` **0.1.0** (jax/jaxlib 0.4.26) and **0.1.1** (jax/jaxlib 0.4.34)
+   both initialize the `METAL` device and run simple ops (`vmap`+`scan`+`scatter`+`gather`+`where`)
+   correctly, **but both crash with an uncaught `NSException` in the Metal PJRT plugin on the fused
+   `lax.scan(vmap(env_step))` rollout** — exactly the pattern a GPU needs (and the RL loop uses); the
+   only thing that runs is the dispatch-bound per-step loop at ~23k steps/s (slower than CPU). This
+   is a jax-metal op-coverage limitation, **not** a bug in our (device-agnostic) code. So a credible
+   GPU number routes through a **cloud NVIDIA GPU**: `scripts/gpu_bench.py` (the fused-scan bench, CPU-
+   sanity-checked) + `scripts/colab_gpu_bench.ipynb` (a ready-to-run free-Colab/Kaggle-T4 notebook:
+   clone → `pip install "jax[cuda12]"` → run → paste the steps/s back). The measurement itself is a
+   **human gate** (a Google login / GPU runtime); the artifacts make it click-only. *Do not re-attempt
+   the local Metal path — it is settled non-viable here.*
 4. **Spec-stability watch** — if the (A) difficulty-scaling work changes env mechanics (starters,
    bosses, reward economy), the port needs updating. The foundation deliberately ports only the stable
    overworld core to minimize this, but the risk is non-zero (DESIGN §4 gates M4 on "spec stable").
