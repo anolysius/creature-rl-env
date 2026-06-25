@@ -245,6 +245,38 @@ stages** rather than porting everything at once.
 > obs config; the oracle is a scripted proxy. (A bigger-map grid-16 config was scouted but A2C
 > can't learn it at all — inconclusive there; grid-10/5×5 is the measurable sweet spot.)*
 
+> **Update (recurrent-ppo): the memory effect carries to the stronger PPO — recurrence helps
+> *PPO* too, cleanly at Q1's exact config.** The recurrent-baseline finding above was measured
+> inside *A2C*, but Q1's headroom was measured with the tuned **PPO** — so the clean connection
+> ("does recurrence close the *PPO* headroom?") was an explicit follow-up. The hard part is the
+> minibatch: feedforward PPO flattens `(T, B)` and shuffles **across time**, which would scramble
+> a hidden-state sequence. `train_recurrent_ppo` instead minibatches over the **env axis (B)
+> only** — each env's time sequence (T) stays intact — and the loss replays the GRU from a stored
+> per-env `h0` (reset on `done`) via `recurrent_replay`. **Correctness was proven *before*
+> trusting any number** (a broken recurrent PPO would yield a misleading "memory doesn't help"):
+> two deterministic gate tests assert (a) the loss's hidden replay reproduces the rollout's
+> `logp_old`/`values` to 1e-4 (so the clipped-surrogate `ratio` starts at 1, not silently ≠1),
+> and (b) the replay is **env-axis-permutation-invariant** (`replay(perm-ed) == replay(...)[:,
+> perm]`), i.e. the time axis is never shuffled — the sequence-preserving minibatch is exact. The
+> comparison runs at **Q1's exact `default` config** (the same `ppo_baseline.py --configs default`
+> partial-obs world: grid 10, 5×5 view, vary'd num_types 8, 1–3 gyms), feedforward PPO vs
+> recurrent GRU PPO on the same matched greedy eval. **Measured (CPU, 3 runs, 250 iters):**
+> feedforward PPO (h256) reaches **24% of the scripted oracle (0.46±0.08 / 1.94)** while recurrent
+> PPO (GRU **h128**) reaches **53% (1.02±0.19)** — a **robust** memory effect (+0.56 > max std
+> 0.19, pre-registered rule `rec−ff > max(std)`). As with A2C the recurrent net is *narrower*
+> (h128 < h256), so the gain is **memory, not capacity** (a non-vacuity guard: the wider net
+> floors). So the A2C result was **not an algorithm artifact** — the stronger PPO shows the same
+> picture (ff 18%→24%, rec 46%→53%; PPO lifts both, the memory gap persists). Recurrent PPO still
+> reaches only **53% < oracle**, so **meaningful headroom remains even for the memory agent under
+> PPO** — and it is far below `0.75·oracle`, so the pre-registered "headroom-CLOSES (reframe)"
+> branch did **not** fire: the large headline headroom stands, now qualified as *substantially a
+> memory limitation that recurrence partly (not fully) recovers, robustly across A2C and PPO*.
+> *Honest boundary: PPO (a real baseline, not SOTA), CPU, 3 runs, one partial-obs config (Q1's
+> `default`); the recurrent net is not param-matched (it is deliberately *narrower*); the oracle is
+> a scripted ceiling proxy; the A2C↔PPO comparison is across configs (#1 used a fixed-3-gym variant,
+> oracle 2.81; this uses Q1's vary'd 1–3-gym `default`, oracle 1.94) so read the within-config
+> ff-vs-rec gap, not the cross-config absolute numbers.*
+
 > **Update (jax-family-integration): two more families (forage, muster) vectorize too —
 > family breadth on one JAX engine.** The port had only family A (`critter`); `make_jax_env(JaxEnvConfig(
 > family=…))` now also mirrors **forage** (B — contact-collect: stepping onto a creature collects it,
