@@ -155,6 +155,20 @@ the *gap* side:** gap≈0 holds robustly at a capable skill level, but making th
 inference load) is the next lever, and it would touch env mechanics (hence a JAX re-port; M4 is gated on spec
 stability).
 
+*Tuned-PPO headroom — the "hard" side, measured (jax-ppo-tuned).* The above used scripted arms and an A2C
+*lite*; a proper **PPO** baseline (GAE(λ) + clipped surrogate + minibatch epochs, on-device JAX) now
+quantifies how far a learned policy is from the scripted-oracle ceiling on **held-out** seeds, on the same
+gym-clear yardstick (`scripts/ppo_baseline.py`, pre-registered rules). Measured (CPU, single run, 200 iters):
+on the **default** commit world PPO clears **0.59 of oracle's 1.84 gyms (32%)**; on the **hard** 8-gym config
+**1.06 of 7.28 (15%)** — with held-in≈held-out (gap≈0, generalizes) and PPO ≥ the A2C-lite at equal budget
+(on the hard config A2C nearly collapses). So the env is **hard-and-learnable**: a tuned baseline learns and
+generalizes but reaches only 15–32% of the oracle, and on the hard config even sits *below* the non-reasoning
+`type_blind` arm (PPO 1.06 < 2.03) — a clear capability ladder (oracle 7.28 ≫ type_blind 2.03 > PPO 1.06) the
+baseline can't climb. This is a *measured* large headroom (the "hard" side the rigor thread left open), with
+honest caveats: single run, a small MLP, CPU, 200 iters (more compute/tuning would raise PPO — headroom is at
+*this* budget), and the oracle is a scripted ceiling proxy. Multi-run rigor and stronger baselines are future
+work; the result is a baseline + a direction, not a closed claim.
+
 *Discrimination resolution (difficulty-dynamic-range).* The first attempt at the *hard* side — diversifying the
 starter party to "raise the oracle ceiling" — was **falsified by its pre-freeze pilot**, a useful negative
 result worth recording: (1) winnability was never the cap (the scripted **oracle already clears ~all gyms
