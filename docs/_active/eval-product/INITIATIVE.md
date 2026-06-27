@@ -31,7 +31,9 @@
 |---|---|---|---|
 | 1 | `sealed-eval-harness` | ✅ done (→ `_archive/2026-Q2/eval-product/01-sealed-eval-harness/`) | **봉인 held-out + agent 제출 → RLVR 검증 채점 프로토타입** — 신규 `critter_gym.eval_harness`(core·numpy): `SealedEvalSet`(secret master_seed→held-out 비공개 블록·재생성) + `verify_sealed`(오염 가드: train∩eval=∅ ∧ train<1M, leak 검출) + `score_agent`(verifiable subgoal-only 채점) + `Agent` Protocol. **demo**: oracle 1.88(100%)/type_blind 0.94(50%)/random 0.38(20%) of-oracle + leak 시도 overlap16 검출·거부 → **moat 메커니즘 end-to-end 입증**. **정직 경계**: 프로토타입·in-process 봉인·단일 머신·hosted 제품/고객/매출/공개 아님. 442→450(+8, 회귀0), mypy29/ruff/build clean. L3 2/2 APPROVE. |
 
-(이후: held-out 봉인 인프라 강화·다중 config·agentic-LLM 어댑터·hosted 서비스 — 일부는 사람/전략 게이트)
+| 2 | `llm-eval-adapter` | ✅ done (→ `_archive/2026-Q2/eval-product/02-llm-eval-adapter/`) | **오염 방지 agentic-LLM 평가 어댑터** — 신규 `critter_gym.llm_eval`(core·numpy): `render_obs`(obs→LLM 텍스트·결정론) + `parse_action`(free-text→action·숫자/키워드/fallback/클램프·항상 [0,n)) + `LLMAgent`(provider-agnostic `complete` 주입 → #1 `Agent` Protocol 만족 → #1 `score_agent`[봉인 set] 채점) + `anthropic_complete`(옵션 lazy-import·`claude-opus-4-8`·claude-api 준수). demo: stub-LLM을 봉인 set서 end-to-end 채점. **정직 경계**: 어댑터=메커니즘이지 실측 LLM 능력 결과 아님(stub 검증·실측=API key+비용 별도 run)·프로토타입. 450→461(+11, 회귀0), mypy30/ruff/build clean. L3 2/2 APPROVE. |
+
+(이후: 실측 LLM run[API key+비용·사람]·held-out 봉인 인프라 강화·다중 config·hosted 서비스 — 일부는 사람/전략 게이트)
 
 ## 정직성 문화 (계승)
 프로토타입 = *기능 토대 데모*이지 hosted 제품·고객·매출이 아님(명시). 봉인="in-process 컨벤션"(실제 제품은
