@@ -13,6 +13,7 @@ import numpy as np
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.eval_harness import Agent, Scorecard, SealedEvalSet, score_agent
 from critter_gym.llm_eval import (
+    DEFAULT_SYSTEM,
     LLMAgent,
     StatefulLLMAgent,
     parse_action,
@@ -40,6 +41,87 @@ def test_render_obs_includes_core_fields() -> None:
     # an action legend with the six action indices
     for i in range(6):
         assert str(i) in text
+
+
+# --- render_obs legibility (render-obs-legibility) ---------------------------
+def _make_obs(*, in_battle=0, patch=None, player=(0, 0, 0), enemy=(0, 0), pos=(5, 5)):
+    """Build a minimal synthetic observation for render_obs unit tests."""
+    if patch is None:
+        patch = np.zeros((5, 5), dtype=np.int8)
+    return {
+        "agent_pos": np.array(pos, dtype=np.int64),
+        "local_patch": np.asarray(patch, dtype=np.int8),
+        "caught": np.array([0], dtype=np.int64),
+        "gyms_defeated": np.array([0], dtype=np.int64),
+        "evolved": np.array([0], dtype=np.int64),
+        "in_battle": np.array([in_battle], dtype=np.int8),
+        "player_hp": np.array([player[0]], dtype=np.int64),
+        "player_type": np.array([player[1]], dtype=np.int64),
+        "player_level": np.array([player[2]], dtype=np.int64),
+        "enemy_hp": np.array([enemy[0]], dtype=np.int64),
+        "enemy_type": np.array([enemy[1]], dtype=np.int64),
+        "player_charge": np.array([0], dtype=np.int64),
+        "enemy_charge": np.array([0], dtype=np.int64),
+    }
+
+
+def test_render_overworld_does_not_mislead_with_zero_hp() -> None:
+    # AC1: outside battle, player_* are 0-masked — must NOT print "Your creature: hp 0"
+    # (the LLM read that as "I have no creature"). Show the truth instead.
+    text = render_obs(_make_obs(in_battle=0, player=(0, 0, 0)))
+    assert "Your creature: hp 0" not in text
+    assert "starter party" in text.lower()
+
+
+def test_render_battle_shows_player_and_enemy_stats() -> None:
+    # AC2: during battle the active creatures' real stats ARE shown.
+    text = render_obs(_make_obs(in_battle=1, player=(12, 3, 4), enemy=(9, 1)))
+    assert "Your creature: hp 12" in text
+    assert "Enemy: hp 9" in text
+
+
+def test_render_gym_salience_and_on_gym_flag() -> None:
+    # AC3: a visible gym is called out with direction; being ON a gym is flagged.
+    patch = np.zeros((5, 5), dtype=np.int8)
+    patch[0, 2] = 3  # gym 2 tiles north of center
+    text = render_obs(_make_obs(in_battle=0, patch=patch)).lower()
+    assert "gym (g) is visible" in text and "2 north" in text
+
+    on_gym = np.zeros((5, 5), dtype=np.int8)
+    on_gym[2, 2] = 3  # standing on a gym
+    text2 = render_obs(_make_obs(in_battle=0, patch=on_gym)).lower()
+    assert "on a gym" in text2 and "boss battle" in text2
+
+
+def test_render_creature_salience() -> None:
+    # AC3: a visible wild creature is called out; one on your tile prompts Catch.
+    patch = np.zeros((5, 5), dtype=np.int8)
+    patch[2, 4] = 2  # creature 2 tiles east
+    text = render_obs(_make_obs(in_battle=0, patch=patch)).lower()
+    assert "wild creature (c) is visible" in text and "2 east" in text
+
+    on_c = np.zeros((5, 5), dtype=np.int8)
+    on_c[2, 2] = 2
+    text2 = render_obs(_make_obs(in_battle=0, patch=on_c)).lower()
+    assert "on your tile" in text2 and "catch" in text2
+
+
+def test_render_obs_still_deterministic_and_has_core_fields() -> None:
+    # AC4: determinism + core fields preserved after the legibility changes.
+    obs = _sample_obs(1)
+    assert render_obs(obs) == render_obs(obs)
+    low = render_obs(obs).lower()
+    assert "position" in low and "in battle" in low and "gym" in low
+    for i in range(6):
+        assert str(i) in low
+
+
+def test_default_system_explains_party_goal_and_catch() -> None:
+    # AC5: the system prompt tells the LLM it has a party, the gym goal, and the catch flow.
+    s = DEFAULT_SYSTEM.lower()
+    assert "starter party" in s
+    assert "gym" in s
+    assert "catch" in s
 
 
 # --- AC2: robust parsing (number / keyword / garbage -> fallback / clamp) ----

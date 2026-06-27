@@ -51,9 +51,13 @@ _TILE_GLYPHS = {0: ".", 1: "#", 2: "C", 3: "G"}
 
 DEFAULT_SYSTEM = (
     "You are playing CritterGym, a grid creature-collection game with a HIDDEN type chart you "
-    "must infer from battles. Each turn you see your local surroundings and state. Your goal is "
-    "to defeat gym bosses. Reply with the single action you choose — either its number (0-5) or "
-    "a short phrase like 'move north' / 'catch' / 'attack' / 'wait'. Be decisive; reply briefly."
+    "must infer from battles. You ALREADY START with a starter party of creatures (their stats "
+    "are shown only during a battle, not on the overworld). Your main goal is to clear gyms: walk "
+    "onto a gym tile (shown as G in your local view) to start a boss battle, then fight to defeat "
+    "the boss. You can also catch wild creatures (shown as C) by standing on their tile and "
+    "choosing Catch. Each turn you see your local surroundings and state. Reply with the single "
+    "action you choose — either its number (0-5) or a short phrase like 'move north' / 'catch' / "
+    "'attack' / 'wait'. Be decisive; reply briefly."
 )
 
 
@@ -62,11 +66,47 @@ def _scalar(obs: Mapping[str, object], key: str) -> int:
     return int(np.asarray(obs[key]).flatten()[0])
 
 
+def _dir_phrase(drow: int, dcol: int) -> str:
+    """Describe a local-view offset (center-relative) in words. drow<0=north, dcol<0=west."""
+    parts = []
+    if drow < 0:
+        parts.append(f"{-drow} north")
+    elif drow > 0:
+        parts.append(f"{drow} south")
+    if dcol < 0:
+        parts.append(f"{-dcol} west")
+    elif dcol > 0:
+        parts.append(f"{dcol} east")
+    return " and ".join(parts) if parts else "on your tile"
+
+
+def _nearest_in_view(patch: np.ndarray, code: int) -> tuple[int, int] | None:
+    """Nearest (drow, dcol) tile with ``code`` in the patch (Manhattan), excluding center."""
+    radius = patch.shape[0] // 2
+    best: tuple[int, int] | None = None
+    best_d: int | None = None
+    for pr in range(patch.shape[0]):
+        for pc in range(patch.shape[1]):
+            if int(patch[pr, pc]) != code:
+                continue
+            dr, dc = pr - radius, pc - radius
+            if dr == 0 and dc == 0:
+                continue  # center handled separately (you are ON this tile)
+            d = abs(dr) + abs(dc)
+            if best_d is None or d < best_d:
+                best_d, best = d, (dr, dc)
+    return best
+
+
 def render_obs(obs: Mapping[str, object]) -> str:
     """Render one observation as legible text for an LLM (deterministic).
 
-    Includes the agent position, battle state, gyms cleared, party/enemy stats, a 5×5 ASCII
-    local view, and a context-aware action legend (overworld vs battle)."""
+    Includes the agent position, battle state, gyms cleared, a 5×5 ASCII local view, and a
+    context-aware action legend. Creature stats are shown **only during battle** (the env
+    0-masks ``player_*``/``enemy_*`` on the overworld); on the overworld we instead note that
+    the starter party exists, so the LLM is never misled into thinking it has no creature.
+    Visible gyms (G) / wild creatures (C) are called out with their direction so the agent can
+    act on them rather than wander blindly."""
     pos = np.asarray(obs["agent_pos"]).flatten()
     in_battle = _scalar(obs, "in_battle")
     gyms = _scalar(obs, "gyms_defeated")
@@ -74,18 +114,52 @@ def render_obs(obs: Mapping[str, object]) -> str:
     lines = [
         f"Position: row {int(pos[0])}, col {int(pos[1])}",
         f"In battle: {'yes' if in_battle else 'no'}    Gyms cleared: {gyms}    Caught: {caught}",
-        f"Your creature: hp {_scalar(obs, 'player_hp')}, type {_scalar(obs, 'player_type')}, "
-        f"level {_scalar(obs, 'player_level')}",
     ]
     if in_battle:
+        # Battle: the active creatures' real stats are available — show them.
+        lines.append(
+            f"Your creature: hp {_scalar(obs, 'player_hp')}, type {_scalar(obs, 'player_type')}, "
+            f"level {_scalar(obs, 'player_level')}"
+        )
         lines.append(
             f"Enemy: hp {_scalar(obs, 'enemy_hp')}, type {_scalar(obs, 'enemy_type')}"
+        )
+    else:
+        # Overworld: player_* are 0-masked by the env — do NOT print "hp 0" (it reads as "no
+        # creature"). State the truth: a starter party exists; its stats appear in battle.
+        lines.append(
+            "Your party: you have a starter party of creatures (their stats appear during battle)."
         )
 
     patch = np.asarray(obs["local_patch"])
     lines.append("Local view (.=floor #=wall C=creature G=gym, you are at center):")
     for row in patch:
         lines.append("  " + " ".join(_TILE_GLYPHS.get(int(t), "?") for t in row))
+
+    # Salience: call out gyms/creatures in view so the agent doesn't confuse or miss them.
+    radius = patch.shape[0] // 2
+    center = int(patch[radius, radius])
+    if not in_battle:
+        if center == 3:  # _PATCH_GYM
+            lines.append(
+                "You are ON a gym (G) tile — moving onto it starts a boss battle; defeat the "
+                "boss to clear this gym."
+            )
+        else:
+            gym = _nearest_in_view(patch, 3)
+            if gym is not None:
+                lines.append(
+                    f"A gym (G) is visible {_dir_phrase(*gym)} — walk onto it to start a boss "
+                    "battle (your main goal)."
+                )
+        creature = _nearest_in_view(patch, 2)  # _PATCH_CREATURE
+        if center == 2:
+            lines.append("A wild creature (C) is on your tile — choose Catch (4) to catch it.")
+        elif creature is not None:
+            lines.append(
+                f"A wild creature (C) is visible {_dir_phrase(*creature)} — stand on its tile "
+                "and Catch (4)."
+            )
 
     lines.append("Actions: " + (_ACTION_LEGEND_BATTLE if in_battle else _ACTION_LEGEND_OVERWORLD))
     lines.append("Your action:")
