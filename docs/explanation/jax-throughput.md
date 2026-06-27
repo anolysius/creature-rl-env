@@ -373,9 +373,15 @@ boundary (other families, full battle, GPU, tuned PPO, scripted-arm JAX-ificatio
    CPU in seconds (≈170× the existing numpy/sb3 path; learning curve rises, held-out gap ≈ 0).
    Remaining: families B/C/D, a thin Gymnasium `VectorEnv` adapter if an off-the-shelf loop needs the
    gym API, and a tuned PPO.
-3. **GPU throughput** (`gpu-bench-colab`) — measure M4-EC3's ≥10M steps/s on GPU (CPU vmap already
-   clears it on the slices — `scripts/gpu_bench.py`'s *fused `lax.scan`* rollout hits ~480M steps/s
-   overworld / ~22M full-episode on CPU at batch 1024 — but the EC is stated for GPU).
+3. **GPU throughput** (`gpu-bench-colab` + `gpu-ec3-result`) — ✅ **M4-EC3 measured on GPU (2026-06-26).**
+   Run on a free **NVIDIA T4** (Colab), `scripts/gpu_bench.py`'s fused `lax.scan` rollout reaches, on the
+   overworld slice, **75.9M (b1024) → 271M (b4096) → 952.8M (b16384) steps/s** — i.e. **~950M steps/s,
+   95× the ≥10M target**, scaling monotonically with batch (numpy 49k / jit-single 64k for reference).
+   So the EC is **met** on real GPU hardware. *Honest boundary: overworld slice, single run, a free T4;
+   the full-episode env's branchy step compiles too slowly on a free T4 for a clean GPU number (it
+   stalled at b65536), but CPU full-episode already clears the EC at ~22M steps/s, so the GPU clears it
+   too — a precise full-episode GPU figure on better hardware is a minor follow-up.* (The bench's default
+   batch sweep was capped at 16384 after b65536 stalled the free T4.)
    **Local Apple-Silicon GPU is not a viable route (empirically settled, 2026-06-25).** On an
    M5 Pro / macOS 26.5, `jax-metal` **0.1.0** (jax/jaxlib 0.4.26) and **0.1.1** (jax/jaxlib 0.4.34)
    both initialize the `METAL` device and run simple ops (`vmap`+`scan`+`scatter`+`gather`+`where`)

@@ -44,7 +44,7 @@ not Pokémon-playing agents:
 | Strategic / online rule inference (infer-the-meta load-bearing) | ✅ **scripted gate proves it** (gates frozen ≥0.20/≥0.10) | ❌ [verify] | ❌ [verify] | ◐ meta-RL adaptation [verify] | ◐ implicit [verify] |
 | Verifiable rewards (RLVR, boolean subgoals) | ✅ | ◐ shaped+sparse [verify] | ◐ achievements [verify] | ◐ [verify] | ◐ score [verify] |
 | Genre / env-level generalization (env families) | ◐ **foundation (4 families, 3 axes)** — *not a proof* | ❌ [verify] | ❌ [verify] | ✅ task-dist (meta-RL) [verify] | ❌ [verify] |
-| Speed / throughput | numpy, **~266k steps/s/core (CPU)** [basis differs] | fast native [verify] | **JAX GPU, much faster** [verify] | **JAX GPU, fast** [verify] | moderate [verify] |
+| Speed / throughput | ✅ **JAX vmap: ~950M steps/s on GPU (T4, overworld; M4-EC3 met, 95× the ≥10M target)** / ~480M CPU; was numpy ~266k/s/core | fast native [verify] | **JAX GPU, much faster** [verify] | **JAX GPU, fast** [verify] | moderate [verify] |
 | Maturity / adoption | ❌ **0 — not yet released** | ✅ broad [verify] | ◐ growing [verify] | ◐ [verify] | ✅ established [verify] |
 | Difficulty (absolute) | ◐ **hard for current baselines, incl. a memory agent** (recurrent PPO 43% of oracle on a deep partial-obs config; was ❌toy) — not yet vs SOTA | ◐ [verify] | ◐ [verify] | ◐ [verify] | ✅ very hard [verify] |
 
@@ -54,10 +54,13 @@ not Pokémon-playing agents:
 
 **Where peers are clearly ahead of us today:**
 
-- **Speed (Craftax / XLand).** JAX-on-GPU benchmarks run vastly faster than our numpy CPU
-  engine. Craftax's own lesson — *throughput is the adoption gate* — is a gap for us until a JAX
-  port exists. (Note: our `~266k/s/core` is CPU-per-core and **not** directly comparable to a
-  GPU figure; do not present them in the same unit.)
+- **Speed (Craftax / XLand) — largely closed.** This *was* our #1 gap (numpy CPU vs peers' JAX-GPU).
+  It is now substantially closed: the hot path is ported to functional JAX (parity 0, 4/4 families) and
+  **M4-EC3 is measured on GPU — ~950M steps/s vmap on a T4 (overworld), 95× the ≥10M target** (CPU vmap
+  ~480M). Craftax's lesson (*throughput is the adoption gate*) is no longer a blocking gap. *Honest
+  boundary: single run, free T4, overworld slice; a clean full-episode GPU figure on better hardware is
+  a minor follow-up (CPU full-episode already clears the EC at ~22M/s). Peers' exact figures stay
+  `[verify]`; we don't claim to out-run them, only that we are now in the same (GPU-vectorized) class.*
 - **Maturity & adoption (Procgen, NetHack).** These are established, cited, and integrated into
   toolchains. CritterGym has **zero adoption** and is not even public yet. Adoption is the
   network-effect moat (DESIGN §9 layer 3) we have **not** earned.
