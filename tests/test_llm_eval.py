@@ -12,7 +12,12 @@ import numpy as np
 
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.eval_harness import Agent, Scorecard, SealedEvalSet, score_agent
-from critter_gym.llm_eval import LLMAgent, parse_action, render_obs
+from critter_gym.llm_eval import (
+    LLMAgent,
+    StatefulLLMAgent,
+    parse_action,
+    render_obs,
+)
 
 
 def _sample_obs(seed: int = 0):
@@ -97,6 +102,92 @@ def test_llm_agent_scores_end_to_end_on_sealed_set() -> None:
     assert stub.calls > 0  # the LLM (stub) was actually queried per step
     assert 0.0 <= card.cleared_rate <= 1.0
     assert card.frac_of_oracle >= 0.0
+
+
+class _RecordingStub:
+    """A stub `complete` that returns a fixed reply and records every prompt it received."""
+
+    def __init__(self, reply: str = "wait") -> None:
+        self.reply = reply
+        self.prompts: list[str] = []
+
+    def __call__(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.reply
+
+
+# --- StatefulLLMAgent: AC1 protocol + optional reset hook -------------------
+def test_stateful_agent_satisfies_protocol_and_has_reset() -> None:
+    agent = StatefulLLMAgent(_StubLLM("wait"))
+    assert isinstance(agent, Agent)  # same act(obs)->int Protocol as LLMAgent
+    assert isinstance(agent.act(_sample_obs(0)), int)
+    assert callable(agent.reset)  # optional per-episode hook score_agent will call
+
+
+# --- AC2: history accumulates within an episode and the window bounds it -----
+def test_stateful_history_accumulates_and_window_is_bounded() -> None:
+    agent = StatefulLLMAgent(_StubLLM("0"), window=3)
+    obs = _sample_obs(0)
+    for _ in range(2):
+        agent.act(obs)
+    assert len(agent._history) == 2          # grows one per step
+    for _ in range(5):
+        agent.act(obs)
+    assert len(agent._history) == 3          # capped at window (oldest dropped)
+
+
+def test_stateful_window_zero_is_effectively_memoryless() -> None:
+    agent = StatefulLLMAgent(_RecordingStub("5"), window=0)
+    obs = _sample_obs(1)
+    for _ in range(3):
+        agent.act(obs)
+    assert agent._history == []              # nothing retained
+    # no prompt ever carried a history block
+    assert all("Recent history" not in p for p in agent._complete.prompts)  # type: ignore[attr-defined]
+
+
+# --- AC2/AC3: the prompt actually carries past actions, reset clears them ----
+def test_stateful_prompt_includes_recent_history() -> None:
+    stub = _RecordingStub("2")  # always "move east"
+    agent = StatefulLLMAgent(stub, window=8)
+    obs = _sample_obs(0)
+    agent.act(obs)                           # 1st call: no history yet
+    agent.act(obs)                           # 2nd call: history of step 1 present
+    assert "Recent history" not in stub.prompts[0]
+    assert "Recent history" in stub.prompts[1]
+    assert "action 2" in stub.prompts[1]     # the recorded past action
+
+
+def test_stateful_reset_clears_history_and_isolates() -> None:
+    stub = _RecordingStub("1")
+    agent = StatefulLLMAgent(stub, window=8)
+    obs = _sample_obs(0)
+    agent.act(obs)
+    agent.act(obs)
+    assert len(agent._history) == 2
+    agent.reset()
+    assert agent._history == []              # AC3: memory cleared between worlds
+    # the next act after reset starts clean — no leakage from the prior episode
+    agent.act(obs)
+    assert "Recent history" not in stub.prompts[-1]
+
+
+def test_stateful_invalid_window_raises() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        StatefulLLMAgent(_StubLLM("wait"), window=-1)
+
+
+# --- AC1/AC3: end-to-end on a sealed set, reset called per world -------------
+def test_stateful_agent_scores_end_to_end_on_sealed_set() -> None:
+    sealed = SealedEvalSet(master_seed=11, n_worlds=4)
+    stub = _StubLLM("Action: 0")
+    card = score_agent(StatefulLLMAgent(stub, window=4), sealed)
+    assert isinstance(card, Scorecard)
+    assert card.n_worlds == 4
+    assert stub.calls > 0
+    assert 0.0 <= card.cleared_rate <= 1.0
 
 
 def test_anthropic_complete_is_optional_lazy() -> None:
