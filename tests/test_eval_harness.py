@@ -105,6 +105,44 @@ class _RandomAgent:
         return int(self._rng.integers(0, 6))
 
 
+# --- stateful-llm-agent: optional per-episode reset() hook -------------------
+class _ResetCountingAgent:
+    """A stateful submission that counts reset() calls and the steps since the last reset."""
+
+    def __init__(self) -> None:
+        self.resets = 0
+        self.max_run = 0
+        self._run = 0
+
+    def reset(self) -> None:
+        self.resets += 1
+        self._run = 0
+
+    def act(self, obs: object) -> int:
+        self._run += 1
+        self.max_run = max(self.max_run, self._run)
+        return 5  # Wait
+
+
+def test_score_agent_calls_reset_once_per_episode() -> None:
+    """A submission's optional reset() fires exactly once per sealed world (memory isolation)."""
+    s = SealedEvalSet(master_seed=9, n_worlds=5, max_steps=6)
+    agent = _ResetCountingAgent()
+    score_agent(agent, s)
+    assert agent.resets == 5            # one reset per world, not per step
+    assert agent.max_run <= 6           # each episode is independently capped
+
+
+def test_score_agent_stateless_submission_unaffected() -> None:
+    """A submission WITHOUT reset() runs exactly as before (byte-identical regression gate)."""
+    s = SealedEvalSet(master_seed=3, n_worlds=8)
+    before = score_agent(_RandomAgent(seed=0), s)
+    after = score_agent(_RandomAgent(seed=0), s)
+    assert (before.mean_gyms_cleared, before.cleared_rate, before.frac_of_oracle) == (
+        after.mean_gyms_cleared, after.cleared_rate, after.frac_of_oracle
+    )
+
+
 # --- llm-eval-run: max_steps cost cap on SealedEvalSet -----------------------
 def test_sealed_max_steps_caps_episode_length() -> None:
     """A small `max_steps` caps the episode (cost control for per-step LLM eval)."""

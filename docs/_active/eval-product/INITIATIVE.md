@@ -37,6 +37,8 @@
 
 | 4 | `claude-cli-provider` | ✅ done (→ `_archive/2026-Q2/eval-product/04-claude-cli-provider/`) | **구독(claude CLI) provider + score_agent 콜 절반** — (1) `llm_eval.claude_cli_complete`(`claude -p`·중립 cwd·구독 인증·API 키 불요) + 러너 `--provider {anthropic, claude-cli}`. (2) `score_agent` 이중-실행(`_caught_rate` 재실행) 제거 → `_play_once`로 seed당 1 패스(콜 절반), 메트릭 byte-equivalent. 463→465(+2, 회귀0), mypy30/ruff/build clean. L3 2/2 APPROVE. 후속: 구독으로 적정 호라이즌 실측. |
 
+| 5 | `stateful-llm-agent` | ✅ done (→ `_archive/2026-Q2/eval-product/05-stateful-llm-agent/`) | **기억 가진 LLM agent(스텝 간 history+윈도잉) — 공정한 재측정 도구** — 신규 `llm_eval.StatefulLLMAgent`(에피소드 내 (obs digest, action) 슬라이딩 윈도우[기본 8] 누적 → 프롬프트에 prepend; `reset()`로 월드 경계서 clear) + `eval_harness.Agent` Protocol에 **선택적 `reset()` 훅**(`score_agent`가 duck-typing으로 에피소드마다 호출 → **월드 간 기억 격리**) + 러너 `--stateful --window K`. 무기억 `LLMAgent`는 floor(부분관측서 메모리 load-bearing — recurrent-baseline과 일관)하므로 *기억을 줬을 때* "프런티어 LLM이 봉인 환경서 몇 % of oracle"을 공정하게 잴 수 있는 토대. **정직 경계**: 메커니즘이지 측정 결과 아님(CI=stub); 실측 probe=사용자 로컬(구독 CLI/API); 결과 reframe 금지·"과금 0" 주장 금지. 무상태 경로 **byte-identical**(reset 없는 submission 분기 skip). 465→474(+9, 회귀0), mypy30/ruff/build clean. L3 2/2 APPROVE. 후속: 적정 호라이즌 stateful probe 실측. |
+
 (이후: 적정 호라이즌 실측 run으로 "프런티어 LLM N% of oracle" 기록 / 서버측 봉인 인프라·다중 config·hosted 서비스 — 사람/전략 게이트)
 
 ## 정직성 문화 (계승)

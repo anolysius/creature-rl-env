@@ -24,7 +24,12 @@ from __future__ import annotations
 import argparse
 
 from critter_gym.eval_harness import SealedEvalSet, score_agent
-from critter_gym.llm_eval import LLMAgent, anthropic_complete, claude_cli_complete
+from critter_gym.llm_eval import (
+    LLMAgent,
+    StatefulLLMAgent,
+    anthropic_complete,
+    claude_cli_complete,
+)
 
 
 def main() -> None:
@@ -38,15 +43,25 @@ def main() -> None:
     p.add_argument("--max-steps", type=int, default=40, help="episode step cap (keep small)")
     p.add_argument("--num-types", type=int, default=8, help="hidden type-chart size")
     p.add_argument("--master-seed", type=int, default=20260627, help="sealed-set secret seed")
+    p.add_argument("--stateful", action="store_true",
+                   help="give the LLM a per-episode memory of recent steps (fairer under "
+                        "partial observability); memory is cleared between sealed worlds")
+    p.add_argument("--window", type=int, default=8,
+                   help="stateful only: how many recent (obs, action) steps to keep in the "
+                        "prompt — larger = more recall but longer prompts (more tokens/call)")
     a = p.parse_args()
 
     projected = a.worlds * a.max_steps
     backend = "claude-cli (subscription)" if a.provider == "claude-cli" else f"API {a.model}"
+    memory = f"stateful (window {a.window})" if a.stateful else "stateless (memoryless)"
     print("== Real-LLM sealed eval — how hard is CritterGym for a frontier LLM? ==")
-    print(f"   provider={a.provider}  backend={backend}  worlds={a.worlds}  "
+    print(f"   provider={a.provider}  backend={backend}  memory={memory}  worlds={a.worlds}  "
           f"max_steps={a.max_steps}  num_types={a.num_types}")
     print(f"   ⚠️  projected ~{projected} LLM calls (1 per env step) — cost/quota + time scale "
           "with worlds × max_steps. Ctrl-C now to abort if too large.")
+    if a.stateful:
+        print("   (stateful: prompts carry recent history, so each call uses more tokens than "
+              "stateless.)")
     print("   (oracle / type_blind reference arms are scripted and free.)\n")
 
     if a.provider == "claude-cli":
@@ -55,7 +70,8 @@ def main() -> None:
         complete = anthropic_complete(model=a.model)  # raises a clear error if no SDK/key
     sealed = SealedEvalSet(master_seed=a.master_seed, n_worlds=a.worlds,
                            num_types=a.num_types, max_steps=a.max_steps)
-    card = score_agent(LLMAgent(complete), sealed)
+    agent = StatefulLLMAgent(complete, window=a.window) if a.stateful else LLMAgent(complete)
+    card = score_agent(agent, sealed)
 
     pct = card.frac_of_oracle
     print(f"  oracle (scripted)   gym-clears {card.oracle_gyms:.2f}   "
