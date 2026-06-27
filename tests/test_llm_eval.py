@@ -120,3 +120,15 @@ def test_obs_render_handles_numpy_scalars() -> None:
     obs = _sample_obs(2)
     obs = {k: np.asarray(v) for k, v in obs.items()}
     assert isinstance(render_obs(obs), str)
+
+
+def test_claude_cli_complete_exists_and_errors_on_missing_binary() -> None:
+    """`claude_cli_complete` builds a subscription-backed complete() via the local `claude`
+    CLI; a non-existent binary raises a clear FileNotFoundError (so misconfig is obvious)."""
+    from critter_gym import llm_eval
+
+    assert hasattr(llm_eval, "claude_cli_complete")
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        llm_eval.claude_cli_complete(binary="definitely-not-a-real-binary-xyz")
