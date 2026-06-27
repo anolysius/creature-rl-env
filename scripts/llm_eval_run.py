@@ -24,12 +24,16 @@ from __future__ import annotations
 import argparse
 
 from critter_gym.eval_harness import SealedEvalSet, score_agent
-from critter_gym.llm_eval import LLMAgent, anthropic_complete
+from critter_gym.llm_eval import LLMAgent, anthropic_complete, claude_cli_complete
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--model", default="claude-opus-4-8", help="Anthropic model id")
+    p.add_argument("--provider", choices=("anthropic", "claude-cli"), default="anthropic",
+                   help="anthropic=API (needs ANTHROPIC_API_KEY, pay-per-token); "
+                        "claude-cli=local Claude Code (uses your subscription, no API key)")
+    p.add_argument("--model", default="claude-opus-4-8",
+                   help="Anthropic model id (applies to --provider anthropic only)")
     p.add_argument("--worlds", type=int, default=3, help="sealed held-out worlds (keep small)")
     p.add_argument("--max-steps", type=int, default=40, help="episode step cap (keep small)")
     p.add_argument("--num-types", type=int, default=8, help="hidden type-chart size")
@@ -37,17 +41,21 @@ def main() -> None:
     a = p.parse_args()
 
     projected = a.worlds * a.max_steps
+    backend = "claude-cli (subscription)" if a.provider == "claude-cli" else f"API {a.model}"
     print("== Real-LLM sealed eval — how hard is CritterGym for a frontier LLM? ==")
-    print(f"   model={a.model}  worlds={a.worlds}  max_steps={a.max_steps}  "
-          f"num_types={a.num_types}")
-    print(f"   ⚠️  projected ~{projected} LLM API calls (1 per env step) — cost + time scale "
+    print(f"   provider={a.provider}  backend={backend}  worlds={a.worlds}  "
+          f"max_steps={a.max_steps}  num_types={a.num_types}")
+    print(f"   ⚠️  projected ~{projected} LLM calls (1 per env step) — cost/quota + time scale "
           "with worlds × max_steps. Ctrl-C now to abort if too large.")
     print("   (oracle / type_blind reference arms are scripted and free.)\n")
 
+    if a.provider == "claude-cli":
+        complete = claude_cli_complete()  # local Claude Code; uses your subscription, no key
+    else:
+        complete = anthropic_complete(model=a.model)  # raises a clear error if no SDK/key
     sealed = SealedEvalSet(master_seed=a.master_seed, n_worlds=a.worlds,
                            num_types=a.num_types, max_steps=a.max_steps)
-    agent = LLMAgent(anthropic_complete(model=a.model))  # raises a clear error if no SDK/key
-    card = score_agent(agent, sealed)
+    card = score_agent(LLMAgent(complete), sealed)
 
     pct = card.frac_of_oracle
     print(f"  oracle (scripted)   gym-clears {card.oracle_gyms:.2f}   "

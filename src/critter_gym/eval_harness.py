@@ -33,7 +33,7 @@ from typing import Callable, NamedTuple, Protocol, Union, runtime_checkable
 import numpy as np
 
 from critter_gym.envs.critter_env import CritterEnv
-from critter_gym.learnability import EnvPolicy, as_env_policy, reference_arm, run_episode
+from critter_gym.learnability import EnvPolicy, as_env_policy, reference_arm
 from critter_gym.region import TEST_SEED_OFFSET
 
 # Reserve the top of the held-out region for sealed eval blocks, so a sealed block never
@@ -171,20 +171,17 @@ def score_agent(
     seeds = sealed._eval_seeds()
     policy = _as_env_policy(submission)
 
-    outs = [run_episode(factory, policy, s) for s in seeds]
-    n = len(outs)
-    mean_gyms = float(np.mean([o.gyms_cleared for o in outs]))
-    cleared_rate = float(np.mean([o.gyms_cleared >= 1 for o in outs]))
-    # caught/evolved are read from terminal state via the episode outcome's evolution stream;
-    # "caught" is inferred from a fresh re-run reading info["subgoals"] would double-run, so we
-    # use the outcome's evolution count and a catch probe via the env's subgoal info.
-    evolved_rate = float(np.mean([o.evolutions >= 1 for o in outs]))
-    caught_rate = _caught_rate(factory, policy, seeds)
+    # One episode per seed reads gyms / caught / evolved together (a single pass — the prior
+    # separate `caught` re-run doubled per-step LLM calls for an LLM submission).
+    plays = [_play_once(factory, policy, s) for s in seeds]
+    n = len(plays)
+    mean_gyms = float(np.mean([gyms for gyms, _c, _e in plays]))
+    cleared_rate = float(np.mean([gyms >= 1 for gyms, _c, _e in plays]))
+    caught_rate = float(np.mean([c for _g, c, _e in plays]))
+    evolved_rate = float(np.mean([e for _g, _c, e in plays]))
 
-    def arm_mean(arm: str) -> float:
-        return float(np.mean(
-            [run_episode(factory, reference_arm(arm), s).gyms_cleared for s in seeds]
-        ))
+    def arm_mean(arm: str) -> float:  # scripted arms (free); same single-pass yardstick
+        return float(np.mean([_play_once(factory, reference_arm(arm), s)[0] for s in seeds]))
 
     oracle_gyms = arm_mean("oracle") if "oracle" in reference else float("nan")
     blind_gyms = arm_mean("type_blind") if "type_blind" in reference else float("nan")
@@ -197,20 +194,22 @@ def score_agent(
     )
 
 
-def _caught_rate(
-    factory: Callable[[], CritterEnv], policy: EnvPolicy, seeds: tuple[int, ...]
-) -> float:
-    """Fraction of sealed worlds where the policy caught >= 1 creature (RLVR subgoal).
+def _play_once(
+    factory: Callable[[], CritterEnv], policy: EnvPolicy, seed: int
+) -> tuple[int, bool, bool]:
+    """Run one episode and read all three verifiable subgoals from the terminal step:
+    ``(gyms_cleared, caught_any, evolved_any)``.
 
-    Reads ``info["subgoals"]["caught"]`` at the terminal step — a verifiable boolean stream."""
-    caught = []
-    for s in seeds:
-        env = factory()
-        obs, _ = env.reset(seed=int(s))
-        info: dict = {"subgoals": {"caught": 0}}
-        done = False
-        while not done:
-            obs, _r, term, trunc, info = env.step(policy(env, obs))
-            done = bool(term or trunc)
-        caught.append(int(info["subgoals"]["caught"]) >= 1)
-    return float(np.mean(caught)) if caught else 0.0
+    A single pass — the policy is queried once per step, not twice (the prior design re-ran
+    the whole episode just to read ``caught``, doubling per-step LLM calls). ``gyms_cleared``
+    is ``info["subgoals"]["gyms_defeated"]`` (= ``sum(env._gym_defeated)``), so it matches the
+    value the old ``run_episode`` path read — the metrics are numerically unchanged."""
+    env = factory()
+    obs, _ = env.reset(seed=int(seed))
+    info: dict = {"subgoals": {"caught": 0, "gyms_defeated": 0, "evolved": 0}}
+    done = False
+    while not done:
+        obs, _r, term, trunc, info = env.step(policy(env, obs))
+        done = bool(term or trunc)
+    sg = info["subgoals"]
+    return int(sg["gyms_defeated"]), int(sg["caught"]) >= 1, int(sg["evolved"]) >= 1

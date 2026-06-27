@@ -124,3 +124,23 @@ def test_sealed_default_max_steps_unchanged() -> None:
     sealed = SealedEvalSet(master_seed=2, n_worlds=2)  # no max_steps -> 200
     env = sealed.env_factory()()
     assert env.max_steps == 200
+
+
+# --- claude-cli-provider: score_agent runs the submission ONCE per seed --------
+def test_score_agent_single_pass_no_double_run() -> None:
+    """score_agent must query the submission exactly one episode per seed (not twice —
+    the old `_caught_rate` re-run doubled per-step LLM calls)."""
+    class _Counter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def act(self, obs: object) -> int:
+            self.calls += 1
+            return 5  # Wait — keeps episodes at the max_steps cap
+
+    n_worlds, cap = 2, 6
+    c = _Counter()
+    score_agent(c, SealedEvalSet(master_seed=9, n_worlds=n_worlds, max_steps=cap))
+    # one pass = n_worlds episodes of <= cap steps; the old double-run would be ~2x this.
+    assert c.calls <= n_worlds * cap
+    assert c.calls > 0
