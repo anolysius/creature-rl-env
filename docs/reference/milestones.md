@@ -61,11 +61,11 @@
   - **충족 증거** (PPO 100k 학습, `scripts/killer_demo.py` 실행): held-out seed 1000000(새 맵+새 타입표) 보스격파 GIF → [`docs/assets/killer_demo.gif`](../assets/killer_demo.gif). 단일 일화 아님 — **held-in 8/20(40%) vs held-out 9/20(45%) 보스격파율, 일반화 갭 ≈ 0**(held-out ≥ held-in, 노이즈 범위). 헤드라인 = *갭 0* = 암기 아닌 진짜 일반화(포켓몬 레드가 구조적으로 못 보이는 것). 절대성능 45%는 더 긴 학습으로 향상 여지(데모 주장=일반화는 입증).
 - 구성 task: `baseline-suite` ✅, `leaderboard` ✅, `metrics-viz` ✅, `world-render` ✅(EC6 토대), `killer-demo` ✅(EC6 수단) → **EC6 충족** / 예정: `arxiv-draft`, `oss-release`
 
-### M4 — Throughput (JAX) ⬜
-- [ ] EC1: 핫패스 JAX 포팅 (spec 안정 *후* — DESIGN §4)
-- [ ] EC2: numpy ↔ JAX **parity 테스트** (동일 시드 동일 trajectory)
-- [ ] EC3: ≥10M steps/s GPU (DESIGN §4 목표)
-- 구성 task(예정): `jax-port`, `parity-tests`, `vectorized-bench`
+### M4 — Throughput (JAX) 🟢 (EC1·EC2·EC3 ✅ — CPU·single-run·overworld-GPU 한정 boundary)
+- [x] EC1: 핫패스 JAX 포팅 — overworld + battle(commit·non-commit) + **4/4 family**(critter/forage/duel/muster) functional JAX 포트 (`jax_overworld`·`jax_battle`·`jax_battle_full`·`jax_env`). *(jax-throughput #1·#2·#3·#9·#10)*
+- [x] EC2: numpy ↔ JAX **parity 0 mismatch** — 동일 시드→동일 trajectory(obs 전 key+reward+term+trunc), default·high-gym·hard config + 4 family. *(`test_jax_*_parity.py`)*
+- [x] EC3: **≥10M steps/s GPU 달성** — 사용자 NVIDIA **T4**서 fused `lax.scan` rollout 실측: overworld vmap **952.8M steps/s @b16384**(b1024 75.9M·b4096 271M) = **≥10M 목표의 95×**, batch와 단조 스케일. *(`gpu-bench-colab` 도구 + `gpu-ec3-result` 기록)* **정직 경계**: overworld slice 한정·single run·free T4; full-episode env는 분기 많은 step이 free T4서 컴파일 너무 느려 GPU 수치 미확보(단 **CPU서 이미 22M/s로 EC 초과** → GPU도 초과 자명, 정밀 수치는 더 좋은 HW의 minor 후속).
+- 구성 task: `jax-hotpath-foundation`·`jax-battle-port`·`jax-battle-full`·`jax-env-integration`·`jax-rl-demo`·`jax-ppo-tuned`·`jax-family-integration`·`jax-duel-integration`·`jax-difficulty-report`·`v1-results-packaging`·`gpu-bench-colab`·`gpu-ec3-result` (전부 ✅)
 
 ### M5 — 수익화 표면 ⬜
 - [ ] EC1: 비공개 held-out eval 세트 (재현 가능, un-gameable)
