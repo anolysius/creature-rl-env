@@ -168,3 +168,38 @@ def anthropic_complete(
         return "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
 
     return complete
+
+
+def claude_cli_complete(
+    binary: str = "claude", *, cwd: str | None = None, timeout: float = 120.0,
+) -> Callable[[str], str]:
+    """Build a ``complete(prompt) -> reply`` backed by the local **Claude Code** CLI (print mode).
+
+    Uses whatever auth Claude Code is logged in with — **including a Pro/Max subscription** — so
+    no per-token API key/billing (`claude -p "<prompt>"`). Each call runs in a neutral working
+    directory so the repo's `CLAUDE.md`/context is **not** loaded into the prompt.
+
+    Caveats: a subscription is intended for *interactive* use and has rate limits — keep eval
+    runs small (a probe), not a large batch. It is also **slow** (~seconds/call: a full agent
+    process starts per call), so prefer the API for big runs. Raises ``FileNotFoundError`` if the
+    `claude` binary isn't on PATH.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    resolved = shutil.which(binary)
+    if resolved is None:
+        raise FileNotFoundError(
+            f"`{binary}` CLI not found on PATH. Install Claude Code, or use "
+            "anthropic_complete() / inject your own complete(prompt)->reply."
+        )
+    work = cwd or tempfile.mkdtemp()
+
+    def complete(prompt: str) -> str:
+        result = subprocess.run(
+            [resolved, "-p", prompt], cwd=work, capture_output=True, text=True, timeout=timeout,
+        )
+        return result.stdout.strip()
+
+    return complete

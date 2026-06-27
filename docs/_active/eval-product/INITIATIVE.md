@@ -35,7 +35,9 @@
 
 | 3 | `llm-eval-run` | ✅ done (→ `_archive/2026-Q2/eval-product/03-llm-eval-run/`) | **실제 LLM 비용-제한 sealed-eval 러너** — "프런티어 LLM이 우리 봉인 환경서 몇 % of oracle?" 실측 도구. `SealedEvalSet`에 `max_steps` 노브(기본 200 byte-identical·비용 상한) + 신규 `scripts/llm_eval_run.py`(model/worlds/max-steps + 비용 경고 + frac_of_oracle 출력). #2 `LLMAgent`+`anthropic_complete`로 `claude-opus-4-8` 등을 #1 봉인 set서 `score_agent`. **실행=사용자 로컬**(키=사용자·채팅 금지·SDK env). 정직 경계(작은 probe·step 상한·proxy oracle·단일 run). 461→463(+2, 회귀0), mypy30/ruff/build clean. L3 2/2 APPROVE. |
 
-(이후: 사용자가 실측 run 실행→숫자 회수·기록 / 서버측 봉인 인프라·다중 config·hosted 서비스 — 사람/전략 게이트)
+| 4 | `claude-cli-provider` | ✅ done (→ `_archive/2026-Q2/eval-product/04-claude-cli-provider/`) | **구독(claude CLI) provider + score_agent 콜 절반** — (1) `llm_eval.claude_cli_complete`(`claude -p`·중립 cwd·구독 인증·API 키 불요) + 러너 `--provider {anthropic, claude-cli}`. (2) `score_agent` 이중-실행(`_caught_rate` 재실행) 제거 → `_play_once`로 seed당 1 패스(콜 절반), 메트릭 byte-equivalent. 463→465(+2, 회귀0), mypy30/ruff/build clean. L3 2/2 APPROVE. 후속: 구독으로 적정 호라이즌 실측. |
+
+(이후: 적정 호라이즌 실측 run으로 "프런티어 LLM N% of oracle" 기록 / 서버측 봉인 인프라·다중 config·hosted 서비스 — 사람/전략 게이트)
 
 ## 정직성 문화 (계승)
 프로토타입 = *기능 토대 데모*이지 hosted 제품·고객·매출이 아님(명시). 봉인="in-process 컨벤션"(실제 제품은
