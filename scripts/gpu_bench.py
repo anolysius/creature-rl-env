@@ -143,7 +143,10 @@ def main() -> None:
 
     numpy_steps = 20_000 if args.quick else 100_000
     rollout_steps = 200 if args.quick else 1000
-    batches = (1024, 4096) if args.quick else (1024, 4096, 16384, 65536)
+    # Cap at 16384: batch=65536 needs 65536 numpy procgen builds + a near-memory-limit run that
+    # stalls a free Colab T4 (and OOMs the full-episode slice); 16384 already saturates throughput
+    # (~950M steps/s overworld on a T4). Pass a bigger batch explicitly if you have the VRAM.
+    batches = (1024, 4096) if args.quick else (1024, 4096, 16384)
 
     try:
         import jax
