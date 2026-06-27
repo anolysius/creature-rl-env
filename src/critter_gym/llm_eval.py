@@ -139,6 +139,81 @@ class LLMAgent:
         return parse_action(self._complete(prompt), self._n_actions)
 
 
+_ACTION_NAMES = ("North", "South", "East", "West", "Catch", "Wait")
+
+
+def _obs_summary(obs: Mapping[str, object]) -> str:
+    """A compact one-line digest of an observation for the running history (not the full render).
+
+    Keeps the history token-cheap: only the fields that change a navigation/battle decision
+    (position, battle flag, gyms cleared)."""
+    pos = np.asarray(obs["agent_pos"]).flatten()
+    where = "in battle" if _scalar(obs, "in_battle") else f"at ({int(pos[0])},{int(pos[1])})"
+    return f"{where}, gyms {_scalar(obs, 'gyms_defeated')}"
+
+
+class StatefulLLMAgent:
+    """An LLM submission that **remembers** its recent steps within an episode.
+
+    The plain :class:`LLMAgent` is memoryless — each turn it sees only the current observation,
+    so under partial observability (the 5×5 local view) it cannot recall a corridor it walked a
+    moment ago. This agent prepends a sliding window of the last ``window`` ``(observation
+    digest, action taken)`` pairs to each prompt, so the LLM can reason over where it has been.
+    That makes for a *fairer* sealed-eval measurement of an agentic LLM — memory is load-bearing
+    in this env, so withholding it floors any agent regardless of capability.
+
+    Satisfies the same :class:`critter_gym.eval_harness.Agent` Protocol as :class:`LLMAgent`
+    (``act(obs) -> int``) and adds the optional ``reset()`` hook: :func:`eval_harness.score_agent`
+    calls it at the start of each sealed world, clearing the history so one world's transcript
+    cannot leak into the next. ``window`` bounds context growth (and so per-call tokens); the
+    history holds compact one-line digests, not full renders.
+
+    Honest scope: this is the *memory mechanism*, not a measured result. CI uses a stub
+    ``complete``; a real probe (subscription Claude CLI or API) is a separate user-run, and
+    whatever fraction-of-oracle it yields is reported as-is — not reframed as "frontier LLMs
+    can/can't solve it"."""
+
+    def __init__(
+        self, complete: Callable[[str], str], *, system: str = DEFAULT_SYSTEM,
+        n_actions: int = 6, window: int = 8,
+    ) -> None:
+        if window < 0:
+            raise ValueError("window must be >= 0")
+        self._complete = complete
+        self._system = system
+        self._n_actions = n_actions
+        self._window = int(window)
+        self._history: list[tuple[str, int]] = []  # (obs digest, action) most-recent last
+
+    def reset(self) -> None:
+        """Clear the per-episode memory (called by ``score_agent`` between sealed worlds)."""
+        self._history.clear()
+
+    def _history_block(self) -> str:
+        """Render the recent history as legible prompt context (empty string if none)."""
+        if not self._history:
+            return ""
+        lines = ["Recent history (oldest first):"]
+        for digest, action in self._history:
+            name = _ACTION_NAMES[action] if 0 <= action < len(_ACTION_NAMES) else str(action)
+            lines.append(f"  - You were {digest}; you chose action {action} ({name}).")
+        return "\n".join(lines)
+
+    def act(self, obs: object) -> int:
+        obs_map: Mapping[str, object] = obs  # type: ignore[assignment]
+        history = self._history_block()
+        parts = [self._system]
+        if history:
+            parts.append(history)
+        parts.append(render_obs(obs_map))
+        action = parse_action(self._complete("\n\n".join(parts)), self._n_actions)
+        # Record this step, then bound the window (drop oldest beyond `window`).
+        self._history.append((_obs_summary(obs_map), action))
+        if len(self._history) > self._window:
+            del self._history[: len(self._history) - self._window]
+        return action
+
+
 def anthropic_complete(
     model: str = "claude-opus-4-8", *, max_tokens: int = 64, system: str = DEFAULT_SYSTEM,
 ) -> Callable[[str], str]:

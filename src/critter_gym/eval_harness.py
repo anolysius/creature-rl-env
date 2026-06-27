@@ -45,7 +45,14 @@ _SEALED_SPAN = 800_000  # sealed offsets live in [_SEALED_BASE, _SEALED_BASE + _
 @runtime_checkable
 class Agent(Protocol):
     """A submission: maps an observation to an action. Same interface a learned policy or an
-    LLM agent implements — ``act(obs) -> action_index``."""
+    LLM agent implements — ``act(obs) -> action_index``.
+
+    **Optional ``reset()`` hook.** An agent *may* additionally define ``reset(self) -> None``;
+    :func:`score_agent` calls it (duck-typed) at the start of *each* sealed episode, right after
+    ``env.reset()``. Stateful agents (e.g. an LLM that accumulates a per-episode history) use it
+    to clear memory so one sealed world's transcript cannot leak into the next — without it, a
+    stateful submission would contaminate world B with world A's memory. Stateless agents simply
+    omit it; the hook is skipped and behaviour is byte-identical to before."""
 
     def act(self, obs: object) -> int: ...
 
@@ -170,10 +177,14 @@ def score_agent(
     factory = sealed.env_factory()
     seeds = sealed._eval_seeds()
     policy = _as_env_policy(submission)
+    # Optional per-episode reset (duck-typed) — a stateful agent clears its memory between
+    # sealed worlds so world A's transcript can't leak into world B. Stateless submissions
+    # (no `reset`) skip this and stay byte-identical.
+    reset_fn = getattr(submission, "reset", None)
 
     # One episode per seed reads gyms / caught / evolved together (a single pass — the prior
     # separate `caught` re-run doubled per-step LLM calls for an LLM submission).
-    plays = [_play_once(factory, policy, s) for s in seeds]
+    plays = [_play_once(factory, policy, s, reset=reset_fn) for s in seeds]
     n = len(plays)
     mean_gyms = float(np.mean([gyms for gyms, _c, _e in plays]))
     cleared_rate = float(np.mean([gyms >= 1 for gyms, _c, _e in plays]))
@@ -195,7 +206,8 @@ def score_agent(
 
 
 def _play_once(
-    factory: Callable[[], CritterEnv], policy: EnvPolicy, seed: int
+    factory: Callable[[], CritterEnv], policy: EnvPolicy, seed: int,
+    *, reset: Callable[[], None] | None = None,
 ) -> tuple[int, bool, bool]:
     """Run one episode and read all three verifiable subgoals from the terminal step:
     ``(gyms_cleared, caught_any, evolved_any)``.
@@ -203,9 +215,14 @@ def _play_once(
     A single pass — the policy is queried once per step, not twice (the prior design re-ran
     the whole episode just to read ``caught``, doubling per-step LLM calls). ``gyms_cleared``
     is ``info["subgoals"]["gyms_defeated"]`` (= ``sum(env._gym_defeated)``), so it matches the
-    value the old ``run_episode`` path read — the metrics are numerically unchanged."""
+    value the old ``run_episode`` path read — the metrics are numerically unchanged.
+
+    ``reset`` (optional) is the submission's per-episode hook, called right after
+    ``env.reset()`` so a stateful agent starts each sealed world with a clean memory."""
     env = factory()
     obs, _ = env.reset(seed=int(seed))
+    if reset is not None:
+        reset()
     info: dict = {"subgoals": {"caught": 0, "gyms_defeated": 0, "evolved": 0}}
     done = False
     while not done:
