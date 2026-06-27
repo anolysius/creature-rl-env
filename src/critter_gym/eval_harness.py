@@ -66,14 +66,19 @@ class SealedEvalSet:
 
     def __init__(
         self, master_seed: int, n_worlds: int = 16, *, num_types: int = 8,
-        commit_battles: bool = True,
+        commit_battles: bool = True, max_steps: int = 200,
     ) -> None:
         if n_worlds <= 0:
             raise ValueError("n_worlds must be positive")
+        if max_steps <= 0:
+            raise ValueError("max_steps must be positive")
         self.master_seed = int(master_seed)
         self.n_worlds = int(n_worlds)
         self.num_types = int(num_types)
         self.commit_battles = bool(commit_battles)
+        # Episode length cap — the default 200 is the env's own default (byte-identical);
+        # a small value bounds cost for a per-step LLM eval (each step is an API call).
+        self.max_steps = int(max_steps)
 
     def _offset(self) -> int:
         """A secret, well-spread offset into the sealed region derived from ``master_seed``."""
@@ -87,8 +92,10 @@ class SealedEvalSet:
 
     def env_factory(self) -> Callable[[], CritterEnv]:
         """A fresh numpy ``CritterEnv`` (commit-v0) matching this set's config."""
-        num_types, commit = self.num_types, self.commit_battles
-        return lambda: CritterEnv(commit_battles=commit, vary=True, num_types=num_types)
+        num_types, commit, steps = self.num_types, self.commit_battles, self.max_steps
+        return lambda: CritterEnv(
+            commit_battles=commit, vary=True, num_types=num_types, max_steps=steps
+        )
 
 
 class SealedCertificate(NamedTuple):
