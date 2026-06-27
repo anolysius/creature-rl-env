@@ -103,3 +103,24 @@ class _RandomAgent:
 
     def act(self, obs: object) -> int:
         return int(self._rng.integers(0, 6))
+
+
+# --- llm-eval-run: max_steps cost cap on SealedEvalSet -----------------------
+def test_sealed_max_steps_caps_episode_length() -> None:
+    """A small `max_steps` caps the episode (cost control for per-step LLM eval)."""
+    sealed = SealedEvalSet(master_seed=2, n_worlds=2, max_steps=8)
+    env = sealed.env_factory()()
+    env.reset(seed=sealed._eval_seeds()[0])
+    steps, done = 0, False
+    while not done and steps < 1000:
+        _o, _r, term, trunc, _i = env.step(5)  # Wait
+        steps += 1
+        done = bool(term or trunc)
+    assert steps <= 8  # truncated at the cap
+
+
+def test_sealed_default_max_steps_unchanged() -> None:
+    """The default (max_steps=200) leaves the env behavior byte-identical."""
+    sealed = SealedEvalSet(master_seed=2, n_worlds=2)  # no max_steps -> 200
+    env = sealed.env_factory()()
+    assert env.max_steps == 200
