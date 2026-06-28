@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 
 from critter_gym.eval_harness import SealedEvalSet, score_agent
+from critter_gym.inference_rigor import classify_inference
 from critter_gym.llm_eval import (
     LLMAgent,
     StatefulLLMAgent,
@@ -61,6 +62,9 @@ def main() -> None:
     p.add_argument("--boss-atk", type=int, default=12,
                    help="gym-boss attack (lower = the player survives more turns to learn)")
     p.add_argument("--boss-def", type=int, default=12, help="gym-boss defense")
+    p.add_argument("--runs", type=int, default=1,
+                   help="repeat the scoring N times and report a robust inference-score verdict "
+                        "(mean ± std + classify_inference); N>1 multiplies LLM calls by N")
     a = p.parse_args()
 
     projected = a.worlds * a.max_steps
@@ -84,8 +88,13 @@ def main() -> None:
                            num_types=a.num_types, max_steps=a.max_steps,
                            grid_size=a.grid_size, boss_hp=a.boss_hp,
                            boss_atk=a.boss_atk, boss_def=a.boss_def)
-    agent = StatefulLLMAgent(complete, window=a.window) if a.stateful else LLMAgent(complete)
-    card = score_agent(agent, sealed)
+    def fresh_agent():
+        return StatefulLLMAgent(complete, window=a.window) if a.stateful else LLMAgent(complete)
+
+    # Score `--runs` times (a fresh agent each run); scripted oracle/type_blind are
+    # deterministic, so only the submission varies run-to-run.
+    cards = [score_agent(fresh_agent(), sealed) for _ in range(max(1, a.runs))]
+    card = cards[-1]
 
     pct = card.frac_of_oracle
     print("  -- 3-arm comparison on the SAME sealed never-seen worlds --")
@@ -93,12 +102,21 @@ def main() -> None:
     print(f"  type_blind (chart-BLIND baseline, scripted) gym-clears {card.type_blind_gyms:.2f}")
     print(f"  {a.model}  gym-clears {card.mean_gyms_cleared:.2f}  "
           f"({pct:.0%} of oracle)  cleared {card.cleared_rate:.0%}  caught {card.caught_rate:.0%}")
-    print(f"\n  => INFERENCE SCORE: {card.inference_score:.2f}  "
-          "(0 = no better than the chart-blind baseline / 1 = expert)")
+
+    if a.runs > 1:
+        scores = [c.inference_score for c in cards]
+        verdict = classify_inference(scores)
+        print(f"\n  => INFERENCE SCORE: {verdict.mean:.2f} ± {verdict.std:.2f}  "
+              f"({verdict.n_runs} runs)  →  {verdict.verdict.upper()}")
+        print("     (infers = robustly beats the chart-blind baseline / at-chart-blind-floor = "
+              "robustly does not infer / inconclusive = more runs needed)")
+    else:
+        print(f"\n  => INFERENCE SCORE: {card.inference_score:.2f}  "
+              "(0 = no better than the chart-blind baseline / 1 = expert)")
     print("     the un-gameable KPI: in-context hidden-rule inference on a sealed, never-seen "
           "world — it cannot be memorized or contaminated.")
-    print("  honest: a small probe (worlds × max_steps capped), single run, scripted-oracle "
-          "proxy, one difficulty band — a signal, not a definitive number.")
+    print("  honest: a probe (worlds × max_steps capped), scripted-oracle proxy, one difficulty "
+          "band — a signal, not a definitive number.")
 
 
 if __name__ == "__main__":
