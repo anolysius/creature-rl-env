@@ -124,6 +124,39 @@ def test_default_system_explains_party_goal_and_catch() -> None:
     assert "catch" in s
 
 
+# --- battle legibility (battle-legibility) -----------------------------------
+def test_default_system_explains_battle_strategy() -> None:
+    # AC1: the system prompt explains the battle mechanic — moves have different hidden types,
+    # try-and-remember, switch, retry — WITHOUT revealing which move is super-effective.
+    s = DEFAULT_SYSTEM.lower()
+    assert "different hidden type" in s          # moves 0-3 differ by hidden type
+    assert "switch" in s                          # party switch is available
+    assert "super-effective" in s                 # the concept is named (not the answer)
+    assert "again" in s or "re-enter" in s        # retry after a loss
+
+
+def test_render_battle_has_tactical_hint_and_keeps_stats() -> None:
+    # AC2: battle render nudges move-variety / enemy-hp observation / switch, and still shows stats.
+    text = render_obs(_make_obs(in_battle=1, player=(12, 3, 4), enemy=(9, 1)))
+    assert "Your creature: hp 12" in text and "Enemy: hp 9" in text   # stats preserved
+    low = text.lower()
+    assert "moves 0-3" in low and "hidden type" in low                # try-different-moves hint
+    assert "switch" in low
+
+
+def test_overworld_render_has_no_battle_tactical_hint() -> None:
+    # AC4: the battle tip must NOT leak onto the overworld (context-appropriate rendering).
+    text = render_obs(_make_obs(in_battle=0)).lower()
+    assert "moves 0-3" not in text
+
+
+def test_default_system_clarifies_catch_is_creature_only() -> None:
+    # AC3: Catch works only on a creature (C) tile, not a gym — stops the catch-loop waste.
+    s = DEFAULT_SYSTEM.lower()
+    assert "on their tile" in s
+    assert "gym" in s and "catch does nothing on a gym" in s
+
+
 # --- AC2: robust parsing (number / keyword / garbage -> fallback / clamp) ----
 def test_parse_action_plain_number() -> None:
     assert parse_action("2") == 2
