@@ -164,6 +164,53 @@ def test_sealed_default_max_steps_unchanged() -> None:
     assert env.max_steps == 200
 
 
+# --- inference-score-metric: config knobs + inference_score KPI --------------
+def test_sealed_world_battle_knobs_reach_env() -> None:
+    """AC1: grid_size / boss knobs flow through env_factory to the CritterEnv."""
+    sealed = SealedEvalSet(master_seed=4, n_worlds=2, num_types=3,
+                           grid_size=5, boss_hp=140, boss_atk=6, boss_def=18)
+    env = sealed.env_factory()()
+    assert env.grid_size == 5
+    assert (env.boss_hp, env.boss_atk, env.boss_def) == (140, 6, 18)
+
+
+def test_sealed_default_knobs_are_env_defaults() -> None:
+    """AC1: defaults match CritterEnv defaults => existing sealed sets are byte-identical."""
+    env = SealedEvalSet(master_seed=4, n_worlds=2).env_factory()()
+    assert env.grid_size == 10
+    assert (env.boss_hp, env.boss_atk, env.boss_def) == (120, 12, 12)
+
+
+def test_inference_score_oracle_is_one_blind_is_zero() -> None:
+    """AC2/AC3: the expert (oracle) scores 1.0, the chart-blind baseline scores 0.0."""
+    # An inference-gated band: small navigable grid + a boss that kills before a blind agent
+    # can brute-force it (oracle 1.67 vs type_blind 0.33 here, so the gap is real).
+    s = SealedEvalSet(master_seed=3, n_worlds=6, num_types=3,
+                      grid_size=5, boss_hp=120, boss_atk=12, boss_def=12, max_steps=40)
+    oracle_card = score_agent(reference_arm("oracle"), s)
+    assert oracle_card.oracle_gyms > oracle_card.type_blind_gyms  # band discriminates
+    assert oracle_card.inference_score == 1.0
+    assert score_agent(reference_arm("type_blind"), s).inference_score == 0.0
+
+
+def test_inference_score_in_unit_interval() -> None:
+    """AC3: any submission's inference score is clamped to [0, 1]."""
+    s = SealedEvalSet(master_seed=5, n_worlds=6)
+    score = score_agent(_RandomAgent(seed=2), s).inference_score
+    assert 0.0 <= score <= 1.0
+
+
+def test_inference_score_zero_when_band_does_not_discriminate() -> None:
+    """AC3: when oracle <= type_blind (no inference gap), the score is 0.0 (denominator guard).
+
+    A weak boss on a tiny grid is winnable even without the type chart, so oracle == type_blind."""
+    s = SealedEvalSet(master_seed=6, n_worlds=3, num_types=3,
+                      grid_size=5, boss_hp=70, boss_atk=4, boss_def=8)
+    card = score_agent(reference_arm("oracle"), s)
+    assert card.oracle_gyms <= card.type_blind_gyms  # band does not discriminate
+    assert card.inference_score == 0.0
+
+
 # --- claude-cli-provider: score_agent runs the submission ONCE per seed --------
 def test_score_agent_single_pass_no_double_run() -> None:
     """score_agent must query the submission exactly one episode per seed (not twice —
