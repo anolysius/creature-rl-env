@@ -54,10 +54,18 @@ DEFAULT_SYSTEM = (
     "must infer from battles. You ALREADY START with a starter party of creatures (their stats "
     "are shown only during a battle, not on the overworld). Your main goal is to clear gyms: walk "
     "onto a gym tile (shown as G in your local view) to start a boss battle, then fight to defeat "
-    "the boss. You can also catch wild creatures (shown as C) by standing on their tile and "
-    "choosing Catch. Each turn you see your local surroundings and state. Reply with the single "
-    "action you choose — either its number (0-5) or a short phrase like 'move north' / 'catch' / "
-    "'attack' / 'wait'. Be decisive; reply briefly."
+    "the boss. "
+    "BATTLE STRATEGY: your attack moves 0-3 each have a different HIDDEN type, and one may be "
+    "super-effective against this enemy. You must discover which by trying moves and watching how "
+    "much the enemy's hp drops — the move that deals the most damage is your best counter; "
+    "remember it for this enemy type. Just spamming move 0 usually loses. If your creature is a "
+    "bad matchup, Switch (action 4) to another party member. If you lose a gym battle your party "
+    "heals, so you can re-enter the same gym and try again using what you learned. "
+    "You can also catch wild creatures (shown as C) by standing EXACTLY on their tile and choosing "
+    "Catch (4); Catch does nothing on a gym (G) or empty tile. "
+    "Each turn you see your local surroundings and state. Reply with the single action you choose "
+    "— either its number (0-5) or a short phrase like 'move north' / 'catch' / 'attack' / 'wait'. "
+    "Be decisive; reply briefly."
 )
 
 
@@ -123,6 +131,12 @@ def render_obs(obs: Mapping[str, object]) -> str:
         )
         lines.append(
             f"Enemy: hp {_scalar(obs, 'enemy_hp')}, type {_scalar(obs, 'enemy_type')}"
+        )
+        # Tactical hint — nudge the agent into the hidden-chart inference loop (it must still
+        # discover WHICH move is super-effective itself; we only explain the mechanic).
+        lines.append(
+            "Tip: moves 0-3 have different hidden types — try them and watch the enemy hp drop "
+            "to find the super-effective one (remember it), or Switch (4) party member."
         )
     else:
         # Overworld: player_* are 0-masked by the env — do NOT print "hp 0" (it reads as "no
