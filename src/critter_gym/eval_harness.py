@@ -74,11 +74,14 @@ class SealedEvalSet:
     def __init__(
         self, master_seed: int, n_worlds: int = 16, *, num_types: int = 8,
         commit_battles: bool = True, max_steps: int = 200,
+        grid_size: int = 10, boss_hp: int = 120, boss_atk: int = 12, boss_def: int = 12,
     ) -> None:
         if n_worlds <= 0:
             raise ValueError("n_worlds must be positive")
         if max_steps <= 0:
             raise ValueError("max_steps must be positive")
+        if grid_size <= 0 or boss_hp <= 0:
+            raise ValueError("grid_size and boss_hp must be positive")
         self.master_seed = int(master_seed)
         self.n_worlds = int(n_worlds)
         self.num_types = int(num_types)
@@ -86,6 +89,13 @@ class SealedEvalSet:
         # Episode length cap — the default 200 is the env's own default (byte-identical);
         # a small value bounds cost for a per-step LLM eval (each step is an API call).
         self.max_steps = int(max_steps)
+        # World/battle knobs (defaults = CritterEnv defaults => byte-identical). Lowering
+        # grid_size makes a world navigable for an LLM; tuning the boss lets us target an
+        # *inference-gated* difficulty band (a chart-blind baseline fails, an expert wins).
+        self.grid_size = int(grid_size)
+        self.boss_hp = int(boss_hp)
+        self.boss_atk = int(boss_atk)
+        self.boss_def = int(boss_def)
 
     def _offset(self) -> int:
         """A secret, well-spread offset into the sealed region derived from ``master_seed``."""
@@ -100,8 +110,10 @@ class SealedEvalSet:
     def env_factory(self) -> Callable[[], CritterEnv]:
         """A fresh numpy ``CritterEnv`` (commit-v0) matching this set's config."""
         num_types, commit, steps = self.num_types, self.commit_battles, self.max_steps
+        grid, b_hp, b_atk, b_def = self.grid_size, self.boss_hp, self.boss_atk, self.boss_def
         return lambda: CritterEnv(
-            commit_battles=commit, vary=True, num_types=num_types, max_steps=steps
+            commit_battles=commit, vary=True, num_types=num_types, max_steps=steps,
+            grid_size=grid, boss_hp=b_hp, boss_atk=b_atk, boss_def=b_def,
         )
 
 
@@ -153,6 +165,12 @@ class Scorecard(NamedTuple):
     frac_of_oracle: float  # mean_gyms_cleared / oracle's, on the same sealed worlds
     oracle_gyms: float
     type_blind_gyms: float
+    # In-context inference score, normalized between the chart-BLIND baseline (type_blind, 0)
+    # and the chart-KNOWING expert (oracle, 1): (mean - type_blind) / (oracle - type_blind),
+    # clamped to [0,1]. 0 = no better than playing without the hidden chart; 1 = expert. This
+    # is the moat KPI — it measures un-gameable in-context hidden-rule inference on a sealed,
+    # never-seen world. 0.0 when the band doesn't discriminate (oracle <= type_blind).
+    inference_score: float
 
 
 def _as_env_policy(submission: Submission) -> EnvPolicy:
@@ -198,10 +216,20 @@ def score_agent(
     blind_gyms = arm_mean("type_blind") if "type_blind" in reference else float("nan")
     frac = mean_gyms / oracle_gyms if oracle_gyms and oracle_gyms > 0 else 0.0
 
+    # Inference score: where the submission lands between the chart-blind floor and expert
+    # ceiling. Needs both arms and a discriminating band (oracle > type_blind); else 0.0.
+    span = oracle_gyms - blind_gyms
+    if span > 0 and not np.isnan(span):
+        inference = (mean_gyms - blind_gyms) / span
+        inference = float(min(1.0, max(0.0, inference)))
+    else:
+        inference = 0.0
+
     return Scorecard(
         n_worlds=n, mean_gyms_cleared=mean_gyms, cleared_rate=cleared_rate,
         caught_rate=caught_rate, evolved_rate=evolved_rate,
         frac_of_oracle=float(frac), oracle_gyms=oracle_gyms, type_blind_gyms=blind_gyms,
+        inference_score=inference,
     )
 
 

@@ -18,6 +18,12 @@ Honest scope: a small probe with a step cap against our scripted-oracle proxy �
 not a definitive "frontier-LLM difficulty" number (single run, small sample, capped horizon).
 
 Run: `python scripts/llm_eval_run.py [--model claude-opus-4-8] [--worlds 3] [--max-steps 40]`.
+
+Inference-demo preset (navigable + inference-gated: a chart-blind baseline fails, an expert wins,
+and the boss is weak enough that the agent survives long enough to infer the chart):
+`--grid-size 5 --num-types 3 --boss-hp 140 --boss-atk 6 --boss-def 18 --stateful --max-steps 120`.
+The headline is the INFERENCE SCORE — where the LLM lands between the chart-blind floor (0) and
+the expert ceiling (1). It is the moat KPI: un-gameable in-context hidden-rule inference.
 """
 from __future__ import annotations
 
@@ -49,6 +55,12 @@ def main() -> None:
     p.add_argument("--window", type=int, default=8,
                    help="stateful only: how many recent (obs, action) steps to keep in the "
                         "prompt — larger = more recall but longer prompts (more tokens/call)")
+    p.add_argument("--grid-size", type=int, default=10,
+                   help="world grid size (smaller = navigable for an LLM under the 5x5 view)")
+    p.add_argument("--boss-hp", type=int, default=120, help="gym-boss hp")
+    p.add_argument("--boss-atk", type=int, default=12,
+                   help="gym-boss attack (lower = the player survives more turns to learn)")
+    p.add_argument("--boss-def", type=int, default=12, help="gym-boss defense")
     a = p.parse_args()
 
     projected = a.worlds * a.max_steps
@@ -69,19 +81,24 @@ def main() -> None:
     else:
         complete = anthropic_complete(model=a.model)  # raises a clear error if no SDK/key
     sealed = SealedEvalSet(master_seed=a.master_seed, n_worlds=a.worlds,
-                           num_types=a.num_types, max_steps=a.max_steps)
+                           num_types=a.num_types, max_steps=a.max_steps,
+                           grid_size=a.grid_size, boss_hp=a.boss_hp,
+                           boss_atk=a.boss_atk, boss_def=a.boss_def)
     agent = StatefulLLMAgent(complete, window=a.window) if a.stateful else LLMAgent(complete)
     card = score_agent(agent, sealed)
 
     pct = card.frac_of_oracle
-    print(f"  oracle (scripted)   gym-clears {card.oracle_gyms:.2f}   "
-          f"type_blind {card.type_blind_gyms:.2f}")
-    print(f"  {a.model}  held-out gym-clears {card.mean_gyms_cleared:.2f}  "
+    print("  -- 3-arm comparison on the SAME sealed never-seen worlds --")
+    print(f"  oracle (chart-KNOWING expert, scripted)   gym-clears {card.oracle_gyms:.2f}")
+    print(f"  type_blind (chart-BLIND baseline, scripted) gym-clears {card.type_blind_gyms:.2f}")
+    print(f"  {a.model}  gym-clears {card.mean_gyms_cleared:.2f}  "
           f"({pct:.0%} of oracle)  cleared {card.cleared_rate:.0%}  caught {card.caught_rate:.0%}")
-    print(f"\n  => the frontier LLM reaches {pct:.0%} of the scripted expert on these sealed "
-          "worlds (it never saw them).")
-    print("  honest: a small probe (worlds × max_steps capped), single run, our scripted-oracle "
-          "proxy — a signal, not a definitive number. Paste this output back to record it.")
+    print(f"\n  => INFERENCE SCORE: {card.inference_score:.2f}  "
+          "(0 = no better than the chart-blind baseline / 1 = expert)")
+    print("     the un-gameable KPI: in-context hidden-rule inference on a sealed, never-seen "
+          "world — it cannot be memorized or contaminated.")
+    print("  honest: a small probe (worlds × max_steps capped), single run, scripted-oracle "
+          "proxy, one difficulty band — a signal, not a definitive number.")
 
 
 if __name__ == "__main__":
