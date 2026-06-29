@@ -32,6 +32,7 @@ from typing import Callable, NamedTuple, Protocol, Union, runtime_checkable
 
 import numpy as np
 
+from critter_gym.battle import Side
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.learnability import EnvPolicy, as_env_policy, reference_arm
 from critter_gym.region import TEST_SEED_OFFSET
@@ -231,6 +232,72 @@ def score_agent(
         frac_of_oracle=float(frac), oracle_gyms=oracle_gyms, type_blind_gyms=blind_gyms,
         inference_score=inference,
     )
+
+
+class InferenceTelemetry(NamedTuple):
+    """A direct, win-independent signal of in-context hidden-rule inference.
+
+    ``super_effective_rate`` is the fraction of the submission's *battle move-decisions* that
+    chose a move super-effective (effectiveness > 1.0) against the current enemy — i.e. how
+    often it exploits the inferred hidden type chart. Unlike gym-clears, this is NOT confounded
+    by attrition (every move does ≥1 damage, so a survivor can win with neutral moves): it
+    measures the inference *act* itself, whether or not the agent wins. An expert (oracle)
+    reads high; a chart-blind agent reads near chance. ``n_battle_moves`` is the denominator.
+    Honest: an *exploit* signal, not a proof of inference, on one config — read vs the
+    oracle/random anchors."""
+
+    super_effective_rate: float
+    n_battle_moves: int
+
+
+def _super_effective_move(env: CritterEnv, action: int) -> bool | None:
+    """Read-only: was ``action`` a battle move super-effective vs the current enemy?
+
+    Returns True/False for a battle move-action (0-3), or None if the step is not a counted
+    move-decision (overworld, or a battle switch(4)/pass(5)). Never mutates the env."""
+    if env._mode != "battle" or env._battle is None or action not in (0, 1, 2, 3):
+        return None
+    state = env._battle.state
+    moves = state.active(Side.A).moves
+    if not moves:
+        return None
+    move = moves[min(action, len(moves) - 1)]
+    eff = env._battle.chart.multi_effectiveness(move.type, state.active(Side.B).types)
+    return eff > 1.0
+
+
+def score_inference_telemetry(
+    submission: Submission, sealed: SealedEvalSet,
+) -> InferenceTelemetry:
+    """Run ``submission`` on the sealed worlds and measure its super-effective-move rate.
+
+    A win-independent, attrition-proof signal of hidden-chart inference (read-only — the env is
+    never mutated, so ``score_agent`` numerics are unaffected). Mirrors ``score_agent``'s loop
+    (incl. the optional per-episode ``reset`` hook) but tallies battle move-decisions instead of
+    subgoals."""
+    factory = sealed.env_factory()
+    seeds = sealed._eval_seeds()
+    policy = _as_env_policy(submission)
+    reset_fn = getattr(submission, "reset", None)
+
+    se_hits = 0
+    n_moves = 0
+    for s in seeds:
+        env = factory()
+        obs, _ = env.reset(seed=int(s))
+        if reset_fn is not None:
+            reset_fn()
+        done = False
+        while not done:
+            action = policy(env, obs)
+            verdict = _super_effective_move(env, action)
+            if verdict is not None:
+                n_moves += 1
+                se_hits += int(verdict)
+            obs, _r, term, trunc, _info = env.step(action)
+            done = bool(term or trunc)
+    rate = se_hits / n_moves if n_moves > 0 else 0.0
+    return InferenceTelemetry(super_effective_rate=float(rate), n_battle_moves=int(n_moves))
 
 
 def _play_once(
