@@ -14,6 +14,7 @@ from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.eval_harness import Agent, Scorecard, SealedEvalSet, score_agent
 from critter_gym.llm_eval import (
     DEFAULT_SYSTEM,
+    BattleMemoryLLMAgent,
     LLMAgent,
     StatefulLLMAgent,
     parse_action,
@@ -326,6 +327,132 @@ def test_obs_render_handles_numpy_scalars() -> None:
     obs = _sample_obs(2)
     obs = {k: np.asarray(v) for k, v in obs.items()}
     assert isinstance(render_obs(obs), str)
+
+
+# --- BattleMemoryLLMAgent (agentic-battle-memory) ---------------------------
+# A "thicker" agentic memory: the StatefulLLMAgent forgets per-move battle outcomes (its digest
+# is position+gyms only), so it discards the very damage-feedback signal hidden-chart inference
+# needs. This agent records the RAW damage each attack move dealt per enemy type and surfaces it
+# as facts — WITHOUT recommending an answer move (that would do the inference for the LLM and
+# invalidate the measurement).
+
+
+def _battle_obs(enemy_hp: int, enemy_type: int):
+    """A minimal in-battle synthetic obs (enemy = (hp, type))."""
+    return _make_obs(in_battle=1, enemy=(enemy_hp, enemy_type), player=(20, 0, 1))
+
+
+def test_battle_memory_satisfies_protocol_and_has_reset() -> None:
+    # AC1: satisfies the #1 Agent Protocol (act + optional reset).
+    agent = BattleMemoryLLMAgent(_StubLLM("wait"))
+    assert isinstance(agent, Agent)
+    assert isinstance(agent.act(_sample_obs(0)), int)
+    assert callable(agent.reset)
+
+
+def test_battle_memory_records_observed_move_damage() -> None:
+    # AC2: a move's dealt damage (enemy hp drop, same enemy) is attributed to the move chosen.
+    agent = BattleMemoryLLMAgent(_StubLLM("1"))  # always picks attack move 1
+    agent.act(_battle_obs(enemy_hp=50, enemy_type=3))   # choose move 1 vs enemy type 3
+    agent.act(_battle_obs(enemy_hp=10, enemy_type=3))   # enemy hp 50 -> 10: move 1 dealt 40
+    assert agent._battle_table[3][1] == 40
+
+
+def test_battle_memory_overwrites_with_latest_single_value() -> None:
+    # AC2: (enemy_type, move) keeps a single latest value (bounded), not a growing list.
+    agent = BattleMemoryLLMAgent(_StubLLM("0"))  # always attack move 0
+    agent.act(_battle_obs(enemy_hp=50, enemy_type=2))
+    agent.act(_battle_obs(enemy_hp=30, enemy_type=2))   # move 0 dealt 20
+    agent.act(_battle_obs(enemy_hp=25, enemy_type=2))   # move 0 dealt 5 (overwrites 20)
+    assert agent._battle_table[2][0] == 5
+    assert isinstance(agent._battle_table[2][0], int)   # single int, not a list
+
+
+def test_battle_memory_table_is_bounded_per_enemy_type() -> None:
+    # AC2: each enemy-type row holds at most 4 entries (moves 0-3), a single int each — bounded,
+    # never a growing list, no matter how many battle turns are observed.
+    import itertools
+
+    moves = itertools.cycle("0123")
+
+    class _CycleStub:
+        def __call__(self, prompt: str) -> str:
+            return next(moves)
+
+    agent = BattleMemoryLLMAgent(_CycleStub())
+    hp = 100
+    for _ in range(40):  # 40 turns vs the same enemy type, cycling all four attack moves
+        agent.act(_battle_obs(enemy_hp=hp, enemy_type=3))
+        hp = max(1, hp - 3)
+    row = agent._battle_table[3]
+    assert len(row) <= 4                                  # only moves 0-3 are ever keyed
+    assert all(isinstance(v, int) for v in row.values())  # one int per move, not a list
+
+
+def test_battle_memory_surfaces_raw_damage_in_prompt() -> None:
+    # AC2: the observed damage is surfaced to the LLM as a fact in a later battle turn.
+    stub = _RecordingStub("1")
+    agent = BattleMemoryLLMAgent(stub)
+    agent.act(_battle_obs(enemy_hp=50, enemy_type=3))
+    agent.act(_battle_obs(enemy_hp=10, enemy_type=3))
+    low = stub.prompts[-1].lower()
+    assert "enemy type 3" in low
+    assert "move 1 dealt 40" in low
+
+
+def test_battle_memory_no_answer_leak_in_notes() -> None:
+    # AC3 (measurement integrity): the notes surface RAW facts only — never the hidden chart,
+    # a recommended move, or "super-effective". The LLM must do the inference itself.
+    agent = BattleMemoryLLMAgent(_StubLLM("1"))
+    agent.act(_battle_obs(enemy_hp=50, enemy_type=3))
+    agent.act(_battle_obs(enemy_hp=10, enemy_type=3))
+    notes = agent._battle_notes_block(_battle_obs(enemy_hp=10, enemy_type=3)).lower()
+    assert "dealt" in notes  # it does carry the observed facts
+    for banned in ("best", "recommend", "should", "super-effective", "strongest", "use move"):
+        assert banned not in notes
+
+
+def test_battle_memory_docstring_states_honest_boundary() -> None:
+    # AC8: the class docstring pins the honesty boundary (mechanism, not a measured result).
+    doc = (BattleMemoryLLMAgent.__doc__ or "").lower()
+    assert "mechanism" in doc
+    assert "not a measured" in doc or "not a result" in doc
+
+
+def test_battle_memory_no_attribution_on_enemy_change_or_non_attack() -> None:
+    # AC2: don't attribute across an enemy change (faint/new enemy) or after a non-attack action.
+    agent = BattleMemoryLLMAgent(_StubLLM("1"))
+    agent.act(_battle_obs(enemy_hp=50, enemy_type=3))
+    agent.act(_battle_obs(enemy_hp=40, enemy_type=5))   # enemy TYPE changed -> no attribution
+    assert 3 not in agent._battle_table or 1 not in agent._battle_table.get(3, {})
+
+    switch = BattleMemoryLLMAgent(_StubLLM("switch"))   # parse_action -> 4 (not an attack move)
+    switch.act(_battle_obs(enemy_hp=50, enemy_type=3))
+    switch.act(_battle_obs(enemy_hp=40, enemy_type=3))
+    assert switch._battle_table == {}                   # action 4 deals no move damage
+
+
+def test_battle_memory_reset_clears_table() -> None:
+    # AC4: reset() clears the battle table between sealed worlds (no cross-world leakage).
+    agent = BattleMemoryLLMAgent(_StubLLM("1"))
+    agent.act(_battle_obs(enemy_hp=50, enemy_type=3))
+    agent.act(_battle_obs(enemy_hp=10, enemy_type=3))
+    assert agent._battle_table
+    agent.reset()
+    assert agent._battle_table == {}
+    assert agent._battle_notes_block(_battle_obs(enemy_hp=10, enemy_type=3)) == ""
+
+
+def test_battle_memory_scores_end_to_end_and_arms_are_byte_identical() -> None:
+    # AC1 + AC5: scores on a sealed set, and the scripted reference arms are submission-
+    # independent (adding this adapter cannot move oracle / type_blind numbers).
+    sealed = SealedEvalSet(master_seed=11, n_worlds=4)
+    card = score_agent(BattleMemoryLLMAgent(_StubLLM("Action: 0")), sealed)
+    assert isinstance(card, Scorecard)
+    assert card.n_worlds == 4
+    baseline = score_agent(LLMAgent(_StubLLM("Action: 0")), sealed)
+    assert card.oracle_gyms == baseline.oracle_gyms
+    assert card.type_blind_gyms == baseline.type_blind_gyms
 
 
 def test_claude_cli_complete_exists_and_errors_on_missing_binary() -> None:
