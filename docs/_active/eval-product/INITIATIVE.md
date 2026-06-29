@@ -37,6 +37,8 @@
 
 | 4 | `claude-cli-provider` | ✅ done (→ `_archive/2026-Q2/eval-product/04-claude-cli-provider/`) | **구독(claude CLI) provider + score_agent 콜 절반** — (1) `llm_eval.claude_cli_complete`(`claude -p`·중립 cwd·구독 인증·API 키 불요) + 러너 `--provider {anthropic, claude-cli}`. (2) `score_agent` 이중-실행(`_caught_rate` 재실행) 제거 → `_play_once`로 seed당 1 패스(콜 절반), 메트릭 byte-equivalent. 463→465(+2, 회귀0), mypy30/ruff/build clean. L3 2/2 APPROVE. 후속: 구독으로 적정 호라이즌 실측. |
 
+| 11 | `inference-measurement-sync` | ✅ done (→ `_archive/2026-Q2/eval-product/11-inference-measurement-sync/`) | (quick-fix) #10 도구로 첫 robust 측정 반영 — claude-opus-4-8, inference-gated demonstrator: 40스텝 3 runs → **inference_score 0.00±0.00 = at-chart-blind-floor**(노이즈 아님) + 호라이즌 sweep 40/60/120 모두 0.00 → floor는 *추론-bound, 예산-bound 아님*. competitive-analysis 정직 갱신. docs-only, L3 APPROVE. |
+
 | 10 | `inference-score-rigor` | ✅ done (→ `_archive/2026-Q2/eval-product/10-inference-score-rigor/`) | **inference_score 측정 robust화 — 사전약정 multi-run 분류기** — #8 첫 KPI(단일 run 0.00)를 노이즈 아닌 robust verdict로 격상. 신규 `inference_rigor.classify_inference`(per-run inference_score들의 mean±std로 3-branch: `m−k·s≥0.5`→**infers** / `m+k·s≤0.1`→**at-chart-blind-floor** / else **inconclusive**; 임계 데이터 전 freeze=p-hacking 차단; numpy-only CI; `headroom.py` 패턴 mirror) + 러너 `--runs N` 집계(N=1 무회귀). 분류기=*도구*(verdict 그대로 기록, 결과 단정 안 함); 실측 N-run LLM은 후속. 집계 검증: oracle×3→infers / type_blind×3→at-floor. 489→498(+9, 회귀0), mypy31/ruff/build clean. L3 2/2 APPROVE. |
 
 | 9 | `eval-product-narrative-sync` | ✅ done (→ `_archive/2026-Q2/eval-product/09-eval-product-narrative-sync/`) | (quick-fix) competitive-analysis "monetizable eval" 행에 #5~#8 측정 토대 + 첫 probe inference_score 0.00(non-saturated 신호, 약한 증거)을 정직 반영. docs-only, L3 qa-verifier APPROVE. |
