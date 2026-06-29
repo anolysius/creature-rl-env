@@ -9,9 +9,11 @@ the guard catches a train/eval leak, and scoring uses only verifiable subgoals.
 from __future__ import annotations
 
 from critter_gym.eval_harness import (
+    InferenceTelemetry,
     Scorecard,
     SealedEvalSet,
     score_agent,
+    score_inference_telemetry,
     verify_sealed,
 )
 from critter_gym.learnability import reference_arm
@@ -91,6 +93,54 @@ def test_score_agent_obs_only_interface() -> None:
     card = score_agent(_RandomAgent(seed=1), s)
     assert card.n_worlds == 6
     assert card.frac_of_oracle >= 0.0
+
+
+# --- inference-telemetry: super-effective-move rate (direct inference signal) ---------
+class _WaitAgent:
+    """An agent that always Waits (5) — never moves, so it never reaches a gym / battles."""
+
+    def act(self, obs: object) -> int:
+        return 5
+
+
+def test_telemetry_oracle_exploits_chart_blind_is_lower() -> None:
+    """AC3: the expert exploits the hidden chart (high SE-rate); the chart-blind arm is lower."""
+    s = SealedEvalSet(master_seed=3, n_worlds=6, num_types=3,
+                      grid_size=5, boss_hp=120, boss_atk=12, boss_def=12, max_steps=40)
+    oracle = score_inference_telemetry(reference_arm("oracle"), s)
+    blind = score_inference_telemetry(reference_arm("type_blind"), s)
+    assert isinstance(oracle, InferenceTelemetry)
+    assert oracle.n_battle_moves > 0                       # battles happened
+    assert oracle.super_effective_rate >= 0.5              # expert exploits the chart
+    assert oracle.super_effective_rate >= blind.super_effective_rate  # vs chart-blind
+
+
+def test_telemetry_rate_in_unit_interval_and_deterministic() -> None:
+    """AC3: rate ∈ [0,1] and deterministic for a deterministic submission + seeds."""
+    s = SealedEvalSet(master_seed=5, n_worlds=4, num_types=3, grid_size=5, max_steps=40)
+    a = score_inference_telemetry(_RandomAgent(seed=1), s)
+    b = score_inference_telemetry(_RandomAgent(seed=1), s)
+    assert 0.0 <= a.super_effective_rate <= 1.0
+    assert a == b                                          # same seed-set + agent -> identical
+
+
+def test_telemetry_zero_battle_moves_guarded() -> None:
+    """AC1: an agent that never battles -> 0 moves -> rate 0.0 (no div-by-zero)."""
+    s = SealedEvalSet(master_seed=2, n_worlds=2, num_types=3, grid_size=5, max_steps=20)
+    tel = score_inference_telemetry(_WaitAgent(), s)
+    assert tel.n_battle_moves == 0
+    assert tel.super_effective_rate == 0.0
+
+
+def test_telemetry_is_read_only_score_agent_unchanged() -> None:
+    """AC2: running telemetry does not perturb score_agent numerics (env read-only)."""
+    s = SealedEvalSet(master_seed=3, n_worlds=8)
+    before = score_agent(reference_arm("oracle"), s)
+    score_inference_telemetry(reference_arm("oracle"), s)  # must not mutate anything shared
+    after = score_agent(reference_arm("oracle"), s)
+    assert (before.mean_gyms_cleared, before.inference_score) == (
+        after.mean_gyms_cleared, after.inference_score
+    )
 
 
 class _RandomAgent:
