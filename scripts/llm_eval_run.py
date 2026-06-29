@@ -29,8 +29,13 @@ from __future__ import annotations
 
 import argparse
 
-from critter_gym.eval_harness import SealedEvalSet, score_agent
+from critter_gym.eval_harness import (
+    SealedEvalSet,
+    score_agent,
+    score_inference_telemetry,
+)
 from critter_gym.inference_rigor import classify_inference
+from critter_gym.learnability import reference_arm
 from critter_gym.llm_eval import (
     LLMAgent,
     StatefulLLMAgent,
@@ -65,6 +70,9 @@ def main() -> None:
     p.add_argument("--runs", type=int, default=1,
                    help="repeat the scoring N times and report a robust inference-score verdict "
                         "(mean ± std + classify_inference); N>1 multiplies LLM calls by N")
+    p.add_argument("--telemetry", action="store_true",
+                   help="also report the super-effective-move rate (a win-independent, "
+                        "attrition-proof signal of hidden-chart inference), vs oracle/type_blind")
     a = p.parse_args()
 
     projected = a.worlds * a.max_steps
@@ -115,6 +123,20 @@ def main() -> None:
               "(0 = no better than the chart-blind baseline / 1 = expert)")
     print("     the un-gameable KPI: in-context hidden-rule inference on a sealed, never-seen "
           "world — it cannot be memorized or contaminated.")
+
+    if a.telemetry:
+        agent_tel = score_inference_telemetry(fresh_agent(), sealed)
+        oracle_tel = score_inference_telemetry(reference_arm("oracle"), sealed)
+        blind_tel = score_inference_telemetry(reference_arm("type_blind"), sealed)
+        print("\n  -- super-effective-move rate (direct inference signal, win-independent) --")
+        print(f"  oracle (expert)      {oracle_tel.super_effective_rate:.0%}  "
+              f"({oracle_tel.n_battle_moves} battle moves)")
+        print(f"  type_blind (blind)   {blind_tel.super_effective_rate:.0%}")
+        print(f"  {a.model}  {agent_tel.super_effective_rate:.0%}  "
+              f"({agent_tel.n_battle_moves} battle moves)")
+        print("     how often it exploits the inferred hidden chart — NOT confounded by "
+              "attrition (unlike gym-clears). honest: an exploit signal, not proof of inference.")
+
     print("  honest: a probe (worlds × max_steps capped), scripted-oracle proxy, one difficulty "
           "band — a signal, not a definitive number.")
 
