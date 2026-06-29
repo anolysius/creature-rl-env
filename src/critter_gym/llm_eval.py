@@ -27,6 +27,8 @@ from typing import Callable
 
 import numpy as np
 
+from critter_gym.envs.critter_env import _PATCH_CREATURE, _PATCH_EMPTY, _PATCH_GYM
+
 # Action semantics (CritterEnv Discrete(6); battle reinterprets 0-3 as attack moves).
 _ACTION_LEGEND_OVERWORLD = (
     "0=move North  1=move South  2=move East  3=move West  "
@@ -46,8 +48,11 @@ _KEYWORDS: tuple[tuple[str, int], ...] = (
     ("wait", 5), ("pass", 5), ("item", 5),
 )
 _FALLBACK_ACTION = 5  # Wait — a safe no-op when the reply can't be parsed
-# Tile codes in local_patch → a single legible glyph for the ASCII view.
-_TILE_GLYPHS = {0: ".", 1: "#", 2: "C", 3: "G"}
+# local_patch tile codes → a legible glyph. Codes come from the env (imported at top) so the
+# renderer can never drift out of sync with what the env actually emits (the render-obs-tile-codes
+# bug: the glyphs assumed gym=3/creature=2 while the env emits creature=1/gym=2, so the LLM saw
+# gyms as creatures and creatures as walls). There is no wall code in local_patch.
+_TILE_GLYPHS = {_PATCH_EMPTY: ".", _PATCH_CREATURE: "C", _PATCH_GYM: "G"}
 
 DEFAULT_SYSTEM = (
     "You are playing CritterGym, a grid creature-collection game with a HIDDEN type chart you "
@@ -146,7 +151,7 @@ def render_obs(obs: Mapping[str, object]) -> str:
         )
 
     patch = np.asarray(obs["local_patch"])
-    lines.append("Local view (.=floor #=wall C=creature G=gym, you are at center):")
+    lines.append("Local view (.=empty C=creature G=gym, you are at center):")
     for row in patch:
         lines.append("  " + " ".join(_TILE_GLYPHS.get(int(t), "?") for t in row))
 
@@ -154,20 +159,20 @@ def render_obs(obs: Mapping[str, object]) -> str:
     radius = patch.shape[0] // 2
     center = int(patch[radius, radius])
     if not in_battle:
-        if center == 3:  # _PATCH_GYM
+        if center == _PATCH_GYM:
             lines.append(
                 "You are ON a gym (G) tile — moving onto it starts a boss battle; defeat the "
                 "boss to clear this gym."
             )
         else:
-            gym = _nearest_in_view(patch, 3)
+            gym = _nearest_in_view(patch, _PATCH_GYM)
             if gym is not None:
                 lines.append(
                     f"A gym (G) is visible {_dir_phrase(*gym)} — walk onto it to start a boss "
                     "battle (your main goal)."
                 )
-        creature = _nearest_in_view(patch, 2)  # _PATCH_CREATURE
-        if center == 2:
+        creature = _nearest_in_view(patch, _PATCH_CREATURE)
+        if center == _PATCH_CREATURE:
             lines.append("A wild creature (C) is on your tile — choose Catch (4) to catch it.")
         elif creature is not None:
             lines.append(
