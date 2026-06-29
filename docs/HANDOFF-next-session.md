@@ -1,124 +1,99 @@
-# 인수인계서 — CritterGym (세션 이후: 4/4 family + v1.0.0-rc 패키징 + 절대난이도 진단 + 메모리 load-bearing)
+# 인수인계서 — CritterGym (세션 이후: eval-product moat-KPI 인프라 #5~#12)
 
-> 다음 세션용. 직전 세션이 **bounded-YOLO 자율 런**으로 5 PR 머지: #55 duel(C) 포트(**4/4 family 벡터화**) ·
-> #56 v1.0.0-rc 패키징 · #58 headroom 강한-baseline 진단(Q1) · #59 **메모리 load-bearing 입증**(Q1 정직 보정) ·
-> #57 직전 핸드오프. 이 문서 = *무엇이 끝났고 / 정직한 결과 / 다음(권장: recurrent PPO)*. SSOT: `DESIGN.md`
-> (§3.1.1·§4), `docs/explanation/jax-throughput.md`, `docs/explanation/competitive-analysis.md`,
-> `docs/_active/{jax-throughput,difficulty-scaling,hard-benchmark}/INITIATIVE.md`, `docs/CHANGELOG.md`,
-> `README.md`, `docs/paper/critter-gym.md`, `CLAUDE.md`(규율), 메모리(`autonomous-v1-mandate`·
+> 다음 세션용. 직전 세션이 **bounded-YOLO 자율 런**으로 eval-product 이니셔티브 **#5~#12 (8 PR #70~#77 전부 main 머지)**를
+> 완료 — "오염·암기 불가능한 in-context 규칙추론 eval"의 **측정 인프라 + 고객용 KPI + robust화 + 직접 추론 메트릭**.
+> 이 문서 = *무엇이 끝났고 / 정직한 측정 결론 / 남은 사람-게이트 갈래*. SSOT: `docs/explanation/competitive-analysis.md`
+> (gap register "monetizable eval" 행), `docs/_active/eval-product/INITIATIVE.md`(#1~#12 표),
+> `docs/CHANGELOG.md` 상단(eval-product), `src/critter_gym/{eval_harness,llm_eval,inference_rigor}.py` +
+> `scripts/llm_eval_run.py`, `CLAUDE.md`(규율), 메모리(`autonomous-v1-mandate`·`auto-mode-blocks-self-merge`·
 > `plain-language-task-summaries`·`user-non-math-background`).
 
 ---
 
 ## 0. 오프닝 프롬프트 (새 세션에 붙여넣기)
 
-> CritterGym 작업을 이어서 한다. 먼저 `docs/HANDOFF-next-session.md`, `docs/explanation/jax-throughput.md`
-> (특히 마지막 두 Update: headroom-baseline-strength·recurrent-baseline), `docs/explanation/competitive-analysis.md`
-> gap register, `DESIGN.md` §3.1.1+§4, `docs/_active/{difficulty-scaling,hard-benchmark}/INITIATIVE.md`,
-> `docs/CHANGELOG.md` 상단, `src/critter_gym/jax_train.py`(특히 파일 끝 recurrent GRU A2C 섹션 + `train_ppo`),
-> `scripts/recurrent_baseline.py`, `scripts/ppo_baseline.py` 를 읽어라. main HEAD=`f85cfeb`, **423 tests
-> green**(2 skip), 버전 **1.0.0rc1**.
+> CritterGym 작업을 이어서 한다. 먼저 `docs/HANDOFF-next-session.md`, `docs/explanation/competitive-analysis.md`
+> gap register, `docs/_active/eval-product/INITIATIVE.md`(#1~#12), `docs/CHANGELOG.md` 상단,
+> `src/critter_gym/{eval_harness,llm_eval,inference_rigor}.py` + `scripts/llm_eval_run.py`, `CLAUDE.md`(규율),
+> 메모리(autonomous-v1-mandate·auto-mode-blocks-self-merge·plain-language-task-summaries·user-non-math-background)를
+> 읽어라. main HEAD=`88a72f0`, **502 tests green**(2 skip), 버전 **1.0.0rc1**. `.venv`에 pytest/mypy/ruff
+> 있음(`python3` 기본엔 없음 — `.venv/bin/python -m pytest`).
 >
-> [직전 세션 요약] 5 PR 머지. (1) #55 duel(C) JAX 통합=**4/4 family(A/B/C/D) 벡터화**(parity 0). (2) #56
-> v1.0.0-rc 패키징(README/paper 헤드라인 통합 + `scripts/reproduce_results.py` 1-command 재현 + 버전
-> 1.0.0rc1; 공개는 사람 게이트). (3) #58 headroom-baseline-strength(Q1): 강한 feedforward(width/depth/budget
-> 스윕) baseline에도 oracle headroom **robust**(best 41%/25% of oracle plateau; depth·budget 무효=병목은
-> capacity/compute 아님) — **단 robust=feedforward 한정 명시**. (4) #59 recurrent-baseline(hard-benchmark #1):
-> 부분관측(5×5 view)서 **메모리 load-bearing 입증**(feedforward A2C 18% vs recurrent GRU A2C 46% of oracle,
-> +0.79 robust; recurrent가 더 좁은데도 2.5× → 이득=memory) → **Q1 정직 보정**(headroom 상당부분이 no-memory
-> 한계, recurrence가 18%→46% 회복). 전부 사전약정 규칙·freeze 전 pilot·정직 보고·L3 2/2 APPROVE.
->
-> [이번 세션 권장 미션] **recurrent PPO** (hard-benchmark #2) — #59가 *A2C 내* 메모리 효과만 보였으므로,
-> Q1(PPO)과 **동일 조건**에서 recurrent PPO vs feedforward PPO로 "recurrence가 PPO headroom을 닫는가"를
-> 깨끗이 확정. **고난도 구현**(sequence-preserving minibatch: 시간축 셔플 불가 → 시퀀스 보존 minibatch +
-> hidden replay). **correctness 먼저 입증**(망가진 recurrent PPO=misleading 결과; 통제 task로 검증 후 신뢰).
-> 대안: 더 깊은 hard-benchmark(메모리 부담↑: 긴 호라이즌·다중타입 보스). 또는 GPU 측정(M4-EC3, 하드웨어 필요).
->
-> [방침] 하네스 규율 100%(매 task `/task-start`→L1[plan-reviewer+qa 병렬 단일 메시지]→**freeze 전 pilot**→
-> G1 freeze→TDD/G2[mypy·ruff·pytest·build]→L3 APPROVED[2 reviewer]→`/task-end`→commit→PR→merge). main 직접
-> 금지=feature→PR→merge. **freeze 대상은 결과가 아니라 사전약정 결정규칙**(p-hacking 차단). parity 포트는
-> 0 mismatch 비협상. 연구성 task는 pilot이 전제 검증(falsify시 정직 reframe), non-vacuity 가드로 공허한 결과
-> 차단, **정직 경계 명시**(robust=무엇 한정·proxy·seed·CPU). **공개(OSS·arXiv·태그 push)는 끝까지 사람 게이트**.
-> 매 task 시작·끝 수식 없는 한 문단 요약. `.claude/projects/`는 매 커밋 `git reset .claude/projects/`로 제외.
-> L3 reviewer가 verdict 없이 maxturns 종료하면 **SendMessage로 "추가 조사 없이 verdict만"** 회수.
+> [직전 세션 요약 — eval-product #5~#12, 8 PR 머지] "외울·오염 불가능한 in-context 규칙추론 eval"의 기능 토대 완성:
+> #5 stateful LLMAgent(에피소드 내 기억+윈도잉+reset, 월드간 격리) · #6 render-obs 가독성(0-mask 오도 제거+G/C
+> 살라언스) · #7 battle 가독성(무브=숨은 타입·교체·재시도 안내, 정답은 미노출=추론은 LLM 몫) · #8 **inference_score
+> KPI**=(submission−type_blind)/(oracle−type_blind)∈[0,1] + SealedEvalSet grid/boss 노브 · #9 competitive-analysis
+> 정직 반영(quick-fix) · #10 **inference_rigor.classify_inference**(사전약정 multi-run 분류기, headroom.py 패턴) +
+> 러너 `--runs` · #11 robust 측정 반영(quick-fix) · #12 **inference-telemetry**(super-effective-무브 사용률, env
+> read-only, attrition 우회) + 러너 `--telemetry`. 매 task 풀 lifecycle(L1 2/2→G1→TDD→G2→L3 2/2→archive→PR→merge),
+> 정직 경계 100%, HARNESS_ALLOW_COMMIT=1 커밋.
 
 ---
 
-## 1. 현재 상태 (한 줄)
+## 1. 무엇이 끝났나 (이번 세션)
 
-M0·M1·M2 ✅, M3 대부분(EC4 arXiv·EC5 OSS=사람 게이트), **M4 거의**(4/4 family·tuned PPO·robust headroom·
-1-command 재현·버전 1.0.0rc1; **GPU EC3만 남음=하드웨어**), **(A) 난이도**: headroom robust-to-feedforward +
-**메모리 load-bearing(부분관측)**. **423 tests**(2 skip). main HEAD=`f85cfeb`. 활성 이니셔티브: `jax-throughput`
-(1–11 done), `difficulty-scaling`(1–4 done), **`hard-benchmark`(신규; #1 recurrent-baseline done)**.
+`eval-product` 이니셔티브 = **M5 기능적 moat 유일 후보**("비공개 재생성 eval 제품"). 이번 세션에 *측정 도구 체인*을 완성:
 
-## 2. 직전 세션 5 PR (전부 main 머지)
+| 산출 | 파일 |
+|---|---|
+| 봉인 held-out + 오염가드 + RLVR 채점 (이전 #1~#4) | `eval_harness.py` (`SealedEvalSet`/`verify_sealed`/`score_agent`/`Agent`) |
+| LLM 어댑터 (render/parse/LLMAgent/provider) | `llm_eval.py` |
+| **기억 가진 agent** (#5) | `llm_eval.StatefulLLMAgent` + `eval_harness.Agent.reset()` 훅 |
+| **obs/전투 가독성** (#6·#7) | `llm_eval.render_obs`/`DEFAULT_SYSTEM` |
+| **inference_score KPI** (#8) | `eval_harness.Scorecard.inference_score` + `SealedEvalSet` grid/boss 노브 |
+| **robust 분류기** (#10) | `inference_rigor.classify_inference`(사전약정 0.5/0.1/1.0) + 러너 `--runs N` |
+| **직접 추론 telemetry** (#12) | `eval_harness.score_inference_telemetry`(SE-무브율, read-only) + 러너 `--telemetry` |
 
-| PR | task | 정직한 결과 |
+**한 줄 데모**: `python scripts/llm_eval_run.py --provider claude-cli --stateful --telemetry --grid-size 5
+--num-types 3 --boss-hp 140 --boss-atk 6 --boss-def 18 --worlds 2 --max-steps 40 --master-seed 3`
+→ 3-arm(oracle/type_blind/LLM) gym-clears + inference_score + SE-무브율.
+
+## 2. 정직한 측정 결론 (★ 과대 reframe 금지 — 인수인계 비협상)
+
+claude-opus-4-8(구독 Claude CLI)을 **inference-gated demonstrator**(grid5·types3·boss140/6/18)에서 측정:
+
+| 신호 | LLM | oracle | type_blind |
+|---|---|---|---|
+| gym-clears | 0.00 | 3.00 | 0.00 |
+| inference_score | **0.00 ± 0.00** (3 runs) → `at-chart-blind-floor` | 1.0 | 0.0 |
+| 호라이즌 sweep 40/60/120 | 모두 0.00 (inference-bound, not budget-bound) | — | — |
+| 메모리 stateless vs stateful | 둘 다 0.00 (메모리는 레버 아님) | — | — |
+| **SE-무브 사용률** (직접 추론) | **0%** (21 moves) | 100% | 0% |
+
+**이게 뜻하는 것**: 이 setup에서 프런티어 LLM이 숨은 상성표를 robust하게 **추론·exploit하지 못한다**(직접 메트릭도 0%).
+**이게 뜻하지 *않는* 것**: "프런티어 LLM이 우리 환경을 못 푼다"는 능력 verdict ❌. 다음 confound 때문:
+1. **얇은 `claude -p` print-mode 어댑터** — 스텝당 깊은 추론·scratchpad·도구 없음. 진짜 agentic harness면 다를 수 있음.
+2. **전투 밸런스가 가혹**(2턴 사망) + `damage=max(1,...)`라 살면 중립 attrition 승 가능 → "추론 필수 + 학습 가능" sweet spot이 *config 노브로 안 잡힘*.
+3. 작은 표본(2월드·21 moves·단일 config·scripted-oracle proxy·일부 단일 run).
+
+→ **올바른 프레이밍**: "우리 eval은 *non-saturated·discriminating*(현 프런티어 LLM이 floor) = 측정할 가치 있는 미해결 능력 + headroom" (제품 강점). oracle/type_blind 앵커 대비로만 읽기. (competitive-analysis "monetizable eval" 행에 이대로 박제됨.)
+
+## 3. 핵심 설계 통찰 (다음 세션이 결정할 것)
+
+probe로 **env 전투 모델의 구조적 사실**을 발견: `battle.py:123` `damage=max(1, int(power*atk/def*eff))` — **모든 무브가 ≥1 데미지** →
+살아남으면 중립 무브 attrition으로 승. 그래서 "추론 필수(중립론 못 깸)"와 "배울 여지(오래 생존)"가 현 모델에서 **충돌**.
+- catch+gym 게임(M1 설계)으론 정상. *순수 in-context 추론 eval*로 쓰려면 전투 모델 손봐야 함.
+
+## 4. 남은 갈래 (전부 사람/전략 게이트 또는 긴 probe)
+
+| 갈래 | 성격 | 비고 |
 |---|---|---|
-| #55 | `jax-duel-integration` | duel(C) type-agnostic RPS 배틀을 jax_env 통합(동시 데미지·raw 데미지·charge obs). numpy `DuelEnv` 대비 **parity 0**. **4/4 family 벡터화**. vmap 40–83×. |
-| #56 | `v1-results-packaging` | README/paper에 헤드라인 통합(JAX 27–1047×·4 family / PPO 21–28% of oracle) + `reproduce_results.py` 1-command 재현 + 버전 **1.0.0rc1**. 공개=사람 게이트 명시. src 무변경. |
-| #58 | `headroom-baseline-strength` (Q1) | 강한 feedforward(width/depth/budget) baseline에도 oracle headroom **robust**(best 41%/25% plateau; **depth·budget 무효**=병목 capacity/compute 아님). **단 robust=feedforward 한정**(recurrent 미배제 명시). |
-| #59 | `recurrent-baseline` (hard-benchmark #1) | 부분관측(5×5 view)서 **메모리 load-bearing**: feedforward A2C 18% vs recurrent GRU A2C 46% of oracle(+0.79 robust; recurrent가 더 좁은데도 2.5×=memory 효과). **Q1 정직 보정**: headroom 상당부분 no-memory 한계, recurrence가 18%→46% 회복(단 46%서 잔존). |
+| **전투 모델 재설계** (max(1) 제거 / 보스 회복 / 턴 제한 → "추론 필수+학습 가능") | **사람 게이트** | 벤치마크 *정의* 변경 — JAX parity 재증명·모든 baseline 수치 영향 |
+| **진짜 agentic harness** (스텝당 추론/메모/도구) 로 재측정 | 자율 가능 | confound #1 해소 → 깨끗한 능력 숫자 |
+| **difficulty curve** (여러 band SE-무브율/inference_score) | 자율(probe 시간↑) | "어느 난이도부터 LLM이 floor 넘나" 곡선 |
+| **M5 서버측 봉인 인프라** (secret seed + 제출 샌드박스 + hosted) | **사람/전략** | in-process harness=토대이지 제품 아님 |
+| **공개** (OSS 리스팅 / arXiv / git tag push) | **사람 게이트(끝까지)** | moat layer 3 = adoption |
+| GPU full-episode 정밀치 | better-HW | minor |
 
-## 3. ⚠ 정직한 결론 (과대 금지)
+## 5. 규율·환경 메모 (계승)
 
-- **M4**: 4/4 family + 양 배틀경제 + tuned PPO 벡터화·parity 0. **vmap 한정·CPU·GPU(EC3) 미측정**(유일 잔여).
-- **(A) 절대 난이도 = "메모리 요구 부분관측 과제"로 특성화**: headroom이 강한 *feedforward* 스케일링엔 robust
-  (capacity/compute 병목 아님)지만, **recurrence(메모리)가 부분관측 headroom 크게 회복(18%→46%)** → "절대적으로
-  hard"가 아니라 "메모리 agent가 절반 회복하나 oracle 미도달(잔존 headroom)". env가 메모리 agent를 **변별**
-  (벤치마크 virtue). **미해결**: recurrent *PPO*(Q1 깨끗 연결)·더 강한 메모리 부담·SOTA agent.
-- **헤드라인 자산**: (1) competitively fast(4 family·재현 가능) (2) **메모리-요구 부분관측 변별 벤치마크**(neat).
+- **테스트**: `.venv/bin/python -m pytest`(pytest는 .venv에만). mypy/ruff도 `.venv/bin/python -m`. 502 passed/2 skip.
+- **커밋**: `HARNESS_ALLOW_COMMIT=1 git commit`(mandate 근거 commit-guard 우회). `.claude/projects/`는 매 커밋 `git reset -q .claude/projects/`로 제외.
+- **머지**: 사용자가 자율 위임 시 `gh pr merge` 가능(2026-06-28~). 위임 발화가 직전 컨텍스트에 있어야 self-approval 가드 통과([[auto-mode-blocks-self-merge]]).
+- **lifecycle**: main 직접 금지·feature/fix/docs 브랜치→PR→merge. archive `git mv`는 신규 파일이면 실패 → 파일시스템 `mv` + `git add -A`로 우회.
+- **정직성 > 헤드라인**: 모든 수치 caveat 동반, "LLM 못 푼다"·"제품 완성"·"과금 0" 류 reframe 금지.
+- **실측 probe**: 사용자 로컬 claude CLI(구독). 백그라운드 실행은 `run_in_background` + 완료 알림 대기(`nohup &` 중첩 금지 — detach 혼동).
+- 🔔 **남은 사용자 보안 TODO** (이전 핸드오프 계승): Colab GitHub classic 토큰 삭제.
 
-## 4. 다음 세션 — 갈래 (권장순)
-
-1. **recurrent PPO** (hard-benchmark #2, **권장**): Q1(PPO)과 동일 조건서 recurrent PPO vs feedforward PPO →
-   "recurrence가 PPO headroom 닫는가" 깨끗 확정. **고난도**(sequence-preserving minibatch + hidden replay;
-   A2C는 full-rollout이라 쉬웠지만 PPO는 minibatch 셔플이 recurrence 깸). **correctness 먼저**(통제 task 검증).
-   현 `jax_train`의 recurrent A2C(`train_recurrent`/`make_recurrent_rollout`/`recurrent_a2c_loss`)가 GRU 셀·
-   rollout·eval 재료 제공.
-2. **더 깊은 hard-benchmark**: 메모리 부담↑(긴 호라이즌·다중타입 보스·부분관측 강화)로 "메모리 agent에도 hard".
-   단 spec 변경=JAX 재포트. scout가 grid16(큰 지도)=A2C 학습불가 inconclusive 확인(grid10/5×5가 sweet spot).
-3. **GPU 측정**(M4-EC3, `vectorized-bench`): ≥10M steps/s **GPU**. 현 .venv는 CPU jax → **하드웨어 필요**(사람).
-4. **공개**(M3-EC4/EC5): OSS 리스팅·arXiv 제출·`git tag v1.0.0` push = **사람 게이트**. competitive-analysis
-   peer-fact `[verify]` 항목(Procgen/Craftax/XLand 수치·라이선스)은 공개 전 1차 출처 확인 필요.
-
-## 5. 코드 포인터 (이번 세션 산출, 전부 main)
-
-- `src/critter_gym/jax_env.py` — `_FAM_DUEL` + `duel_battle_branch` + charge obs(family-aware). 4/4 family.
-- `src/critter_gym/jax_train.py` — feedforward `init_params`/`apply_policy`(**depth 노브** 추가, depth=1
-  byte-identical)/`train`/`train_ppo`(`PPOConfig.depth`)/`evaluate_gym_clears` + **recurrent GRU A2C**(파일 끝:
-  `gru_init_params`/`gru_step`/`recurrent_policy_value`/`make_recurrent_rollout`/`recurrent_a2c_loss`/
-  `train_recurrent`/`evaluate_gym_clears_recurrent`[matched eval]).
-- `scripts/` — `reproduce_results.py`(1-command throughput+headroom) · `ppo_baseline.py`(`--strong` capacity×budget
-  스윕 best-of) · `recurrent_baseline.py`(부분관측 ff vs rec, 사전약정 memory-load-bearing).
-- 테스트(importorskip, CI numpy-only): `test_jax_{...}_parity.py` 4 family + `test_jax_ppo.py`(+depth) +
-  `test_jax_recurrent.py`(+4 GRU).
-
-## 6. 하네스 메모 (이번 세션 학습)
-
-- **scout/pilot이 방향 reframe 2회**: "시야 줄이기" falsify(obs_dim 오염·feedforward 안 나빠짐) → 지도-스케일 →
-  grid16=A2C 학습불가 → **부분관측 메모리 load-bearing**(grid10/5×5)으로 수렴. **non-vacuity 가드가 내 첫
-  가정("제일 깊은 게 제일 강하다") 자동 falsify**(깊은 net이 tiny보다 못함) → best-of-sweep로 정직 재정의.
-- **single-run은 노이즈**: recurrent 1-seed 1.44를 3-seed matched로 검증 후에만 보고(프로젝트 "single-run 4회
-  교정" 문화 계승). **matched eval**(ff/rec 동일 protocol)로 가짜 effect 차단.
-- **archive `git mv`**: untracked task 폴더는 `git mv` 실패 → plain `mv` 후 `git add`.
-- **pytest 요약줄 non-tty 억제**: redirect 시 "N passed" 안 보임 → **exit code(0)로 판정**.
-- **L3 maxturns**: reviewer가 verdict 없이 종료 → `SendMessage`로 "추가 조사 없이 verdict만" 회수(이번에도 2회).
-- **bounded-YOLO 자율 런**: 정지 조건(pilot falsify·결과 reframe·공개[사람]·하드웨어[GPU])만 멈춤. 결과가
-  reframe(예: 메모리 load-bearing이 Q1 보정)되면 멈추고 사람 보고 후 방향 확인.
-
-## 7. 정직성 문화 (계승 필수)
-
-매 task acceptance를 *성능* 아닌 *측정+정직 보고*로 freeze. **사전약정 결정규칙(데이터 전 고정)이 freeze 대상**
-(결과 아님)으로 p-hacking 차단. parity 0으로 가짜 속도 차단. **연구성 task**: pilot이 전제 검증(falsify시
-reframe), non-vacuity 가드(공허한 결과 차단), **정직 경계 명시**(robust=무엇에 한정인가·proxy·seed·CPU·후속).
-헤드라인을 보정하는 결과(예: 메모리 load-bearing이 Q1 "robust"를 feedforward 한정으로 좁힘)도 **숨기지 않고
-docs에 반영**. 헤드라인보다 정직성 — moat 층3(trust) 재료.
-
-## 8. 사용자 메모 (계승)
-
-사용자는 수학/RL 깊은 배경 아니나 **전략·정직성·방향으로 지휘**. **매 task 시작·끝 수식 없는 한 문단 요약**
-(뭘/왜/비유/결과). **자율 mandate**(메모리 `autonomous-v1-mandate`): moat/v1.0.0까지 bounded-YOLO 자율 task
-연속+커밋푸시, **공개는 사람 게이트**. **moat 논의 결론**(사용자와): 기능적 moat는 사실상 **M5 비공개 재생성
-eval 제품** 하나(미착수); L2 축적·L3 채택은 GTM/연구규모. 절대 난이도(메모리-요구 부분관측)는 그 자체로
-*벤치마크 변별력* 자산이나 "방어가능 moat"는 아직(adoption 0). **다음 큰 방향 결정은 사람**.
+## 변경 이력
+- 2026-06-29: eval-product #5~#12 세션으로 전면 갱신(이전 4/4-family/난이도 세션 내용 → archive CHANGELOG·INITIATIVE에 보존).
