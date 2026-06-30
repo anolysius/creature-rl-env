@@ -83,28 +83,90 @@ def test_render_battle_shows_player_and_enemy_stats() -> None:
 
 def test_render_gym_salience_and_on_gym_flag() -> None:
     # AC3: a visible gym is called out with direction; being ON a gym is flagged.
+    from critter_gym.envs.critter_env import _PATCH_GYM
+
     patch = np.zeros((5, 5), dtype=np.int8)
-    patch[0, 2] = 3  # gym 2 tiles north of center
+    patch[0, 2] = _PATCH_GYM  # gym 2 tiles north of center (env code, not a bare literal)
     text = render_obs(_make_obs(in_battle=0, patch=patch)).lower()
     assert "gym (g) is visible" in text and "2 north" in text
 
     on_gym = np.zeros((5, 5), dtype=np.int8)
-    on_gym[2, 2] = 3  # standing on a gym
+    on_gym[2, 2] = _PATCH_GYM  # standing on a gym
     text2 = render_obs(_make_obs(in_battle=0, patch=on_gym)).lower()
     assert "on a gym" in text2 and "boss battle" in text2
 
 
 def test_render_creature_salience() -> None:
     # AC3: a visible wild creature is called out; one on your tile prompts Catch.
+    from critter_gym.envs.critter_env import _PATCH_CREATURE
+
     patch = np.zeros((5, 5), dtype=np.int8)
-    patch[2, 4] = 2  # creature 2 tiles east
+    patch[2, 4] = _PATCH_CREATURE  # creature 2 tiles east (env code, not a bare literal)
     text = render_obs(_make_obs(in_battle=0, patch=patch)).lower()
     assert "wild creature (c) is visible" in text and "2 east" in text
 
     on_c = np.zeros((5, 5), dtype=np.int8)
-    on_c[2, 2] = 2
+    on_c[2, 2] = _PATCH_CREATURE
     text2 = render_obs(_make_obs(in_battle=0, patch=on_c)).lower()
     assert "on your tile" in text2 and "catch" in text2
+
+
+def test_render_obs_glyphs_match_env_patch_codes() -> None:
+    # SSOT guard (render-obs-tile-codes): render_obs MUST use the env's actual local_patch codes.
+    # The bug it pins: glyphs/salience assumed gym=3, creature=2, but the env emits
+    # _PATCH_CREATURE=1, _PATCH_GYM=2 — so the LLM saw gyms as "C" creatures and creatures as
+    # "#" walls, and never a real "G". Import the env constants so this can never drift again.
+    from critter_gym.envs.critter_env import _PATCH_CREATURE, _PATCH_GYM
+
+    def _glyph_rows(text: str) -> list[str]:
+        return [ln for ln in text.splitlines()
+                if ln.startswith("  ") and set(ln.strip().split()) <= set(".#CG") and ln.strip()]
+
+    # A gym (env code _PATCH_GYM) two tiles north → rendered "G" + announced as a gym.
+    patch = np.zeros((5, 5), dtype=np.int8)
+    patch[0, 2] = _PATCH_GYM
+    text = render_obs(_make_obs(in_battle=0, patch=patch))
+    assert any("G" in r for r in _glyph_rows(text))          # a literal G in the map grid
+    low = text.lower()
+    assert "gym (g) is visible" in low and "2 north" in low
+    assert "wild creature" not in low                         # the gym must NOT read as a creature
+
+    # A creature (env code _PATCH_CREATURE) two tiles east → rendered "C" + announced as creature.
+    patch2 = np.zeros((5, 5), dtype=np.int8)
+    patch2[2, 4] = _PATCH_CREATURE
+    text2 = render_obs(_make_obs(in_battle=0, patch=patch2))
+    assert any("C" in r for r in _glyph_rows(text2))
+    assert "wild creature (c) is visible" in text2.lower() and "2 east" in text2.lower()
+
+    # Centre flags use the right codes: standing ON a gym vs ON a creature.
+    on_gym = np.zeros((5, 5), dtype=np.int8)
+    on_gym[2, 2] = _PATCH_GYM
+    assert "on a gym" in render_obs(_make_obs(in_battle=0, patch=on_gym)).lower()
+    on_c = np.zeros((5, 5), dtype=np.int8)
+    on_c[2, 2] = _PATCH_CREATURE
+    assert "on your tile" in render_obs(_make_obs(in_battle=0, patch=on_c)).lower()
+
+
+def test_render_obs_real_env_patch_renders_gym_or_creature_glyph() -> None:
+    # Cross-check against a REAL CritterEnv obs (the synthetic tests above missed the bug because
+    # they used the renderer's own wrong codes). Find a reset whose 5x5 patch contains a gym or a
+    # creature, and assert the rendered grid shows the matching glyph (G/C), never a stray '#'.
+    from critter_gym.envs.critter_env import _PATCH_CREATURE, _PATCH_GYM
+
+    for seed in range(1_000_000, 1_000_040):
+        obs = _sample_obs(seed)
+        patch = np.asarray(obs["local_patch"])
+        codes = {int(x) for x in patch.flatten()}
+        if _PATCH_GYM in codes or _PATCH_CREATURE in codes:
+            text = render_obs(obs)
+            grid = "\n".join(ln for ln in text.splitlines() if ln.startswith("  "))
+            assert "#" not in grid          # the wall glyph must never appear (no wall code exists)
+            if _PATCH_GYM in codes:
+                assert "G" in grid          # a real gym renders as G, not as C/#
+            if _PATCH_CREATURE in codes:
+                assert "C" in grid
+            return
+    raise AssertionError("no gym/creature appeared in any sampled patch — widen the seed range")
 
 
 def test_render_obs_still_deterministic_and_has_core_fields() -> None:
