@@ -250,6 +250,23 @@ class InferenceTelemetry(NamedTuple):
     n_battle_moves: int
 
 
+def se_inference_score(submission_se: float, oracle_se: float, blind_se: float) -> float:
+    """Place a super-effective-move rate on the [0,1] inference frame: 0 = the chart-blind
+    floor (``blind_se``), 1 = the chart-knowing expert (``oracle_se``), clamped.
+
+    Identical normalization to :class:`Scorecard`'s gym-based ``inference_score`` — so the
+    *same* pre-registered classifier (:func:`critter_gym.inference_rigor.classify_inference`,
+    thresholds frozen before any data) can turn N runs of a submission's SE-rate into a robust
+    verdict *without inventing new thresholds*. Read the band and the submission at the *same*
+    ``max_steps`` (the chart-blind floor is step-cap dependent). Returns 0.0 when the band does
+    not discriminate (``oracle_se <= blind_se``). Honest: a scripted-proxy band, one config —
+    a signal, not a verdict; the paid N-run probe is the evaluator's own (user-local) run."""
+    span = oracle_se - blind_se
+    if span <= 0:
+        return 0.0
+    return float(min(1.0, max(0.0, (submission_se - blind_se) / span)))
+
+
 def _super_effective_move(env: CritterEnv, action: int) -> bool | None:
     """Read-only: was ``action`` a battle move super-effective vs the current enemy?
 

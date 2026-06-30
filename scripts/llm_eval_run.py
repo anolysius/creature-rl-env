@@ -34,6 +34,7 @@ from critter_gym.eval_harness import (
     inference_baseline,
     score_agent,
     score_inference_telemetry,
+    se_inference_score,
 )
 from critter_gym.inference_rigor import classify_inference
 from critter_gym.llm_eval import (
@@ -139,8 +140,12 @@ def main() -> None:
           "world — it cannot be memorized or contaminated.")
 
     if a.telemetry:
-        agent_tel = score_inference_telemetry(fresh_agent(), sealed)
+        # One telemetry pass per run (fresh agent each); runs=1 is byte-identical to before.
+        n_runs = max(1, a.runs)
+        agent_tels = [score_inference_telemetry(fresh_agent(), sealed) for _ in range(n_runs)]
         band = inference_baseline(sealed)  # scripted 4-arm band on the SAME sealed worlds (free)
+        oracle_se = band.arms["oracle"].se_rate
+        blind_se = band.arms["type_blind"].se_rate
         print("\n  -- super-effective-move rate (direct inference signal, win-independent) --")
         print("  the scripted band the LLM is read against (ceiling -> floor):")
         labels = {"oracle": "oracle (chart-KNOWING expert)",
@@ -150,11 +155,28 @@ def main() -> None:
         for arm in ("oracle", "infer", "type_blind", "probe"):
             ab = band.arms[arm]
             print(f"  {labels[arm]:<36} {ab.se_rate:>4.0%}  ({ab.n_battle_moves} battle moves)")
-        print(f"  {a.model:<36} {agent_tel.super_effective_rate:>4.0%}  "
-              f"({agent_tel.n_battle_moves} battle moves)  <- the submission")
+        print(f"  {a.model:<36} {agent_tels[-1].super_effective_rate:>4.0%}  "
+              f"({agent_tels[-1].n_battle_moves} battle moves)  <- the submission")
         print("     how often it exploits the inferred hidden chart — NOT confounded by "
               "attrition (unlike gym-clears). honest: an exploit signal, not proof of inference;\n"
               "     the infer arm is a scripted inference *proxy*, not an LLM.")
+
+        # Normalize the submission's SE-rate onto the [0,1] inference frame (blind=0, oracle=1)
+        # and — over multiple runs — turn it into a robust verdict with the SAME pre-registered
+        # classifier used for the gym-based score (frozen thresholds, no new ones).
+        se_scores = [se_inference_score(t.super_effective_rate, oracle_se, blind_se)
+                     for t in agent_tels]
+        if a.runs > 1:
+            v = classify_inference(se_scores)
+            print(f"\n  => SE-RATE INFERENCE SCORE: {v.mean:.2f} ± {v.std:.2f}  "
+                  f"({v.n_runs} runs)  ->  {v.verdict.upper()}")
+            print("     (normalized super-effective-move rate: 0 = chart-blind floor / 1 = expert;"
+                  " same frozen classifier as the gym score.\n"
+                  "     infers / at-chart-blind-floor / inconclusive — a signal, not a verdict;"
+                  " the paid N-run probe is your own local run.)")
+        else:
+            print(f"\n  => SE-RATE INFERENCE SCORE: {se_scores[0]:.2f}  "
+                  "(0 = chart-blind floor / 1 = expert; --runs N for a robust verdict)")
 
     print("  honest: a probe (worlds × max_steps capped), scripted-oracle proxy, one difficulty "
           "band — a signal, not a definitive number.")
