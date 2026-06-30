@@ -31,9 +31,9 @@ from critter_gym.types import (
 FIXED_BOSS_TYPES: list[ElementType] = [ElementType.GRASS, ElementType.GRASS, ElementType.WATER]
 
 # The player's fixed starter team covers exactly these types (see party.starter_party).
-# A procgen boss type is only placed if at least one starter type is NEUTRAL-or-better
-# against it under the seed's chart — so every gym is winnable with the right (inferred)
-# matchup, while which type wins stays hidden (inference still required).
+# A procgen boss type is only placed if at least one starter type is *strictly*
+# super-effective against it under the seed's chart — so every gym has an exploitable
+# (inferred) answer, while which type wins stays hidden (inference still required).
 _STARTER_TYPES: tuple[ElementType, ...] = (ElementType.FIRE, ElementType.WATER, ElementType.GRASS)
 
 # Test seeds live at/above this offset; train seeds must stay strictly below it,
@@ -106,21 +106,37 @@ def generate_region(
     if vary:
         n_creatures = int(rng.integers(_MIN_CREATURES, max_creatures + 1))
         n_gyms = int(rng.integers(gym_floor, max_gyms + 1))
-        # Only place boss types that at least one starter type can answer (NEUTRAL+),
-        # so every gym is winnable with the right matchup — which one stays hidden.
-        winnable = [
+        # Only place boss types that at least one starter (party move) type can
+        # *strictly* super-effect, so every gym has an inference-exploitable answer —
+        # which one stays hidden. A NEUTRAL filter would be a no-op: a boss type is
+        # itself a starter type, and effectiveness(t, t) == NEUTRAL, so `>= NEUTRAL`
+        # never excludes anything. The eval only measures hidden-chart *inference* if
+        # an exploitable super-effective move exists; otherwise even the oracle grinds
+        # neutrally (attrition) and the discrimination signal collapses (matchup-validity).
+        # Invariant relied on here: _STARTER_TYPES == the party's move types (party.py).
+        exploitable = [
             t
             for t in active_types
-            if any(chart.effectiveness(s, t) >= NEUTRAL for s in _STARTER_TYPES)
+            if any(chart.effectiveness(s, t) > NEUTRAL for s in _STARTER_TYPES)
         ]
+        # Non-empty for every legal config: a tournament on n>=3 types has in-degree
+        # sum C(n,2) >= n, so >= 1 type is beaten by another; the starter types span
+        # all active types when num_types==3, and always include the F/W/G core that
+        # beat each other, so at least the beaten core types qualify. Guard anyway —
+        # an empty set would silently distort the world distribution.
+        if not exploitable:
+            raise ValueError(
+                f"no inference-exploitable boss type for seed={seed}, num_types={num_types}: "
+                "the party has no super-effective move against any candidate boss"
+            )
         # Draw the episode's bosses from a small per-seed *pool* so types RECUR across
         # gyms — this gives cross-gym inference *room* (a matchup inferred once could be
         # reused on later gyms of that type). It does NOT, on its own, make inference
         # load-bearing — a pilot showed switch-cost can dominate (DESIGN §3.1.1, future
         # work). Pool ≈ half the gym count → ~2 gyms per type.
-        pool_size = min(len(winnable), max(2, n_gyms // 2))
-        pool_idx = rng.choice(len(winnable), size=pool_size, replace=False)
-        pool = [winnable[int(i)] for i in pool_idx]
+        pool_size = min(len(exploitable), max(2, n_gyms // 2))
+        pool_idx = rng.choice(len(exploitable), size=pool_size, replace=False)
+        pool = [exploitable[int(i)] for i in pool_idx]
         boss_types = [pool[int(rng.integers(0, pool_size))] for _ in range(n_gyms)]
     else:
         n_creatures, n_gyms = max_creatures, max_gyms
