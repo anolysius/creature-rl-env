@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import pytest
 
+from critter_gym.eval_harness import SealedEvalSet, score_inference_telemetry
+from critter_gym.learnability import reference_arm
 from critter_gym.region import (
+    _STARTER_TYPES,
     TEST_SEED_OFFSET,
     generate_region,
     heldout_seeds,
     is_held_out,
     train_seeds,
 )
+from critter_gym.types import NEUTRAL
 
 
 def test_generate_region_is_deterministic() -> None:
@@ -72,3 +76,78 @@ def test_train_and_heldout_charts_can_differ() -> None:
     train_charts = {generate_region(s, vary=True).chart for s in train_seeds(40)}
     held_charts = {generate_region(s, vary=True).chart for s in heldout_seeds(40)}
     assert len(train_charts) > 1 and len(held_charts) > 1
+
+
+# -- matchup validity: every placed boss must be inference-exploitable -----------
+# The eval measures whether an agent infers the hidden type chart and exploits it.
+# That is only well-posed if a super-effective party answer *exists* per world; a
+# boss with no super-effective counter forces even the oracle to grind neutrally
+# (attrition), collapsing the discrimination signal. The world generator must
+# therefore guarantee one — these tests pin that guarantee.
+
+
+def test_every_placed_boss_has_super_effective_party_type() -> None:
+    """matchup-validity AC1: in every vary world, each placed gym boss has at least
+    one starter (party move) type that is *strictly* super-effective against it.
+
+    A NEUTRAL answer (incl. the boss's own type) is not enough — the inference
+    signal needs an exploitable edge. Checked across num_types and both seed splits.
+    """
+    seeds = list(train_seeds(40)) + list(heldout_seeds(40))
+    for num_types in (3, 4, 6):
+        for seed in seeds:
+            region = generate_region(seed, vary=True, num_types=num_types)
+            for _pos, boss in region.gyms:
+                assert any(
+                    region.chart.effectiveness(s, boss) > NEUTRAL for s in _STARTER_TYPES
+                ), f"seed={seed} num_types={num_types} boss={boss} has no super-effective counter"
+
+
+# Skeleton frozen *before* the post-Green measurement (anti-p-hacking, plan §검증 방법):
+# "oracle SE-rate never collapses across world counts AND leads the chart-blind anchor
+# by a clear margin at a realistic eval scale". The non-collapse floor (the fix's actual
+# claim) is checked at EVERY world count; the discrimination band is an *aggregate*
+# property (type_blind fights with one fixed champion, so on a 1-3 world block it can
+# coincidentally tie the oracle) and is therefore asserted only where it is well-defined
+# — at the realistic eval sizes. Post-fix measurement (kept honest): oracle reads 1.000
+# at every n; band is +0.93 (n=8) / +0.97 (n=16); the floor 0.5 is comfortably met.
+_SE_RATE_FLOOR = 0.5          # oracle must exploit on >= half its counted moves (non-collapse)
+_DISCRIMINATION_BAND = 0.3    # oracle SE-rate must lead type_blind at realistic eval scale
+
+
+def _demonstrator_set(n_worlds: int) -> SealedEvalSet:
+    return SealedEvalSet(
+        master_seed=20260627, n_worlds=n_worlds, num_types=3,
+        grid_size=5, boss_hp=140, boss_atk=6, boss_def=18,
+    )
+
+
+def test_oracle_se_rate_does_not_collapse_with_world_count() -> None:
+    """matchup-validity AC2 (non-collapse): on the demonstrator config the oracle's
+    super-effective-move rate stays robust as the world count grows — it no longer
+    degenerates into attrition grind (pre-fix it fell to 0.055 / 0.227 / 0.115 at
+    n_worlds 4 / 6 / 8). Checked at every world count.
+    """
+    for n_worlds in (1, 2, 3, 4, 6, 8):
+        oracle = score_inference_telemetry(
+            reference_arm("oracle"), _demonstrator_set(n_worlds)
+        ).super_effective_rate
+        assert oracle >= _SE_RATE_FLOOR, (
+            f"n_worlds={n_worlds}: oracle SE-rate {oracle:.3f} collapsed"
+        )
+
+
+def test_oracle_discriminates_from_chart_blind_at_eval_scale() -> None:
+    """matchup-validity AC2 (discrimination): at a realistic eval scale the oracle's
+    super-effective-move rate leads the chart-blind (type_blind) anchor by a clear
+    margin — so the eval still measures hidden-chart inference rather than collapsing
+    into an attrition grind both arms can win.
+    """
+    for n_worlds in (8, 16):
+        sealed = _demonstrator_set(n_worlds)
+        oracle = score_inference_telemetry(reference_arm("oracle"), sealed).super_effective_rate
+        blind = score_inference_telemetry(reference_arm("type_blind"), sealed).super_effective_rate
+        assert oracle - blind >= _DISCRIMINATION_BAND, (
+            f"n_worlds={n_worlds}: discrimination band {oracle - blind:.3f} too small "
+            f"(oracle={oracle:.3f}, type_blind={blind:.3f})"
+        )
