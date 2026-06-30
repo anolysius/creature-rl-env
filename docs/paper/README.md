@@ -29,6 +29,8 @@ proof**. Any update to the claims must keep that distinction.
 
 ## Status
 
-- **Draft.** Not a submission. The JAX port (throughput) and the tuned-PPO oracle-headroom are
-  now done and folded into §6 / §4. Next steps (follow-up tasks): LaTeX/figures, a GPU throughput
-  measurement (M4-EC3), more families + a learned policy on a held-out family, M3-EC5 OSS release.
+- **Draft.** Not a submission. The JAX port (throughput, §7) and the tuned-PPO oracle-headroom (§4)
+  are done; the **contamination-proof sealed eval + the honest frontier-LLM inference probe** are
+  now folded into **§5** (the eval-as-a-product / moat thread). Next steps (follow-up tasks):
+  LaTeX/figures, a GPU throughput measurement (M4-EC3), more families + a learned policy on a
+  held-out family, a battle-economy redesign for a clean difficulty curve, M3-EC5 OSS release.
