@@ -16,10 +16,50 @@ from critter_gym.eval_harness import (
     inference_baseline,
     score_agent,
     score_inference_telemetry,
+    se_inference_score,
     verify_sealed,
 )
+from critter_gym.inference_rigor import classify_inference
 from critter_gym.learnability import reference_arm
 from critter_gym.region import TEST_SEED_OFFSET, is_held_out
+
+
+# --- se_inference_score: place a super-effective-move rate on the [0,1] inference frame ---
+# The #17 headline (LLM SE-rate ≈50%, a single pass) needs to be robust. Normalizing SE-rate
+# between the chart-blind floor (type_blind, 0) and the expert (oracle, 1) puts it on the SAME
+# frame as the gym-based inference_score, so the pre-registered classify_inference (#10) — its
+# thresholds frozen — can turn N runs into a robust verdict without inventing new thresholds.
+def test_se_inference_score_anchors() -> None:
+    """oracle's SE-rate normalizes to 1.0, type_blind's to 0.0, a mid value lands strictly
+    between, and a non-discriminating band (span <= 0) yields 0.0."""
+    assert se_inference_score(1.0, 1.0, 0.27) == 1.0          # oracle anchor
+    assert se_inference_score(0.27, 1.0, 0.27) == 0.0         # chart-blind anchor
+    mid = se_inference_score(0.50, 1.0, 0.27)                 # LLM ≈50% on the corrected band
+    assert 0.0 < mid < 1.0
+    assert se_inference_score(1.0, 0.27, 0.27) == 0.0         # span <= 0 -> 0.0
+    assert se_inference_score(2.0, 1.0, 0.0) == 1.0           # clamped to [0,1]
+
+
+def test_se_inference_score_on_band() -> None:
+    """On the corrected demonstrator band, the inferring proxy's normalized SE sits strictly
+    between the chart-blind floor and the expert (deterministic)."""
+    band = inference_baseline(_demonstrator())
+    oracle_se = band.arms["oracle"].se_rate
+    blind_se = band.arms["type_blind"].se_rate
+    infer_score = se_inference_score(band.arms["infer"].se_rate, oracle_se, blind_se)
+    assert 0.0 < infer_score < 1.0
+    assert infer_score == se_inference_score(band.arms["infer"].se_rate, oracle_se, blind_se)
+
+
+def test_classify_reuse_on_normalized_se_scores() -> None:
+    """The frozen classify_inference (#10) is reused on normalized SE scores (same [0,1] frame):
+    the expert's SE robustly reads `infers`, the chart-blind baseline `at-chart-blind-floor`."""
+    band = inference_baseline(_demonstrator())
+    o, b = band.arms["oracle"].se_rate, band.arms["type_blind"].se_rate
+    oracle_runs = [se_inference_score(o, o, b)] * 3
+    blind_runs = [se_inference_score(b, o, b)] * 3
+    assert classify_inference(oracle_runs).verdict == "infers"
+    assert classify_inference(blind_runs).verdict == "at-chart-blind-floor"
 
 
 # --- inference baseline: the 4-arm scripted band a re-measurement is read against ---
