@@ -300,6 +300,107 @@ def score_inference_telemetry(
     return InferenceTelemetry(super_effective_rate=float(rate), n_battle_moves=int(n_moves))
 
 
+# The scripted reference arms, ordered from the chart-KNOWING ceiling to the blind floor.
+# oracle  = perfect chart knowledge (upper bound)
+# infer   = learns each matchup on first sight and reuses it (a *proxy* for an agent that
+#           does in-context inference — NOT an LLM)
+# type_blind = never switches; fights with one champion (the chart-blind floor)
+# probe   = picks a champion blindly per fight (no memory) — a blind-guess anchor
+_BASELINE_ARMS: tuple[str, ...] = ("oracle", "infer", "type_blind", "probe")
+
+
+class ArmBaseline(NamedTuple):
+    """One scripted arm's place in the inference band on a sealed set."""
+
+    gym_clears: float       # mean gyms cleared (verifiable subgoal)
+    se_rate: float          # super-effective-move rate (attrition-proof inference signal)
+    n_battle_moves: int     # telemetry denominator
+    inference_score: float  # gyms normalized: type_blind -> 0, oracle -> 1, clamped [0,1]
+
+
+class InferenceBaseline(NamedTuple):
+    """The 4-arm scripted band a submission's score is read against on a sealed set.
+
+    After matchup-validity (#15) corrected the held-out world distribution, prior LLM
+    inference numbers were measured on a different (matchup-broken) distribution and do not
+    transfer. This re-characterizes the band on the corrected distribution so a re-measured
+    LLM is interpretable: the cleanest discriminator is ``se_rate`` (attrition-proof) — the
+    expert reads 1.0, the inferring proxy sits clearly above the chart-blind floor.
+
+    Honest: a *scripted* band (the ``infer`` arm is an inference proxy, not an LLM); the paid
+    LLM probe is the evaluator's own run. ``arms`` is keyed by arm name in ceiling-to-floor
+    order (oracle, infer, type_blind, probe)."""
+
+    arms: dict[str, ArmBaseline]
+    oracle_gyms: float
+    type_blind_gyms: float
+
+
+def _arm_band(
+    factory: Callable[[], CritterEnv], arm: str, seeds: Sequence[int]
+) -> tuple[float, float, int]:
+    """One scripted arm over the sealed seeds with **per-world isolation** — a fresh arm per
+    seed, so each sealed world is independent (no cross-world memory leak, matching how a
+    stateful submission is scored via its ``reset`` hook and how ``learnability`` runs arms).
+
+    Returns ``(mean_gym_clears, se_rate, n_battle_moves)`` in a single pass, reusing
+    ``_super_effective_move`` for the attrition-proof inference signal."""
+    gyms: list[int] = []
+    se_hits = 0
+    n_moves = 0
+    for seed in seeds:
+        policy = reference_arm(arm)  # fresh per world -> no stale matchup carried across charts
+        env = factory()
+        obs, _ = env.reset(seed=int(seed))
+        info: dict = {"subgoals": {"gyms_defeated": 0}}
+        done = False
+        while not done:
+            action = policy(env, obs)
+            verdict = _super_effective_move(env, action)
+            if verdict is not None:
+                n_moves += 1
+                se_hits += int(verdict)
+            obs, _r, term, trunc, info = env.step(action)
+            done = bool(term or trunc)
+        gyms.append(int(info["subgoals"]["gyms_defeated"]))
+    se_rate = se_hits / n_moves if n_moves > 0 else 0.0
+    return float(np.mean(gyms)), float(se_rate), int(n_moves)
+
+
+def inference_baseline(sealed: SealedEvalSet) -> InferenceBaseline:
+    """Run the 4 scripted reference arms on ``sealed`` and return the inference band.
+
+    Free and deterministic (no LLM): each arm's gym-clears (verifiable subgoal) and
+    super-effective-move rate are read on the *same* sealed worlds with per-world isolation,
+    and an ``inference_score`` normalizes gym-clears between the chart-blind floor
+    (type_blind -> 0) and the expert (oracle -> 1), reusing ``score_agent``'s span formula.
+    This is the yardstick an LLM submission is dropped onto — it asserts nothing about any LLM.
+
+    Note (honest): on the inference-gated config, gym-clears *saturate* — the ``infer`` arm
+    matches the oracle because every winnable gym falls to within-episode learning + attrition
+    (every move does >= 1 damage). The attrition-proof discriminator is ``se_rate``, where the
+    expert reads 1.0 and the inferring proxy sits clearly above the chart-blind floor."""
+    factory = sealed.env_factory()
+    seeds = sealed._eval_seeds()
+    band = {arm: _arm_band(factory, arm, seeds) for arm in _BASELINE_ARMS}
+
+    oracle_gyms = band["oracle"][0]
+    blind_gyms = band["type_blind"][0]
+    span = oracle_gyms - blind_gyms
+    arms = {
+        arm: ArmBaseline(
+            gym_clears=gyms,
+            se_rate=se_rate,
+            n_battle_moves=n_moves,
+            inference_score=(
+                float(min(1.0, max(0.0, (gyms - blind_gyms) / span))) if span > 0 else 0.0
+            ),
+        )
+        for arm, (gyms, se_rate, n_moves) in band.items()
+    }
+    return InferenceBaseline(arms=arms, oracle_gyms=oracle_gyms, type_blind_gyms=blind_gyms)
+
+
 def _play_once(
     factory: Callable[[], CritterEnv], policy: EnvPolicy, seed: int,
     *, reset: Callable[[], None] | None = None,

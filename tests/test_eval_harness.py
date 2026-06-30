@@ -9,15 +9,63 @@ the guard catches a train/eval leak, and scoring uses only verifiable subgoals.
 from __future__ import annotations
 
 from critter_gym.eval_harness import (
+    InferenceBaseline,
     InferenceTelemetry,
     Scorecard,
     SealedEvalSet,
+    inference_baseline,
     score_agent,
     score_inference_telemetry,
     verify_sealed,
 )
 from critter_gym.learnability import reference_arm
 from critter_gym.region import TEST_SEED_OFFSET, is_held_out
+
+
+# --- inference baseline: the 4-arm scripted band a re-measurement is read against ---
+# After matchup-validity (#15) corrected the held-out world distribution, the scripted
+# arms must be re-characterized so an LLM's score is interpretable against a valid band.
+# Config = the inference demonstrator (grid5, types3, boss 140/6/18) used by the runner.
+def _demonstrator() -> SealedEvalSet:
+    return SealedEvalSet(
+        master_seed=20260627, n_worlds=8, num_types=3,
+        grid_size=5, boss_hp=140, boss_atk=6, boss_def=18,
+    )
+
+
+def test_inference_baseline_band_is_monotone() -> None:
+    """The super-effective-rate band is ordered oracle >= infer >= type_blind >= probe,
+    with the chart-knowing expert at the 1.0 ceiling — so an inferring agent is cleanly
+    separable from a chart-blind one (the eval's discrimination power, attrition-proof).
+    """
+    base = inference_baseline(_demonstrator())
+    assert isinstance(base, InferenceBaseline)
+    se = [base.arms[a].se_rate for a in ("oracle", "infer", "type_blind", "probe")]
+    assert se == sorted(se, reverse=True), f"SE-rate band not monotone: {se}"
+    assert base.arms["oracle"].se_rate == 1.0
+    assert base.arms["infer"].se_rate > base.arms["type_blind"].se_rate  # inference shows
+
+
+def test_inference_baseline_is_deterministic() -> None:
+    """Same sealed set -> identical band (scripted arms are deterministic)."""
+    assert inference_baseline(_demonstrator()) == inference_baseline(_demonstrator())
+
+
+def test_inference_baseline_inference_score_anchors() -> None:
+    """inference_score normalizes gym-clears between the chart-blind floor (0) and expert (1):
+    oracle anchors at 1.0, type_blind at 0.0.
+
+    Honest finding pinned here: gym-clears *saturate* on this inference-gated config — the
+    inferring arm matches the oracle (within-episode learning + attrition clears every winnable
+    gym), so its gym-based inference_score also reads 1.0 and gym-clears do NOT discriminate
+    inference from expertise (the #12 attrition confound). The attrition-proof ``se_rate`` band
+    is the real discriminator: the inferring arm reads far above the chart-blind floor.
+    """
+    base = inference_baseline(_demonstrator())
+    assert base.arms["oracle"].inference_score == 1.0
+    assert base.arms["type_blind"].inference_score == 0.0
+    # gym-clears saturate -> not a discriminator here; se_rate is.
+    assert base.arms["infer"].se_rate > base.arms["type_blind"].se_rate
 
 
 # --- AC1: sealed held-out block (private, deterministic, regenerable) ---------
