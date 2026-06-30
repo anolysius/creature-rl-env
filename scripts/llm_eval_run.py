@@ -31,11 +31,11 @@ import argparse
 
 from critter_gym.eval_harness import (
     SealedEvalSet,
+    inference_baseline,
     score_agent,
     score_inference_telemetry,
 )
 from critter_gym.inference_rigor import classify_inference
-from critter_gym.learnability import reference_arm
 from critter_gym.llm_eval import (
     BattleMemoryLLMAgent,
     LLMAgent,
@@ -140,16 +140,21 @@ def main() -> None:
 
     if a.telemetry:
         agent_tel = score_inference_telemetry(fresh_agent(), sealed)
-        oracle_tel = score_inference_telemetry(reference_arm("oracle"), sealed)
-        blind_tel = score_inference_telemetry(reference_arm("type_blind"), sealed)
+        band = inference_baseline(sealed)  # scripted 4-arm band on the SAME sealed worlds (free)
         print("\n  -- super-effective-move rate (direct inference signal, win-independent) --")
-        print(f"  oracle (expert)      {oracle_tel.super_effective_rate:.0%}  "
-              f"({oracle_tel.n_battle_moves} battle moves)")
-        print(f"  type_blind (blind)   {blind_tel.super_effective_rate:.0%}")
-        print(f"  {a.model}  {agent_tel.super_effective_rate:.0%}  "
-              f"({agent_tel.n_battle_moves} battle moves)")
+        print("  the scripted band the LLM is read against (ceiling -> floor):")
+        labels = {"oracle": "oracle (chart-KNOWING expert)",
+                  "infer": "infer (inference proxy, NOT an LLM)",
+                  "type_blind": "type_blind (chart-BLIND floor)",
+                  "probe": "probe (blind guess)"}
+        for arm in ("oracle", "infer", "type_blind", "probe"):
+            ab = band.arms[arm]
+            print(f"  {labels[arm]:<36} {ab.se_rate:>4.0%}  ({ab.n_battle_moves} battle moves)")
+        print(f"  {a.model:<36} {agent_tel.super_effective_rate:>4.0%}  "
+              f"({agent_tel.n_battle_moves} battle moves)  <- the submission")
         print("     how often it exploits the inferred hidden chart — NOT confounded by "
-              "attrition (unlike gym-clears). honest: an exploit signal, not proof of inference.")
+              "attrition (unlike gym-clears). honest: an exploit signal, not proof of inference;\n"
+              "     the infer arm is a scripted inference *proxy*, not an LLM.")
 
     print("  honest: a probe (worlds × max_steps capped), scripted-oracle proxy, one difficulty "
           "band — a signal, not a definitive number.")
