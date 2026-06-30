@@ -22,7 +22,11 @@ shaping); (ii) a battle economy under which **inferring a hidden, per-seed type 
 provably load-bearing** (a scripted four-arm gate separates an *inferring* policy from a
 *probing* one), and evidence that a **learned** policy acquires it; and (iii) an
 **env-family abstraction** that begins to measure *genre*-level generalization — transfer
-across structurally distinct collection-RPGs under an environment-level held-out split.
+across structurally distinct collection-RPGs under an environment-level held-out split;
+and (iv) a **contamination-proof sealed held-out eval** — a regenerable, un-memorizable
+evaluation scored by verifiable subgoals with a *checkable* non-contamination guard — together
+with an honest **frontier-LLM probe** that, after separating two harness artifacts from real
+capability, finds a robust chart-blind floor (a non-saturated, discriminating eval signal).
 We are deliberate about scope: our instance-level generalization result is real and a
 necessary floor, and our genre-generalization work is an honest **foundation**, not a
 proof. We position CritterGym against procedural-generalization peers (Procgen, Craftax,
@@ -61,7 +65,7 @@ memory. Symbolic-first isolates *decision-making* from *perception* and keeps ne
 
 **Action space.** `Discrete(6)`: `MOVE{N,S,E,W}`, `CATCH`, `NOOP`, reinterpreted inside a
 turn-based battle sub-MDP. The same six-action interface is shared across every env family
-(Section 5), so one policy can act on all of them.
+(Section 6), so one policy can act on all of them.
 
 **Verifiable rewards (RLVR).** The episode goal is a chain of **boolean-verifiable
 subgoals** — catch ≥ C creatures, evolve ≥ 1, defeat gym[k] for k = 1..N, terminal:
@@ -75,7 +79,7 @@ reproduces a region exactly. Train and held-out test seeds are **structurally di
 
 **Throughput.** The core engine is numpy-only (~266k–410k steps/s/core, ≈ 5–8× the 50k
 target) and the hot path is additionally ported to functional JAX and parity-proven, giving
-large `vmap` speedups on CPU — see Section 6 [run-derived].
+large `vmap` speedups on CPU — see Section 7 [run-derived].
 
 ---
 
@@ -163,7 +167,65 @@ learnable** generalization task with a real RL baseline and large measured headr
 
 ---
 
-## 5. Genre generalization: an honest foundation (not yet the claim)
+## 5. The eval as a product: a contamination-proof sealed held-out, and a frontier-LLM probe
+
+Section 4 measures *trained* policies. A second, complementary use of the same machinery is the
+one frontier labs actually pay for: a **held-out evaluation that cannot be memorized, contaminated,
+or gamed**. Because every world (map *and* hidden type chart) is regenerated from a seed, a fresh
+never-seen instance can be produced per evaluation — the property a fixed-ROM benchmark structurally
+cannot offer once it leaks into training corpora.
+
+**Sealed held-out, with a contamination guard.** An evaluator constructs a `SealedEvalSet` from a
+secret `master_seed`, which selects a *private* block of seeds inside the held-out region (seed ≥
+`TEST_SEED_OFFSET` = 1,000,000); a different `master_seed` yields a fresh, disjoint block. A
+submission is scored only on **verifiable subgoals** (gym-clears / catch / evolve — no hand-tuned
+metric). Crucially, `verify_sealed` makes non-contamination *checkable*: it certifies that a
+submitter's declared training seeds neither overlap the sealed block nor fall outside the train
+region — i.e., "you could not have trained on this eval" is a verifiable property, not a promise.
+
+**A single un-gameable KPI.** We summarize a submission with `inference_score = (submission −
+type_blind) / (oracle − type_blind)`, clamped to [0,1]: `0` plays no better than a chart-*blind*
+baseline, `1` matches a chart-*knowing* expert. It rises only by *inferring the hidden chart in
+context on a never-seen world*, so it cannot be memorized or contaminated. Because a single read is
+noisy, a **pre-registered classifier** (`classify_inference`, thresholds frozen before the data)
+turns a multi-run set into a robust verdict (`infers` / `at-chart-blind-floor` / `inconclusive`).
+
+**A frontier-LLM probe (honest, and instructive about eval design).** We drop a frontier LLM
+(claude-opus-4-8) into the sealed worlds as an agentic submission — it reads a text rendering of the
+observation and returns an action — on an inference-gated demonstrator config. The result is a
+clean case study in *separating real capability limits from harness artifacts*:
+
+- A first measurement read `inference_score = 0.00` (`at-chart-blind-floor`). Before drawing any
+  capability conclusion, we audited the harness — and found the floor was **two stacked floors**.
+- A **rendering bug** mislabeled the observation map (environment creatures shown as wall glyphs,
+  gyms shown as creatures, a real gym glyph never emitted). Only the LLM path consumed this
+  rendering; scripted arms read the raw observation and were unaffected — which is exactly why the
+  bug hid as "the LLM is bad" rather than "the map is wrong". Fixing it lifted an **engagement
+  floor**: the agent now finds and enters gyms (battle moves per run rose ~4–13 → ~30–60).
+- A second confound — the agent's memory discarded the per-move damage feedback that chart
+  inference requires — was removed by giving it a battle-outcome memory (raw observed damage per
+  enemy type, surfaced as facts, *no recommended move*).
+- With **both** confounds removed, the frontier LLM **robustly remained at the chart-blind floor**
+  on inference-gated worlds: `inference_score = 0.00 ± 0.00` (`at-chart-blind-floor`), and a
+  win-independent, attrition-proof **super-effective-move rate of 0%** (vs. a scripted oracle's
+  100%). The inference floor is therefore a **clean capability signal, not a harness artifact** —
+  the two obvious "is it just a bug?" objections are answered by construction.
+
+**Honest scope.** This is a *signal, not a verdict*: a single difficulty band, two sealed worlds,
+single runs, a scripted-oracle proxy, and one model probed zero-shot — not a frontier-LLM ranking.
+The task is **hard, not impossible**: the scripted oracle clears it 100%. Two limitations are worth
+stating for eval designers. (i) Under the current battle economy (minimum-1 attrition damage), the
+*gym-clear* discriminating band is narrow — raise boss difficulty and even the oracle fails (it dies
+before it can win), collapsing discrimination; lower it and a chart-blind agent attritions its way
+to a win. The **super-effective-move rate** is the attrition-proof discriminator that survives this
+(oracle ≈ 100% vs. chart-blind ≈ 0–7% across configs), and a battle-economy redesign for a broad,
+clean *difficulty curve* is future work. (ii) "Could not have trained on it" is enforced in-process
+here; a deployed product needs server-side secret seeds and a submission sandbox. We report the
+mechanism and a first honest measurement, not a hosted service.
+
+---
+
+## 6. Genre generalization: an honest foundation (not yet the claim)
 
 The harder claim is **genre** generalization: working across *structurally distinct*
 collection-RPGs under an **environment-level** held-out split (train on env families
@@ -212,11 +274,11 @@ families across three axes — a **foundation**, **not** a genre-generalization 
 credible genre claim needs **many** structurally distinct families and, ideally, a
 *learned* policy tested on a held-out family. The measured gaps are *signals*, never pass
 thresholds. *(All four families — including duel's structurally distinct battle system — are
-also ported to the vectorized JAX engine at parity 0; see Section 6.)*
+also ported to the vectorized JAX engine at parity 0; see Section 7.)*
 
 ---
 
-## 6. Throughput: a parity-proven JAX port
+## 7. Throughput: a parity-proven JAX port
 
 Throughput is the **adoption gate** for a procedural-generalization benchmark (the Craftax
 lesson): researchers run billions of env steps and will not adopt a slow env. The numpy
@@ -263,7 +325,7 @@ M4 item. Reproduce the throughput table with `python scripts/reproduce_results.p
 
 ---
 
-## 7. Related work
+## 8. Related work
 
 CritterGym is a **procedural-generalization** benchmark and should be compared to
 **Procgen**, **Craftax**, and **XLand-MiniGrid**, not to Pokémon-playing agents:
@@ -279,7 +341,7 @@ Pokémon-RL is a metaphor, not a peer: we traded its difficulty for measurabilit
 
 ---
 
-## 8. Honest limitations
+## 9. Honest limitations
 
 - **GPU throughput unmeasured.** The JAX port's CPU `vmap` already exceeds ≥10M steps/s on the
   pure slices, but the M4-EC3 target is stated for GPU and not yet measured; a single jit env
@@ -308,7 +370,7 @@ Pokémon-RL is a metaphor, not a peer: we traded its difficulty for measurabilit
 
 ---
 
-## 9. Conclusion
+## 10. Conclusion
 
 CritterGym is an instrument for *measuring* agency and generalization, built on verifiable
 rewards and a procgen seed split. We show that rule inference is provably load-bearing
