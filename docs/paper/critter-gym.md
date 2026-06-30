@@ -25,8 +25,11 @@ provably load-bearing** (a scripted four-arm gate separates an *inferring* polic
 across structurally distinct collection-RPGs under an environment-level held-out split;
 and (iv) a **contamination-proof sealed held-out eval** — a regenerable, un-memorizable
 evaluation scored by verifiable subgoals with a *checkable* non-contamination guard — together
-with an honest **frontier-LLM probe** that, after separating two harness artifacts from real
-capability, finds a robust chart-blind floor (a non-saturated, discriminating eval signal).
+with an honest **frontier-LLM probe** whose iterative debugging is itself a case study in
+eval validity: peeling back three stacked confounds (a rendering bug, a memory gap, and a
+world-generation bug that did not guarantee an exploitable matchup) turns an apparent "robust
+chart-blind floor" into a measured *partial* in-context inference signal on the corrected
+distribution (a single-run probe — a signal, not a verdict).
 We are deliberate about scope: our instance-level generalization result is real and a
 necessary floor, and our genre-generalization work is an honest **foundation**, not a
 proof. We position CritterGym against procedural-generalization peers (Procgen, Craftax,
@@ -196,7 +199,8 @@ observation and returns an action — on an inference-gated demonstrator config.
 clean case study in *separating real capability limits from harness artifacts*:
 
 - A first measurement read `inference_score = 0.00` (`at-chart-blind-floor`). Before drawing any
-  capability conclusion, we audited the harness — and found the floor was **two stacked floors**.
+  capability conclusion, we audited the harness — and found the floor was **three stacked
+  confounds**, the last of which lived in the eval's own world generation.
 - A **rendering bug** mislabeled the observation map (environment creatures shown as wall glyphs,
   gyms shown as creatures, a real gym glyph never emitted). Only the LLM path consumed this
   rendering; scripted arms read the raw observation and were unaffected — which is exactly why the
@@ -204,24 +208,42 @@ clean case study in *separating real capability limits from harness artifacts*:
   floor**: the agent now finds and enters gyms (battle moves per run rose ~4–13 → ~30–60).
 - A second confound — the agent's memory discarded the per-move damage feedback that chart
   inference requires — was removed by giving it a battle-outcome memory (raw observed damage per
-  enemy type, surfaced as facts, *no recommended move*).
-- With **both** confounds removed, the frontier LLM **robustly remained at the chart-blind floor**
-  on inference-gated worlds: `inference_score = 0.00 ± 0.00` (`at-chart-blind-floor`), and a
-  win-independent, attrition-proof **super-effective-move rate of 0%** (vs. a scripted oracle's
-  100%). The inference floor is therefore a **clean capability signal, not a harness artifact** —
-  the two obvious "is it just a bug?" objections are answered by construction.
+  enemy type, surfaced as facts, *no recommended move*). With both removed, the probe *still* read
+  a super-effective-move rate near 0%, which we initially reported as a clean capability floor.
+- A **third confound** was the decisive one, and it lived in the eval itself: the world generator
+  did **not guarantee an exploitable matchup**. Its boss-placement filter admitted a boss type with
+  *no* super-effective answer in the party (the per-seed chart can make a type beat all of the
+  party's move types), so the *scripted oracle's* own super-effective-move rate collapsed from 100%
+  to 5–23% as the world count grew. A "0% super-effective-move rate" therefore conflated two very
+  different things — *the agent cannot infer the chart* and *no super-effective move existed to
+  use*. We fixed the generator to guarantee, per world, at least one party move that is strictly
+  super-effective against each placed boss (a procedural-correctness fix, not a battle-rule change).
+- On the **validity-corrected** distribution, a single-run re-measurement of the same frontier LLM
+  reads a **super-effective-move rate of ≈50%** (n = 8 sealed worlds, 68 battle moves) — well above
+  the chart-blind floor (a fixed-champion baseline reads ≈27% at this step cap) and below a scripted
+  *inferring* arm (≈90%) and the expert oracle (100%); `inference_score ≈ 0.14`, gym-clears 65% of
+  oracle. So the earlier "robust 0% floor" was **substantially a distribution-validity artifact**:
+  on a distribution where an exploitable matchup is guaranteed, the LLM exhibits **partial, real
+  in-context inference** — above chance, well below expert. The lesson is about eval design as much
+  as model capability: a measurement is only a capability signal once the harness *and* the
+  generated instances can express the thing being measured.
 
-**Honest scope.** This is a *signal, not a verdict*: a single difficulty band, two sealed worlds,
-single runs, a scripted-oracle proxy, and one model probed zero-shot — not a frontier-LLM ranking.
-The task is **hard, not impossible**: the scripted oracle clears it 100%. Two limitations are worth
-stating for eval designers. (i) Under the current battle economy (minimum-1 attrition damage), the
-*gym-clear* discriminating band is narrow — raise boss difficulty and even the oracle fails (it dies
-before it can win), collapsing discrimination; lower it and a chart-blind agent attritions its way
-to a win. The **super-effective-move rate** is the attrition-proof discriminator that survives this
-(oracle ≈ 100% vs. chart-blind ≈ 0–7% across configs), and a battle-economy redesign for a broad,
-clean *difficulty curve* is future work. (ii) "Could not have trained on it" is enforced in-process
-here; a deployed product needs server-side secret seeds and a submission sandbox. We report the
-mechanism and a first honest measurement, not a hosted service.
+**Honest scope.** The ≈50% read is a *signal, not a verdict*: a **single run**, one inference-gated
+band, eight sealed worlds, a scripted-oracle/inferring-arm proxy, a step cap of 40, and one model
+probed zero-shot — not a frontier-LLM ranking, and a robust multi-run verdict (`classify_inference`)
+is follow-up work. The task is **hard, not impossible**: the scripted oracle clears it 100% and the
+LLM sits between the chart-blind floor and the expert. Three limitations are worth stating for eval
+designers. (i) Under the current battle economy (minimum-1 attrition damage), the *gym-clear*
+discriminating band is narrow — raise boss difficulty and even the oracle fails (it dies before it
+can win), collapsing discrimination; lower it and a chart-blind agent attritions its way to a win.
+The **super-effective-move rate** is the attrition-proof discriminator that survives this (oracle ≈
+100% vs. chart-blind floor, with a battle-economy redesign for a broad, clean *difficulty curve* as
+future work). (ii) That floor is itself **step-cap dependent** — the fixed-champion baseline reads
+≈27% of super-effective moves at a 40-step cap but ≈7% at 200 (more steps accumulate more neutral
+attrition moves), so a submission must be read against the band computed at the *same* cap (the
+harness does this automatically). (iii) "Could not have trained on it" is enforced in-process here;
+a deployed product needs server-side secret seeds and a submission sandbox. We report the mechanism
+and an honest, evolving measurement, not a hosted service.
 
 ---
 
