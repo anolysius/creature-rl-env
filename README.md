@@ -43,6 +43,20 @@ obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 | `CritterGym-duel-v0` | env *family C* — type-agnostic stamina/commit duel battle |
 | `CritterGym-muster-v0` | env *family D* — collection-gated power (muster before you win) |
 
+## What can you do with it? (guides)
+
+CritterGym is one env that supports four research workflows. Each guide is a short, runnable
+recipe (한국어 mirror linked inside each):
+
+| I want to… | Guide |
+|---|---|
+| **Train an RL policy** + reproduce the PPO-vs-oracle headroom and the generalization gap | [how-to/train-a-policy](docs/how-to/train-a-policy.md) |
+| **Evaluate an LLM agent** on the sealed, contamination-proof held-out eval (`inference_score`) | [how-to/evaluate-an-llm-agent](docs/how-to/evaluate-an-llm-agent.md) |
+| **Measure genre transfer** — does a policy generalize to an env *family* it never trained on? | [how-to/measure-genre-transfer](docs/how-to/measure-genre-transfer.md) |
+| Look up the **observation / action / reward contract** and the env-variant knobs | [reference/observation-action-space](docs/reference/observation-action-space.md) |
+
+한국어 가이드: 각 문서 안의 `.ko.md` 링크 · 시작하기 → [README.ko.md](README.ko.md)
+
 ## What it measures
 
 - **Verifiable subgoals (RLVR):** catch ≥ C creatures · evolve ≥ 1 · defeat each gym · defeat the final boss.
