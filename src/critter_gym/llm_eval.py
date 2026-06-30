@@ -295,10 +295,120 @@ class StatefulLLMAgent:
             parts.append(history)
         parts.append(render_obs(obs_map))
         action = parse_action(self._complete("\n\n".join(parts)), self._n_actions)
-        # Record this step, then bound the window (drop oldest beyond `window`).
-        self._history.append((_obs_summary(obs_map), action))
+        self._remember(obs_map, action)
+        return action
+
+    def _remember(self, obs: Mapping[str, object], action: int) -> None:
+        """Record this step's (obs digest, action), then bound the window (drop oldest)."""
+        self._history.append((_obs_summary(obs), action))
         if len(self._history) > self._window:
             del self._history[: len(self._history) - self._window]
+
+
+class BattleMemoryLLMAgent(StatefulLLMAgent):
+    """A :class:`StatefulLLMAgent` that also **remembers per-move battle outcomes**.
+
+    The hidden-chart inference this env measures is, mechanically, *try a move → watch how much
+    the enemy's hp drops → remember which move hit hardest against this enemy type*. The plain
+    :class:`StatefulLLMAgent` cannot support that loop: its history digest is position + gyms
+    only (:func:`_obs_summary`), so it discards the very damage-feedback signal the inference
+    needs — a thin-adapter artifact that floors any agent regardless of capability.
+
+    This agent diffs consecutive in-battle observations: if the previous action was an attack
+    move (0-3) and the enemy is unchanged, the enemy-hp drop is attributed to that move and
+    stored per enemy type as ``{enemy_type: {move: latest observed damage}}`` — a single value
+    per ``(enemy_type, move)`` (overwritten, never a growing list). Each enemy-type row holds at
+    most 4 entries (the attack moves 0-3), so the table is bounded (≤ ``num_types × 4``, since
+    ``enemy_type`` ∈ ``[0, num_types)``). The accumulated damage is surfaced into the prompt as
+    **raw observed facts** (e.g. "vs enemy type 3: move 1 dealt 40, move 0 dealt 8"), in move
+    order with **no recommended/super-effective move** — choosing how to exploit them is left to the
+    LLM (recommending the answer would do the inference *for* it and invalidate the measurement).
+    :meth:`reset` clears the table between sealed worlds (no cross-world leakage).
+
+    Honest scope: this is the *memory mechanism*, **not a measured result**. CI uses a stub
+    ``complete``; a real probe (subscription Claude CLI or API) is a separate user-local run, and
+    whatever inference_score it yields is reported as-is — not reframed as "frontier LLMs can/
+    can't solve it". De-thinning the adapter only makes a *subsequent* measurement fair; it does
+    not by itself prove the chart-blind floor was an artifact.
+    """
+
+    def __init__(
+        self, complete: Callable[[str], str], *, system: str = DEFAULT_SYSTEM,
+        n_actions: int = 6, window: int = 8,
+    ) -> None:
+        super().__init__(complete, system=system, n_actions=n_actions, window=window)
+        # {enemy_type: {move: latest observed damage}} — single value per (type, move), bounded.
+        self._battle_table: dict[int, dict[int, int]] = {}
+        # Snapshot of the PREVIOUS step as plain ints (not the obs dict) — copying the dict would
+        # share its numpy arrays, so an env that reused/mutated arrays in place would make the
+        # next-step hp diff read 0. Plain scalars are immune to that aliasing.
+        self._prev_battle: tuple[int, int, int] | None = None  # (in_battle, enemy_type, enemy_hp)
+        self._prev_action: int | None = None
+
+    def reset(self) -> None:
+        """Clear per-episode memory: history (super) + the battle-outcome table."""
+        super().reset()
+        self._battle_table.clear()
+        self._prev_battle = None
+        self._prev_action = None
+
+    def _observe_battle_outcome(self, obs: Mapping[str, object]) -> None:
+        """Attribute the last attack move's dealt damage from the enemy-hp drop (if unambiguous).
+
+        Relies on the env invariant that a battle is vs a SINGLE boss whose faint *ends* the
+        battle (``in_battle`` → 0): so within one in-battle session the enemy is fixed and its
+        hp is monotonically non-increasing — an enemy-type-equal, in-battle→in-battle, ``delta``
+        ≥ 0 transition is genuinely our move's damage, never a same-type replacement enemy."""
+        prev, action = self._prev_battle, self._prev_action
+        if prev is None or action is None or not (0 <= action <= 3):
+            return  # only attack moves 0-3 deal move damage
+        prev_in_battle, prev_type, prev_hp = prev
+        if not prev_in_battle or not _scalar(obs, "in_battle"):
+            return  # need an in-battle → in-battle transition
+        if prev_type != _scalar(obs, "enemy_type"):
+            return  # enemy changed (faint / new boss) — can't attribute the drop
+        delta = prev_hp - _scalar(obs, "enemy_hp")
+        if delta < 0:
+            return  # hp went up (new/healed enemy) — not our damage
+        self._battle_table.setdefault(prev_type, {})[action] = int(delta)
+
+    def _battle_notes_block(self, obs: Mapping[str, object]) -> str:
+        """Render observed damage vs the current enemy type as raw facts (empty if none/overworld).
+
+        Moves are listed in index order (no damage ranking) and no move is recommended — the
+        inference (which move to exploit) is the LLM's job, which is what the eval measures."""
+        if not _scalar(obs, "in_battle"):
+            return ""
+        etype = _scalar(obs, "enemy_type")
+        row = self._battle_table.get(etype)
+        if not row:
+            return ""
+        facts = ", ".join(f"move {m} dealt {row[m]}" for m in sorted(row))
+        return (
+            "Battle notes — damage YOU have already observed against this enemy type "
+            "(raw facts, decide for yourself):\n"
+            f"  vs enemy type {etype}: {facts}"
+        )
+
+    def act(self, obs: object) -> int:
+        obs_map: Mapping[str, object] = obs  # type: ignore[assignment]
+        self._observe_battle_outcome(obs_map)  # learn from the previous move's result first
+        history = self._history_block()
+        notes = self._battle_notes_block(obs_map)
+        parts = [self._system]
+        if notes:
+            parts.append(notes)
+        if history:
+            parts.append(history)
+        parts.append(render_obs(obs_map))
+        action = parse_action(self._complete("\n\n".join(parts)), self._n_actions)
+        self._remember(obs_map, action)  # history window (shared with the parent)
+        # Snapshot this step as plain ints for next-step damage attribution (no array aliasing).
+        self._prev_battle = (
+            _scalar(obs_map, "in_battle"), _scalar(obs_map, "enemy_type"),
+            _scalar(obs_map, "enemy_hp"),
+        )
+        self._prev_action = action
         return action
 
 

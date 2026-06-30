@@ -37,6 +37,7 @@ from critter_gym.eval_harness import (
 from critter_gym.inference_rigor import classify_inference
 from critter_gym.learnability import reference_arm
 from critter_gym.llm_eval import (
+    BattleMemoryLLMAgent,
     LLMAgent,
     StatefulLLMAgent,
     anthropic_complete,
@@ -61,6 +62,10 @@ def main() -> None:
     p.add_argument("--window", type=int, default=8,
                    help="stateful only: how many recent (obs, action) steps to keep in the "
                         "prompt — larger = more recall but longer prompts (more tokens/call)")
+    p.add_argument("--battle-memory", action="store_true",
+                   help="thicker agentic memory (implies stateful): also remembers the RAW "
+                        "damage each attack move dealt per enemy type and surfaces it as facts "
+                        "(no recommended move) — feeds the try→observe→remember inference loop")
     p.add_argument("--grid-size", type=int, default=10,
                    help="world grid size (smaller = navigable for an LLM under the 5x5 view)")
     p.add_argument("--boss-hp", type=int, default=120, help="gym-boss hp")
@@ -77,7 +82,12 @@ def main() -> None:
 
     projected = a.worlds * a.max_steps
     backend = "claude-cli (subscription)" if a.provider == "claude-cli" else f"API {a.model}"
-    memory = f"stateful (window {a.window})" if a.stateful else "stateless (memoryless)"
+    if a.battle_memory:
+        memory = f"battle-memory (window {a.window} + per-move damage table)"
+    elif a.stateful:
+        memory = f"stateful (window {a.window})"
+    else:
+        memory = "stateless (memoryless)"
     print("== Real-LLM sealed eval — how hard is CritterGym for a frontier LLM? ==")
     print(f"   provider={a.provider}  backend={backend}  memory={memory}  worlds={a.worlds}  "
           f"max_steps={a.max_steps}  num_types={a.num_types}")
@@ -97,7 +107,11 @@ def main() -> None:
                            grid_size=a.grid_size, boss_hp=a.boss_hp,
                            boss_atk=a.boss_atk, boss_def=a.boss_def)
     def fresh_agent():
-        return StatefulLLMAgent(complete, window=a.window) if a.stateful else LLMAgent(complete)
+        if a.battle_memory:
+            return BattleMemoryLLMAgent(complete, window=a.window)
+        if a.stateful:
+            return StatefulLLMAgent(complete, window=a.window)
+        return LLMAgent(complete)
 
     # Score `--runs` times (a fresh agent each run); scripted oracle/type_blind are
     # deterministic, so only the submission varies run-to-run.
