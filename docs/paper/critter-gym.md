@@ -27,9 +27,11 @@ and (iv) a **contamination-proof sealed held-out eval** — a regenerable, un-me
 evaluation scored by verifiable subgoals with a *checkable* non-contamination guard — together
 with an honest **frontier-LLM probe** whose iterative debugging is itself a case study in
 eval validity: peeling back three stacked confounds (a rendering bug, a memory gap, and a
-world-generation bug that did not guarantee an exploitable matchup) turns an apparent "robust
-chart-blind floor" into a measured *partial* in-context inference signal on the corrected
-distribution (a single-run probe — a signal, not a verdict).
+world-generation bug that did not guarantee an exploitable matchup) fixes the *measurement*, after
+which a robust multi-run read of the frontier LLM is **inconclusive, near the chart-blind floor** —
+a single run that looked like partial inference did not replicate. The eval is nonetheless validated:
+a scripted inferrer robustly clears the band, so the model's near-floor result is a real signal, not
+a harness artifact.
 We are deliberate about scope: our instance-level generalization result is real and a
 necessary floor, and our genre-generalization work is an honest **foundation**, not a
 proof. We position CritterGym against procedural-generalization peers (Procgen, Craftax,
@@ -218,21 +220,34 @@ clean case study in *separating real capability limits from harness artifacts*:
   different things — *the agent cannot infer the chart* and *no super-effective move existed to
   use*. We fixed the generator to guarantee, per world, at least one party move that is strictly
   super-effective against each placed boss (a procedural-correctness fix, not a battle-rule change).
-- On the **validity-corrected** distribution, a single-run re-measurement of the same frontier LLM
-  reads a **super-effective-move rate of ≈50%** (n = 8 sealed worlds, 68 battle moves) — well above
-  the chart-blind floor (a fixed-champion baseline reads ≈27% at this step cap) and below a scripted
-  *inferring* arm (≈90%) and the expert oracle (100%); `inference_score ≈ 0.14`, gym-clears 65% of
-  oracle. So the earlier "robust 0% floor" was **substantially a distribution-validity artifact**:
-  on a distribution where an exploitable matchup is guaranteed, the LLM exhibits **partial, real
-  in-context inference** — above chance, well below expert. The lesson is about eval design as much
-  as model capability: a measurement is only a capability signal once the harness *and* the
-  generated instances can express the thing being measured.
+- On the **validity-corrected** distribution, a *single-run* re-measurement of the frontier LLM read
+  a super-effective-move rate of ≈50% (n = 8) — which looked like partial in-context inference. But
+  a **robust multi-run probe did not confirm it**: three runs (n = 4) normalize to an SE-rate
+  inference score of **0.10 ± 0.08 → `inconclusive`** (gym-based `inference_score` 0.04 ± 0.06, also
+  inconclusive), with the LLM reading ≈14% super-effective — near the chart-blind floor, far below a
+  scripted *inferring* arm (≈89%) and the oracle (100%). The single-run ≈50% did **not robustly
+  replicate**; the current, honest read is *inconclusive, near the chart-blind floor*, not confirmed
+  partial inference. (Caveat: the single run was n = 8 and the robust run n = 4 — different world
+  counts, so different chart-blind floors, ≈27% vs ≈6%; an apples-to-apples n = 8 multi-run is
+  follow-up work. The ≈50%↔≈14% gap nonetheless makes the single read look optimistic.)
+- **The design is validated even though the prediction failed.** This is the robustness tooling
+  catching an over-eager reading of one run — exactly its job. Critically, the eval *does* register
+  inference when it is present: the scripted `infer` arm robustly reads ≈89% super-effective, cleanly
+  separated from the floor. So the LLM's near-floor result is a **real signal about the model, not a
+  harness artifact** — an eval whose anchors are validated yet keeps surprising the experimenter is
+  behaving as an un-gameable eval should. The honest boundary that remains: with render and memory
+  confounds removed and the matchup guaranteed, a residual *engagement/survival* confound (the agent
+  logs few battle moves per episode) still separates "cannot infer" from "never sustains the
+  inference loop" — a strong signal, not yet a clean verdict, and a reason for the n = 8 multi-run.
 
-**Honest scope.** The ≈50% read is a *signal, not a verdict*: a **single run**, one inference-gated
-band, eight sealed worlds, a scripted-oracle/inferring-arm proxy, a step cap of 40, and one model
-probed zero-shot — not a frontier-LLM ranking, and a robust multi-run verdict (`classify_inference`)
-is follow-up work. The task is **hard, not impossible**: the scripted oracle clears it 100% and the
-LLM sits between the chart-blind floor and the expert. Three limitations are worth stating for eval
+**Honest scope.** The current read is *inconclusive* (near the chart-blind floor), and even that is a
+*signal, not a verdict*: one inference-gated band, few sealed worlds, a scripted-oracle/inferring-arm
+proxy, a step cap of 40, and one model probed zero-shot — not a frontier-LLM ranking. The single-run
+≈50% did not survive a three-run probe, so we report the robust `classify_inference` outcome
+(`inconclusive`) rather than the optimistic single read, and flag an apples-to-apples n = 8 multi-run
+as follow-up. The task is **hard, not impossible**: the scripted oracle clears it 100% and a scripted
+inferrer reads ≈89% super-effective, so the band can express inference — the LLM simply does not yet
+clear it. Three limitations are worth stating for eval
 designers. (i) Under the current battle economy (minimum-1 attrition damage), the *gym-clear*
 discriminating band is narrow — raise boss difficulty and even the oracle fails (it dies before it
 can win), collapsing discrimination; lower it and a chart-blind agent attritions its way to a win.
