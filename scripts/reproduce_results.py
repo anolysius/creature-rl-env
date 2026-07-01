@@ -9,8 +9,8 @@ Regenerates the result tables that back the front-facing claims (README + paper)
   3. **Eval-product inference band** (paper §5) — the scripted ceiling->floor band an LLM
      submission is read against (`inference_baseline`: oracle / infer / type_blind / probe
      super-effective-move rate). Free + deterministic (no LLM). The paper's frontier-LLM read
-     (§5: super-effective-move rate ~50%) is a *paid, evaluator-local* run and is **not**
-     reproduced here — only the scripted band is.
+     (§5: a robust multi-run probe is inconclusive, near the chart-blind floor) is a
+     *paid, evaluator-local* run and is **not** reproduced here — only the scripted band is.
 
 This is a *reproduction harness*, not a new measurement: it shells out to (or, for the band,
 imports) the same code the archived task reports used, and every number is generated **live**
@@ -72,8 +72,9 @@ def _print_inference_band(quick: bool) -> None:
         ab = band.arms[arm]
         print(f"    {labels[arm]:<34} {ab.se_rate:>4.0%}  ({ab.n_battle_moves} battle moves)")
     print("  honest: this scripted band is free + deterministic (reproduced here). The paper's")
-    print("  frontier-LLM read (§5: super-effective-move rate ~50%) is a PAID, evaluator-local")
-    print("  run — NOT reproduced by this script; see docs/reference/inference-baseline.md.")
+    print("  frontier-LLM read (§5: a robust multi-run probe is inconclusive, near the chart-blind")
+    print("  floor) is a PAID, evaluator-local run — NOT reproduced by this script;")
+    print("  see docs/reference/inference-baseline.md.")
 
 
 def _run(script: str, args: list[str]) -> int:
