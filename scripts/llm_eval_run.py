@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 
+from critter_gym.arena import ARENA_ARMS, arena_band, score_arena_telemetry
 from critter_gym.eval_harness import (
     SealedEvalSet,
     inference_baseline,
@@ -44,6 +45,60 @@ from critter_gym.llm_eval import (
     anthropic_complete,
     claude_cli_complete,
 )
+from critter_gym.region import heldout_seeds
+
+
+def run_arena(a, fresh_agent) -> None:
+    """Battle-arena probe path (--arena): SE-rate with the engagement confound removed.
+
+    The LLM fights --k-battles consecutive battles per world (no overworld), so every
+    decision is a battle decision — a low SE-rate here reads as "does not infer", not
+    "never reached a battle". Anchored to the ARENA scripted band (recomputed here,
+    free): in the arena the band's floor anchors shift vs the overworld (recurring boss
+    types raise chance-level SE), so a submission is read against BOTH type_blind and
+    probe anchors, never against the overworld band.
+    """
+    knobs = dict(commit_battles=True, vary=True, num_types=a.num_types,
+                 grid_size=a.grid_size, max_steps=a.max_steps,
+                 boss_hp=a.boss_hp, boss_atk=a.boss_atk, boss_def=a.boss_def)
+    seeds = tuple(int(s) for s in heldout_seeds(a.worlds))
+    print("  -- BATTLE ARENA (no overworld: engagement confound removed) --")
+    print(f"  {a.k_battles} consecutive battles/world x {a.worlds} worlds "
+          f"(held-out seeds; ~a few battle turns per bout -> far fewer LLM calls than "
+          "an overworld episode)")
+
+    band = arena_band(seeds, k_battles=a.k_battles, **knobs)
+    labels = {"oracle": "oracle (chart-KNOWING expert)",
+              "infer": "infer (inference proxy, NOT an LLM)",
+              "type_blind": "type_blind (one champion, chart-BLIND)",
+              "probe": "probe (blind guess per fight)"}
+    for arm in ARENA_ARMS:
+        r = band[arm]
+        print(f"  {labels[arm]:<38} SE-rate {r.se_rate:>4.0%}  "
+              f"wins {r.wins:.2f}/{a.k_battles}  ({r.n_battle_moves} battle moves)")
+
+    n_runs = max(1, a.runs)
+    tels = [score_arena_telemetry(fresh_agent(), seeds, k_battles=a.k_battles, **knobs)
+            for _ in range(n_runs)]
+    print(f"  {'LLM submission':<38} SE-rate {tels[-1].super_effective_rate:>4.0%}  "
+          f"({tels[-1].n_battle_moves} battle moves)  <- the submission")
+
+    oracle_se = band["oracle"].se_rate
+    blind_se = band["type_blind"].se_rate
+    se_scores = [se_inference_score(t.super_effective_rate, oracle_se, blind_se)
+                 for t in tels]
+    if n_runs > 1:
+        v = classify_inference(se_scores)
+        print(f"\n  => ARENA SE-RATE INFERENCE SCORE: {v.mean:.2f} ± {v.std:.2f}  "
+              f"({v.n_runs} runs)  ->  {v.verdict.upper()}")
+    else:
+        print(f"\n  => ARENA SE-RATE INFERENCE SCORE: {se_scores[0]:.2f}  "
+              "(0 = arena type_blind anchor / 1 = expert; --runs N for a robust verdict)")
+    print("     read vs the ARENA band above (its floor anchors differ from the "
+          "overworld band — recurring boss types raise chance-level SE; compare to both "
+          "type_blind and probe).")
+    print("  honest: a diagnostic probe (arena =/= leaderboard config), scripted-proxy "
+          "band, one seed set — a signal, not a definitive number.")
 
 
 def main() -> None:
@@ -79,6 +134,13 @@ def main() -> None:
     p.add_argument("--telemetry", action="store_true",
                    help="also report the super-effective-move rate (a win-independent, "
                         "attrition-proof signal of hidden-chart inference), vs oracle/type_blind")
+    p.add_argument("--arena", action="store_true",
+                   help="battle-arena probe: drop the LLM straight into --k-battles "
+                        "consecutive battles (no overworld) — separates 'cannot infer' from "
+                        "'never sustains battle engagement'. Headline = SE-rate vs the arena "
+                        "scripted band. Diagnostic, not a leaderboard config.")
+    p.add_argument("--k-battles", type=int, default=10,
+                   help="arena only: consecutive battles per world")
     a = p.parse_args()
 
     projected = a.worlds * a.max_steps
@@ -113,6 +175,10 @@ def main() -> None:
         if a.stateful:
             return StatefulLLMAgent(complete, window=a.window)
         return LLMAgent(complete)
+
+    if a.arena:
+        run_arena(a, fresh_agent)
+        return
 
     # Score `--runs` times (a fresh agent each run); scripted oracle/type_blind are
     # deterministic, so only the submission varies run-to-run.
