@@ -7,9 +7,10 @@ tie-in. Prints an honest-scope caption.
     python scripts/list_env_tiers.py
 
 Honest scope: the `hard` tier's difficulty is what was *measured* (feedforward PPO ~11-16% of
-the scripted oracle on grid16; oracle still winnable). Whether it is hard for a SOTA/recurrent
-agent is OPEN (unmeasured). The sealed tie-in drops difficulty levers SealedEvalSet cannot
-represent (patch_radius/num_gyms), so a sealed variant may be less hard than the full tier env.
+the scripted oracle on grid16; oracle still winnable; a recurrent PPO reached ~32-43% of oracle
+at a related, deeper grid16 config — hard-benchmark #3/#5). OPEN (unmeasured): recurrent agents
+at this exact tier config, and SOTA-class difficulty anywhere. The sealed tie-in carries the
+difficulty levers patch_radius/num_gyms (only num_creatures is dropped — see env-tiers.md).
 Real sale / pricing / hosting is a human gate.
 """
 from __future__ import annotations
@@ -63,19 +64,20 @@ def main() -> None:
     obs, reward, terminated, truncated, _ = env.step(0)
     print(f"hard env stepped once: reward={reward}  terminated={terminated}  truncated={truncated}")
 
-    _rule("4. Sealed-eval tie-in (drops unsupported knobs)")
+    _rule("4. Sealed-eval tie-in (faithful difficulty levers)")
     cfg = sealed_config("hard")
     print(f"sealed_config('hard') keys: {sorted(cfg)}")
-    print("  dropped difficulty levers (not in SealedEvalSet): patch_radius, num_gyms")
+    print("  carries the difficulty levers patch_radius/num_gyms (drops only num_creatures)")
     sealed = build_sealed("hard", master_seed=20260701, n_worlds=4)
     print(f"build_sealed('hard'): n_worlds={sealed.n_worlds} grid_size={sealed.grid_size} "
-          f"boss_hp={sealed.boss_hp}")
+          f"boss_hp={sealed.boss_hp} patch_radius={sealed.patch_radius} "
+          f"num_gyms={sealed.num_gyms}")
 
     _rule("Honest scope")
     print("hard difficulty = MEASURED (feedforward PPO ~11-16% of oracle, grid16; "
-          "oracle winnable).")
-    print("SOTA/recurrent difficulty = OPEN (unmeasured). "
-          "sealed variant drops patch_radius/num_gyms.")
+          "oracle winnable; recurrent PPO ~32-43% at a related deeper config).")
+    print("OPEN (unmeasured) = recurrent at this exact tier config; SOTA-class anywhere. "
+          "sealed variant carries patch_radius/num_gyms (drops only num_creatures).")
     print("Real sale / pricing / hosting = human gate — not done here.")
 
 
