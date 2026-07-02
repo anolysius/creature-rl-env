@@ -38,12 +38,36 @@ The hidden second type lowers even the **oracle** ceiling (5.00 → 3.62 — the
 shrinks the super-effective advantage) while staying winnable, and the learned agent's
 oracle-fraction drops slightly (Δ ≈ +3.4 pp). Both are consistent with a *deeper* difficulty.
 
-> **This is a raw single-seed signal with NO robust threshold.** Calling the multi-type boss
-> "harder" requires a **multi-seed (≥3), pre-registered** measurement (`classify_headroom`) — the
-> explicit **follow-up task** (`multitype-boss-headroom`). Honest labels: PPO (not SOTA), CPU,
-> one seed, grid16 only; the oracle is a scripted ceiling proxy.
+> **This was a raw single-seed signal with NO robust threshold.** The pre-registered multi-seed
+> measurement below superseded it — and showed the scout's Δ was within run noise.
 
-## Follow-up
+## Measured (multi-seed, pre-registered — multitype-boss-headroom)
 
-- `multitype-boss-headroom` — the multi-seed, pre-registered headroom measurement (does the hidden
-  secondary type robustly raise oracle headroom for a strong memory agent?).
+`scripts/multitype_boss_headroom.py --runs 5` (recurrent PPO GRU h128, 250 iters, CPU; rules
+frozen before the data: (A) `classify_headroom(frac=0.75, k=1.0)` on the multi-type config,
+(B) `classify_depth` on per-run oracle fractions; runs expanded 3→5 on an inconclusive read,
+thresholds unchanged — the #3 precedent):
+
+| config | oracle (winnable) | recurrent PPO (5 runs) | of oracle |
+|---|---|---|---|
+| single-type | 5.00 ✓ | 1.60 ± 0.42 | 32% ± 8% |
+| multi-type | 3.00 ✓ | 0.89 ± 0.36 | 30% ± 12% |
+
+- **(A) `hard-for-memory-agent` ROBUST** on the multi-type config: mean+std 1.25 ≪ 0.75·oracle
+  2.25. The multi-type world stays hard for the strongest agent we have, and stays winnable.
+- **(B) depth: `inconclusive`** — the fraction gap shrank from +9.0 pp (3 runs) to **+2.4 pp**
+  (5 runs), well inside the run noise (std 8%/12%). The scout's 1-seed Δ+3.4 pp **did not
+  survive** multi-seed measurement. In *normalized* terms the learned agent is about equally far
+  from its oracle on both configs — the hidden type lowers the expert ceiling (5.00 → 3.00) and
+  the agent's raw score roughly proportionally, rather than selectively hurting the learner.
+
+**Honest read**: the hidden secondary type is a *ceiling-lowering* lever (absolute difficulty up,
+even for the oracle) but **not an established relative-depth lever** at this config/budget. Do not
+claim "multi-type is deeper for learned agents" — the pre-registered verdict is inconclusive.
+Labels: CPU, 5 runs, recurrent PPO (not SOTA), grid16 only, scripted-oracle ceiling proxy.
+
+## Follow-up (open)
+
+- The depth question stays open: a config where the hidden type binds harder (e.g. more types, a
+  boss pool that punishes wrong commits more) might separate the fractions — a new scout would be
+  needed before any further measurement spend.
