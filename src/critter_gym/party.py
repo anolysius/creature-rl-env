@@ -41,16 +41,23 @@ def gym_boss(
     atk: int = 12,
     df: int = 12,
     spd: int = 8,
+    secondary_type: ElementType | None = None,
 ) -> list[Creature]:
     """The boss party for a gym of ``boss_type`` (single tanky creature).
 
     Stats default to the M1 values; ``hp``/``atk``/``df``/``spd`` are difficulty
     knobs (reasoning-load-bearing AC2) — a stronger boss punishes a wrong type
     commit so the correct (inferred) matchup becomes decisive.
+
+    ``secondary_type`` (optional) gives the boss a HIDDEN second defending type: its
+    defence is then the *product* of both types' effectiveness (deeper hidden-rule
+    inference). The boss's move stays single-type (``boss_type``). ``None`` = single-type
+    (byte-identical to the historical boss).
     """
+    types = (boss_type,) if secondary_type is None else (boss_type, secondary_type)
     return [
         Creature(
-            f"Warden-{index}", (boss_type,), hp, atk, df, spd,
+            f"Warden-{index}", types, hp, atk, df, spd,
             [Move("strike", boss_type, 30)],
         )
     ]
