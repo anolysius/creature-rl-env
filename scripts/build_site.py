@@ -120,6 +120,23 @@ _COPY: dict[str, dict[str, str]] = {
         "tiers_honest": "<strong>Honest scope.</strong> Tiers and the signed-certificate flow "
                         "are <strong>prototype artifacts</strong> (custom tiers are validated, "
                         "not measured). Real sale, pricing and hosting stay a human decision.",
+        "comm_h": "Community leaderboard (self-reported)",
+        "comm_p": "Race your own model on the <strong>seasonal public exam set</strong>: every "
+                  "season issues a fresh, openly-derived block of held-out worlds (procedural "
+                  "generation means the exam can always be re-issued — a fixed benchmark "
+                  "can't). Run locally, submit a small JSON, appear here. The metric is "
+                  "<strong>mean gym-clears</strong> on the season block.",
+        "comm_th_rank": "rank", "comm_th_model": "model", "comm_th_by": "submitter",
+        "comm_th_score": "gym-clears (mean)", "comm_th_worlds": "worlds", "comm_th_date": "date",
+        "comm_season": "Season",
+        "comm_empty": "No submissions yet — be the first! See the how-to guide in the repo "
+                      "(<code>docs/how-to/submit-your-model.md</code>).",
+        "comm_honest": "<strong>Honest scope.</strong> These scores are "
+                       "<strong>self-reported</strong> (honor system): every submission must "
+                       "carry a reproduce command, but the numbers are not verified by us. "
+                       "<strong>Verified, contamination-proof</strong> results are the sealed "
+                       "track (signed certificates). This is a <strong>prototype</strong> — "
+                       "submissions open when announced (a human decision).",
         "repo": "Source &amp; paper on GitHub &rarr;",
         "honest": "<strong>Honest scope.</strong> This is a <strong>prototype</strong> launch "
                   "page, not a hosted product. Sealing here is <strong>in-process</strong> (a "
@@ -200,6 +217,22 @@ _COPY: dict[str, dict[str, str]] = {
         "tiers_honest": "<strong>정직한 범위.</strong> 티어와 서명-인증서 흐름은 "
                         "<strong>프로토타입 artifact</strong>입니다(커스텀 티어는 검증만 되고 "
                         "측정되지 않음). 실제 판매·가격·hosting 은 사람의 결정입니다.",
+        "comm_h": "커뮤니티 리더보드 (자가 신고)",
+        "comm_p": "<strong>시즌제 공개 시험지</strong>에서 자기 모델로 경쟁하세요: 시즌마다 "
+                  "공개 유도식으로 새 held-out 세계 블록이 발급됩니다(절차생성이라 시험지를 "
+                  "언제든 다시 발급 가능 — 고정 벤치마크는 불가). 로컬에서 돌리고, 작은 JSON 을 "
+                  "제출하면, 여기 랭크됩니다. 지표는 시즌 블록에서의 <strong>평균 체육관 "
+                  "클리어</strong>입니다.",
+        "comm_th_rank": "순위", "comm_th_model": "모델", "comm_th_by": "제출자",
+        "comm_th_score": "체육관 클리어(평균)", "comm_th_worlds": "세계 수", "comm_th_date": "날짜",
+        "comm_season": "시즌",
+        "comm_empty": "아직 제출이 없습니다 — 첫 번째가 되어보세요! repo 의 가이드를 참고하세요"
+                      "(<code>docs/how-to/submit-your-model.ko.md</code>).",
+        "comm_honest": "<strong>정직한 범위.</strong> 이 점수들은 <strong>자가 신고</strong>"
+                       "(honor system)입니다: 모든 제출에 재현 명령이 필수지만, 수치를 우리가 "
+                       "검증하지는 않습니다. <strong>검증된 오염-불가</strong> 결과는 봉인 "
+                       "트랙(서명 인증서)입니다. 이건 <strong>프로토타입</strong>이며 — 제출 "
+                       "접수는 공지 후 열립니다(사람의 결정).",
         "repo": "GitHub 소스 &amp; 논문 &rarr;",
         "honest": "<strong>정직한 범위.</strong> 이건 <strong>프로토타입</strong> 런치 페이지이지 "
                   "hosted 제품이 아닙니다. 여기서 봉인은 <strong>in-process</strong>입니다"
@@ -276,8 +309,45 @@ def _tiers_html(c: dict[str, str]) -> str:
     return "\n".join(out)
 
 
+def _community_html(c: dict[str, str], submissions: tuple[dict, ...]) -> str:
+    """The community-track body: per-season ranked tables (values HTML-escaped), or the
+    be-the-first empty state. Submissions are assumed validated + ranked (load_submissions)."""
+    if not submissions:
+        return f"    <p>{c['comm_empty']}</p>"
+    out: list[str] = []
+    season = None
+    for sub in submissions:
+        if sub["season"] != season:
+            if season is not None:
+                out.append("      </tbody>\n    </table>\n    </div>")
+            season = sub["season"]
+            rank = 0
+            out.append(
+                f"    <h3>{c['comm_season']} {int(season)}</h3>\n"
+                "    <div class=\"table-wrap\">\n    <table>\n"
+                f"      <thead><tr><th>{c['comm_th_rank']}</th><th>{c['comm_th_model']}</th>"
+                f"<th>{c['comm_th_by']}</th><th>{c['comm_th_score']}</th>"
+                f"<th>{c['comm_th_worlds']}</th><th>{c['comm_th_date']}</th></tr></thead>\n"
+                "      <tbody>"
+            )
+        rank += 1
+        out.append(
+            "      <tr>"
+            f"<td>{rank}</td>"
+            f"<td>{html.escape(str(sub['model']))}</td>"
+            f"<td>{html.escape(str(sub['submitter']))}</td>"
+            f"<td>{float(sub['heldout_mean']):.3f}</td>"
+            f"<td>{int(sub['n_worlds'])}</td>"
+            f"<td>{html.escape(str(sub['date']))}</td>"
+            "</tr>"
+        )
+    out.append("      </tbody>\n    </table>\n    </div>")
+    return "\n".join(out)
+
+
 def render_site(
     leaderboard: Leaderboard, *, generated_note: str, lang: str = "en", demo_cleared: bool = True,
+    community: tuple = (),
 ) -> str:
     """Render a ``Leaderboard`` into a single static HTML page in ``lang`` (``en``/``ko``).
 
@@ -292,6 +362,7 @@ def render_site(
     rows = _rows_html(leaderboard.entries)
     legend = _legend_html(c)
     tiers = _tiers_html(c)
+    comm = _community_html(c, tuple(community))
     demo_caption = c["demo_cleared"] if demo_cleared else c["demo_uncleared"]
     return f"""<!DOCTYPE html>
 <html lang="{lang}">
@@ -414,6 +485,13 @@ def render_site(
     </table>
     </div>
     <p class="note">{c['tiers_honest']}</p>
+  </section>
+
+  <section>
+    <h2>{c['comm_h']}</h2>
+    <p>{c['comm_p']}</p>
+{comm}
+    <p class="note">{c['comm_honest']}</p>
   </section>
 
   <hr>
@@ -578,10 +656,19 @@ def main() -> None:
         print("Scoring the free baselines and generating assets (gameplay.gif, gap.png)...")
         board, demo_cleared = build_assets(out, BenchmarkSpec())
 
+    # Community submissions (validated + ranked); rejected files are reported, not silently
+    # dropped. The scores are self-reported (honor system) — the page labels this permanently.
+    from critter_gym.community import load_submissions
+
+    community, rejected = load_submissions(_ROOT / "community" / "submissions")
+    for fname, errors in rejected:
+        print(f"community submission rejected: {fname}: {'; '.join(errors)}")
+
     for lang in ("en", "ko"):
         name = "index.html" if lang == "en" else "index.ko.html"
         (out / name).write_text(
-            render_site(board, generated_note=a.note, lang=lang, demo_cleared=demo_cleared))
+            render_site(board, generated_note=a.note, lang=lang, demo_cleared=demo_cleared,
+                        community=tuple(community)))
         print(f"wrote {out / name}")
 
     print(f"local preview:  python -m http.server -d {out}   # then open http://localhost:8000")

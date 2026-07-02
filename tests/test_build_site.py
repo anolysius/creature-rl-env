@@ -196,3 +196,48 @@ def test_render_site_tiers_honest_caption() -> None:
     assert "human decision" in en or "human gate" in en
     assert "서명" in ko and "인증서" in ko
     assert "사람" in ko
+
+
+# --- Community leaderboard section (community-leaderboard): self-reported, seasonal ------
+
+def _subs() -> tuple:
+    from critter_gym.community import SCHEMA_VERSION, season_spec
+    base = {
+        "schema_version": SCHEMA_VERSION, "season": 1, "n_worlds": 16,
+        "spec": season_spec(), "reproduce": "cmd", "date": "2026-07-02",
+        "self_reported": True,
+    }
+    return (
+        {**base, "model": "alpha<b>", "submitter": "ann", "heldout_mean": 2.0},
+        {**base, "model": "beta", "submitter": "bob", "heldout_mean": 1.0},
+    )
+
+
+def test_render_site_community_ranks_and_escapes() -> None:
+    page = build_site.render_site(_board(), generated_note="t", community=_subs())
+    assert "Community leaderboard" in page
+    assert "alpha&lt;b&gt;" in page          # values escaped
+    assert page.index("alpha&lt;b&gt;") < page.index("beta")  # ranked desc by score
+    assert "2.000" in page and "1.000" in page
+
+
+def test_render_site_community_empty_state() -> None:
+    page = build_site.render_site(_board(), generated_note="t", community=())
+    assert "be the first" in page.lower()
+    assert "Community leaderboard" in page
+
+
+def test_render_site_community_honest_labels() -> None:
+    en = build_site.render_site(_board(), generated_note="t", community=_subs())
+    ko = build_site.render_site(_board(), generated_note="t", lang="ko", community=_subs())
+    for page, sealed_word in ((en, "sealed"), (ko, "봉인")):
+        assert "self-reported" in page or "자가 신고" in page
+        assert sealed_word in page                        # funnel to the proof track
+    assert "submissions open when announced" in en        # not-open-yet human gate
+    assert "공지 후" in ko
+
+
+def test_render_site_community_backward_compatible() -> None:
+    # Old call sites (no community arg) still render — the section shows the empty state.
+    page = build_site.render_site(_board(), generated_note="t")
+    assert "Community leaderboard" in page
