@@ -31,6 +31,7 @@ import shutil
 from pathlib import Path
 
 from critter_gym.leaderboard import BenchmarkSpec, Leaderboard, LeaderboardEntry
+from critter_gym.render import _AGENT, _BG, _CREATURE, _GYM_ACTIVE, _GYM_DEFEATED
 
 _ROOT = Path(__file__).resolve().parents[1]
 _GIF_FALLBACK = _ROOT / "docs" / "assets" / "killer_demo.gif"
@@ -38,6 +39,8 @@ _SITE_DIR = _ROOT / "site"
 _REPO_URL = "https://github.com/anolysius/creature-rl-env"
 _GAMEPLAY_GIF = "gameplay.gif"
 _GAP_PNG = "gap.png"
+_BAND_PNG = "band.png"
+_WORLD_PNG = "world_{}.png"
 
 # Bilingual copy (en / ko). Same structure both languages so render_site is language-agnostic.
 _COPY: dict[str, dict[str, str]] = {
@@ -68,6 +71,27 @@ _COPY: dict[str, dict[str, str]] = {
                           "type-chart), navigates the map and battles through the gyms — no "
                           "training on this world:",
         "demo_alt": "Gameplay: a scripted agent playing an unseen held-out world",
+        "legend_h": "What the colors mean",
+        "lg_agent": "the agent (you)", "lg_creature": "a catchable creature",
+        "lg_gym_active": "an undefeated gym (a checkpoint to clear)",
+        "lg_gym_defeated": "a cleared gym", "lg_empty": "empty tile",
+        "band_h": "Can it infer the hidden rules? (the moat KPI)",
+        "band_p": "On an inference-gated sealed config, we measure how often each arm plays a "
+                  "<em>super-effective</em> move — i.e. exploits the hidden type-chart. A "
+                  "chart-<strong>knowing</strong> expert (oracle) reads ~100%; a scripted "
+                  "<strong>inferrer</strong> reads high; a chart-<strong>blind</strong> baseline "
+                  "reads near zero. The clean separation is what makes the eval measure "
+                  "in-context inference — un-memorizable, un-gameable.",
+        "band_alt": "Super-effective-move rate by arm: oracle / infer / type_blind / probe",
+        "band_note": "This is the free <em>scripted</em> band (reproducible). A frontier LLM was "
+                     "probed separately (a paid, evaluator-local run) and read low — near the "
+                     "chart-blind floor, inconclusive; that number is not shown on this "
+                     "reproducible chart.",
+        "worlds_h": "Every eval is a fresh, unseen world",
+        "worlds_p": "Each held-out seed regenerates a different map <em>and</em> a different "
+                    "hidden type-chart — so a submission can never have trained on the world it "
+                    "is scored on. Three held-out worlds:",
+        "worlds_alt": "A held-out world (a fresh map the agent has never seen)",
         "moat_h": "Why this eval is a moat",
         "moat_1": "<strong>Contamination-proof.</strong> Evaluation worlds are regenerated per "
                   "run from a secret seed in a held-out region; a submitter's declared training "
@@ -113,6 +137,28 @@ _COPY: dict[str, dict[str, str]] = {
                           "<strong>처음 보는 held-out 세계</strong>(새 맵 + 새 숨은 타입표)에 놓여 "
                           "맵을 탐색하고 체육관을 헤쳐 나갑니다 — 이 세계로 학습한 적 없음:",
         "demo_alt": "게임플레이: 처음 보는 held-out 세계를 플레이하는 scripted 에이전트",
+        "legend_h": "색깔의 의미",
+        "lg_agent": "에이전트(플레이어)", "lg_creature": "잡을 수 있는 생물",
+        "lg_gym_active": "안 깬 체육관(격파할 보스)",
+        "lg_gym_defeated": "깬 체육관", "lg_empty": "빈 칸",
+        "band_h": "숨은 규칙을 추론할 수 있나? (moat 핵심 지표)",
+        "band_p": "추론이 필요한 sealed config 에서, 각 arm 이 <em>super-effective</em> 무브를 "
+                  "얼마나 자주 쓰는지 — 즉 숨은 타입표를 얼마나 exploit 하는지 — 측정합니다. "
+                  "차트를 <strong>아는</strong> 전문가(oracle)는 ~100%, 규칙기반 "
+                  "<strong>추론자</strong>(infer)는 높게, 차트를 <strong>모르는</strong> "
+                  "baseline 은 0 근처를 읽습니다. 이 깨끗한 분리가 eval 이 맥락 내 추론을 잰다는 "
+                  "증거입니다 — "
+                  "못 외우고, 못 속입니다.",
+        "band_alt": "arm 별 super-effective-move 율: oracle / infer / type_blind / probe",
+        "band_note": "이건 무료 <em>규칙기반(scripted)</em> band(재현 가능)입니다. 프런티어 LLM 은 "
+                     "별도(유료·평가자 로컬)로 probe 했고 낮게 — chart-blind floor 근처, "
+                     "inconclusive — 읽었습니다. 그 수치는 이 재현 가능한 차트에 표시하지 "
+                     "않습니다.",
+        "worlds_h": "매 평가는 처음 보는 새 세계",
+        "worlds_p": "각 held-out 시드는 서로 다른 맵 <em>과</em> 서로 다른 숨은 타입표를 "
+                    "재생성합니다 — 그래서 제출물은 채점되는 세계로 절대 학습했을 수 없습니다. "
+                    "held-out 세계 3개:",
+        "worlds_alt": "held-out 세계(에이전트가 한 번도 못 본 새 맵)",
         "moat_h": "왜 이 eval 이 해자(moat)인가",
         "moat_1": "<strong>오염 불가.</strong> 평가 세계는 매 실행마다 held-out 구역의 비밀 "
                   "시드에서 재생성되고, 제출자가 선언한 학습 시드가 eval 블록과 겹치는지 "
@@ -135,6 +181,24 @@ _COPY: dict[str, dict[str, str]] = {
                   "사람의 결정입니다.",
     },
 }
+
+
+_LEGEND_ITEMS = (
+    (_AGENT, "lg_agent"),
+    (_CREATURE, "lg_creature"),
+    (_GYM_ACTIVE, "lg_gym_active"),
+    (_GYM_DEFEATED, "lg_gym_defeated"),
+    (_BG, "lg_empty"),
+)
+
+
+def _legend_html(c: dict[str, str]) -> str:
+    """Grid-color legend swatches, coloured from render.py's palette (SSOT)."""
+    out = []
+    for (r, g, b), key in _LEGEND_ITEMS:
+        out.append(f'      <li><span class="sw" style="background:rgb({r},{g},{b})"></span>'
+                   f'{html.escape(c[key])}</li>')
+    return "\n".join(out)
 
 
 def _rows_html(entries: tuple[LeaderboardEntry, ...]) -> str:
@@ -167,6 +231,7 @@ def render_site(
     note = html.escape(generated_note)
     spec = html.escape(json.dumps(leaderboard.spec.to_dict(), sort_keys=True))
     rows = _rows_html(leaderboard.entries)
+    legend = _legend_html(c)
     demo_caption = c["demo_cleared"] if demo_cleared else c["demo_uncleared"]
     return f"""<!DOCTYPE html>
 <html lang="{lang}">
@@ -203,6 +268,13 @@ def render_site(
     img.asset {{ max-width: 100%; border: 1px solid #eee; border-radius: 6px; }}
     img.pixel {{ image-rendering: pixelated; width: 320px; max-width: 100%;
                  box-shadow: 0 6px 24px rgba(91,124,250,0.25); border-radius: 8px; }}
+    ul.legend {{ list-style: none; padding: 0; display: flex; flex-wrap: wrap;
+                 gap: 0.4rem 1.2rem; }}
+    ul.legend li {{ display: flex; align-items: center; }}
+    .sw {{ display: inline-block; width: 1rem; height: 1rem; border-radius: 3px;
+           margin-right: 0.45rem; border: 1px solid rgba(0,0,0,0.15); }}
+    .worlds {{ display: flex; flex-wrap: wrap; gap: 0.8rem; }}
+    img.pixel.sm {{ width: 200px; }}
     a {{ color: var(--accent); }}
     .note {{ color: #666; font-size: 0.9rem; }}
     code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }}
@@ -238,6 +310,27 @@ def render_site(
     <h2>{c['demo_h']}</h2>
     <p>{demo_caption}</p>
     <img class="pixel" src="{_GAMEPLAY_GIF}" alt="{c['demo_alt']}">
+    <h3>{c['legend_h']}</h3>
+    <ul class="legend">
+{legend}
+    </ul>
+  </section>
+
+  <section>
+    <h2>{c['band_h']}</h2>
+    <p>{c['band_p']}</p>
+    <img class="asset" src="{_BAND_PNG}" alt="{c['band_alt']}">
+    <p class="note">{c['band_note']}</p>
+  </section>
+
+  <section>
+    <h2>{c['worlds_h']}</h2>
+    <p>{c['worlds_p']}</p>
+    <div class="worlds">
+      <img class="pixel sm" src="{_WORLD_PNG.format(1)}" alt="{c['worlds_alt']}">
+      <img class="pixel sm" src="{_WORLD_PNG.format(2)}" alt="{c['worlds_alt']}">
+      <img class="pixel sm" src="{_WORLD_PNG.format(3)}" alt="{c['worlds_alt']}">
+    </div>
   </section>
 
   <section>
@@ -327,7 +420,59 @@ def build_assets(out: Path, spec: BenchmarkSpec) -> tuple[Leaderboard, bool]:
         if not (out / _GAMEPLAY_GIF).exists() and _GIF_FALLBACK.exists():
             shutil.copy2(_GIF_FALLBACK, out / _GAMEPLAY_GIF)
 
+    _build_band_png(out)
+    _build_world_thumbnails(out)
     return board, cleared
+
+
+# The inference-gated demonstrator sealed config (paper §5 / inference-baseline.md).
+_DEMO_SEALED = dict(master_seed=20260627, n_worlds=8, num_types=3, grid_size=5,
+                    boss_hp=140, boss_atk=6, boss_def=18, max_steps=40)
+_BAND_ARMS = ("oracle", "infer", "type_blind", "probe")
+
+
+def _build_band_png(out: Path) -> None:
+    """SE-rate inference band (the moat KPI): a bar of each scripted arm's super-effective-move
+    rate on the demonstrator sealed set — the free, reproducible band (no paid LLM number)."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from critter_gym.eval_harness import SealedEvalSet, inference_baseline
+        band = inference_baseline(SealedEvalSet(**_DEMO_SEALED))
+        rates = [band.arms[a].se_rate for a in _BAND_ARMS]
+        colors = ["#22c55e", "#5b7cfa", "#e0a020", "#c0392b"]
+        fig, ax = plt.subplots(figsize=(6, 3.4))
+        ax.bar(_BAND_ARMS, [r * 100 for r in rates], color=colors)
+        ax.set_ylabel("super-effective-move rate (%)")
+        ax.set_ylim(0, 100)
+        ax.set_title("Inference band (scripted): who exploits the hidden chart?")
+        for i, r in enumerate(rates):
+            ax.text(i, r * 100 + 2, f"{r:.0%}", ha="center", fontsize=9)
+        fig.savefig(out / _BAND_PNG, dpi=100, bbox_inches="tight")
+        plt.close(fig)
+    except Exception as exc:  # noqa: BLE001 — optional [viz]; keep committed asset
+        print(f"note: skipped {_BAND_PNG} ({type(exc).__name__}); reusing committed asset.")
+
+
+def _build_world_thumbnails(out: Path) -> None:
+    """Render the reset frame of three *different* held-out seeds — each a fresh, unseen world
+    (a new map and a new hidden type-chart) — so 'every eval is a new world' is visible."""
+    try:
+        import imageio.v2 as imageio
+
+        from critter_gym.envs.critter_env import CritterEnv
+        from critter_gym.region import heldout_seeds
+        seeds = heldout_seeds(3)  # three distinct held-out (test-region) seeds
+        for i, seed in enumerate(seeds, start=1):
+            env = CritterEnv(grid_size=8, num_creatures=5, num_gyms=3, max_steps=120,
+                             patch_radius=3, vary=True, render_mode="rgb_array")
+            env.reset(seed=int(seed))
+            frame = env.render()
+            imageio.imwrite(str(out / _WORLD_PNG.format(i)), frame)
+    except Exception as exc:  # noqa: BLE001 — optional [viz]; keep committed asset
+        print(f"note: skipped world thumbnails ({type(exc).__name__}); reusing committed assets.")
 
 
 def main() -> None:

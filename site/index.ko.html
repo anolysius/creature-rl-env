@@ -33,6 +33,13 @@
     img.asset { max-width: 100%; border: 1px solid #eee; border-radius: 6px; }
     img.pixel { image-rendering: pixelated; width: 320px; max-width: 100%;
                  box-shadow: 0 6px 24px rgba(91,124,250,0.25); border-radius: 8px; }
+    ul.legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap;
+                 gap: 0.4rem 1.2rem; }
+    ul.legend li { display: flex; align-items: center; }
+    .sw { display: inline-block; width: 1rem; height: 1rem; border-radius: 3px;
+           margin-right: 0.45rem; border: 1px solid rgba(0,0,0,0.15); }
+    .worlds { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+    img.pixel.sm { width: 200px; }
     a { color: var(--accent); }
     .note { color: #666; font-size: 0.9rem; }
     code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
@@ -69,6 +76,31 @@
     <h2>게임플레이</h2>
     <p><strong>규칙기반(scripted) baseline</strong> 에이전트가 <strong>처음 보는 held-out 세계</strong>(새 맵 + 새 숨은 타입표)에 놓여 맵을 탐색하고, 체육관에서 전투하며, 보스를 격파합니다 — 이 세계로 학습한 적 없음:</p>
     <img class="pixel" src="gameplay.gif" alt="게임플레이: 처음 보는 held-out 세계를 플레이하는 scripted 에이전트">
+    <h3>색깔의 의미</h3>
+    <ul class="legend">
+      <li><span class="sw" style="background:rgb(80,140,230)"></span>에이전트(플레이어)</li>
+      <li><span class="sw" style="background:rgb(90,200,120)"></span>잡을 수 있는 생물</li>
+      <li><span class="sw" style="background:rgb(220,80,80)"></span>안 깬 체육관(격파할 보스)</li>
+      <li><span class="sw" style="background:rgb(110,110,110)"></span>깬 체육관</li>
+      <li><span class="sw" style="background:rgb(30,30,40)"></span>빈 칸</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>숨은 규칙을 추론할 수 있나? (moat 핵심 지표)</h2>
+    <p>추론이 필요한 sealed config 에서, 각 arm 이 <em>super-effective</em> 무브를 얼마나 자주 쓰는지 — 즉 숨은 타입표를 얼마나 exploit 하는지 — 측정합니다. 차트를 <strong>아는</strong> 전문가(oracle)는 ~100%, 규칙기반 <strong>추론자</strong>(infer)는 높게, 차트를 <strong>모르는</strong> baseline 은 0 근처를 읽습니다. 이 깨끗한 분리가 eval 이 맥락 내 추론을 잰다는 증거입니다 — 못 외우고, 못 속입니다.</p>
+    <img class="asset" src="band.png" alt="arm 별 super-effective-move 율: oracle / infer / type_blind / probe">
+    <p class="note">이건 무료 <em>규칙기반(scripted)</em> band(재현 가능)입니다. 프런티어 LLM 은 별도(유료·평가자 로컬)로 probe 했고 낮게 — chart-blind floor 근처, inconclusive — 읽었습니다. 그 수치는 이 재현 가능한 차트에 표시하지 않습니다.</p>
+  </section>
+
+  <section>
+    <h2>매 평가는 처음 보는 새 세계</h2>
+    <p>각 held-out 시드는 서로 다른 맵 <em>과</em> 서로 다른 숨은 타입표를 재생성합니다 — 그래서 제출물은 채점되는 세계로 절대 학습했을 수 없습니다. held-out 세계 3개:</p>
+    <div class="worlds">
+      <img class="pixel sm" src="world_1.png" alt="held-out 세계(에이전트가 한 번도 못 본 새 맵)">
+      <img class="pixel sm" src="world_2.png" alt="held-out 세계(에이전트가 한 번도 못 본 새 맵)">
+      <img class="pixel sm" src="world_3.png" alt="held-out 세계(에이전트가 한 번도 못 본 새 맵)">
+    </div>
   </section>
 
   <section>

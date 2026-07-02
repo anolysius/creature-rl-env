@@ -33,6 +33,13 @@
     img.asset { max-width: 100%; border: 1px solid #eee; border-radius: 6px; }
     img.pixel { image-rendering: pixelated; width: 320px; max-width: 100%;
                  box-shadow: 0 6px 24px rgba(91,124,250,0.25); border-radius: 8px; }
+    ul.legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap;
+                 gap: 0.4rem 1.2rem; }
+    ul.legend li { display: flex; align-items: center; }
+    .sw { display: inline-block; width: 1rem; height: 1rem; border-radius: 3px;
+           margin-right: 0.45rem; border: 1px solid rgba(0,0,0,0.15); }
+    .worlds { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+    img.pixel.sm { width: 200px; }
     a { color: var(--accent); }
     .note { color: #666; font-size: 0.9rem; }
     code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
@@ -69,6 +76,31 @@
     <h2>The gameplay</h2>
     <p>A <strong>scripted baseline</strong> agent, dropped into an <strong>unseen held-out world</strong> (a new map and a new hidden type-chart), navigates the map, battles at the gyms, and defeats the boss — no training on this world:</p>
     <img class="pixel" src="gameplay.gif" alt="Gameplay: a scripted agent playing an unseen held-out world">
+    <h3>What the colors mean</h3>
+    <ul class="legend">
+      <li><span class="sw" style="background:rgb(80,140,230)"></span>the agent (you)</li>
+      <li><span class="sw" style="background:rgb(90,200,120)"></span>a catchable creature</li>
+      <li><span class="sw" style="background:rgb(220,80,80)"></span>an undefeated gym (a checkpoint to clear)</li>
+      <li><span class="sw" style="background:rgb(110,110,110)"></span>a cleared gym</li>
+      <li><span class="sw" style="background:rgb(30,30,40)"></span>empty tile</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Can it infer the hidden rules? (the moat KPI)</h2>
+    <p>On an inference-gated sealed config, we measure how often each arm plays a <em>super-effective</em> move — i.e. exploits the hidden type-chart. A chart-<strong>knowing</strong> expert (oracle) reads ~100%; a scripted <strong>inferrer</strong> reads high; a chart-<strong>blind</strong> baseline reads near zero. The clean separation is what makes the eval measure in-context inference — un-memorizable, un-gameable.</p>
+    <img class="asset" src="band.png" alt="Super-effective-move rate by arm: oracle / infer / type_blind / probe">
+    <p class="note">This is the free <em>scripted</em> band (reproducible). A frontier LLM was probed separately (a paid, evaluator-local run) and read low — near the chart-blind floor, inconclusive; that number is not shown on this reproducible chart.</p>
+  </section>
+
+  <section>
+    <h2>Every eval is a fresh, unseen world</h2>
+    <p>Each held-out seed regenerates a different map <em>and</em> a different hidden type-chart — so a submission can never have trained on the world it is scored on. Three held-out worlds:</p>
+    <div class="worlds">
+      <img class="pixel sm" src="world_1.png" alt="A held-out world (a fresh map the agent has never seen)">
+      <img class="pixel sm" src="world_2.png" alt="A held-out world (a fresh map the agent has never seen)">
+      <img class="pixel sm" src="world_3.png" alt="A held-out world (a fresh map the agent has never seen)">
+    </div>
   </section>
 
   <section>

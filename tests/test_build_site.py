@@ -104,3 +104,39 @@ def test_render_site_demo_caption_is_honest() -> None:
     assert "scripted" in cleared            # honest: not a trained/LLM agent
     assert "boss" in cleared                # claims the win when it happened
     assert "boss" not in not_cleared or "defeat" not in not_cleared  # no false win claim
+
+
+# --- research-explaining visuals: grid legend, SE-rate band chart, held-out thumbnails ---
+def test_render_site_grid_legend_uses_render_palette() -> None:
+    """The grid-color legend uses render.py's actual palette (SSOT, not hardcoded guesses), so the
+    swatches match what the gameplay clip shows."""
+    from critter_gym.render import _AGENT, _CREATURE, _GYM_ACTIVE
+
+    html = build_site.render_site(_board(), generated_note="t")
+    for r, g, b in (_AGENT, _CREATURE, _GYM_ACTIVE):
+        assert f"rgb({r},{g},{b})" in html    # legend swatch background from the real palette
+    low = html.lower()
+    assert "agent" in low and "creature" in low  # English labels
+
+
+def test_render_site_grid_legend_korean() -> None:
+    """The Korean legend labels the cells in Korean."""
+    html = build_site.render_site(_board(), generated_note="t", lang="ko")
+    assert "에이전트" in html and "생물" in html and "체육관" in html
+
+
+def test_render_site_embeds_band_and_thumbnails() -> None:
+    """The page references the SE-rate inference-band chart and the held-out world thumbnails."""
+    for lang in ("en", "ko"):
+        html = build_site.render_site(_board(), generated_note="t", lang=lang)
+        assert "band.png" in html                       # SE-rate inference band chart
+        for i in (1, 2, 3):
+            assert f"world_{i}.png" in html             # held-out world thumbnails
+
+
+def test_render_site_band_caption_is_honest() -> None:
+    """The band caption is honest: a scripted proxy band; the frontier-LLM read is a separate paid
+    probe and is NOT hardcoded as a number on the reproducible chart."""
+    en = build_site.render_site(_board(), generated_note="t").lower()
+    assert "scripted" in en          # scripted proxy band
+    assert "14%" not in en           # the paid LLM number is not hardcoded on the page
