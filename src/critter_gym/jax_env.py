@@ -103,6 +103,10 @@ class JaxEnvConfig(NamedTuple):
     potions: int = 2
     battle_max_turns: int = 200
     family: int = _FAM_CRITTER
+    # Opt-in strict battle (mirrors CritterEnv(strict_battle=True)): a resisted
+    # (< NEUTRAL effectiveness) hit deals 0 instead of the min-1 chip, both sides.
+    # False (default) compiles to the exact prior damage expression (byte-identical).
+    strict_battle: bool = False
 
 
 DEFAULT_CONFIG = JaxEnvConfig()
@@ -219,6 +223,17 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
     potions = config.potions
     battle_max_turns = config.battle_max_turns
     family = config.family
+    strict_battle = config.strict_battle
+
+    def _gym_damage(power: jax.Array, atk: jax.Array, df: jax.Array, eff: jax.Array) -> jax.Array:
+        """Gym-battle damage honoring ``strict_battle`` (numpy ``Battle.damage`` mirror).
+
+        ``strict_battle`` is a compile-time constant: False keeps the exact legacy
+        expression (byte-identical jaxpr); True zeroes resisted (< NEUTRAL) hits.
+        """
+        if strict_battle:
+            return jnp.where(eff < 1.0, jnp.float32(0.0), _damage(power, atk, df, eff))
+        return _damage(power, atk, df, eff)
 
     def reset(region: Region) -> JaxEnvState:
         cm = np.zeros((grid, grid), dtype=bool)
@@ -367,11 +382,11 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             btype2 = s.gym_type2[s.battle_gym]
             champ_dmg = jnp.where(
                 action < 4,
-                _damage(_stat(s, act, 4), attack_of(s, act), jnp.float32(boss_def_f),
-                        _boss_def_eff(s.eff, c_mt, btype, btype2)),
+                _gym_damage(_stat(s, act, 4), attack_of(s, act), jnp.float32(boss_def_f),
+                            _boss_def_eff(s.eff, c_mt, btype, btype2)),
                 0.0,
             )
-            boss_dmg = _damage(
+            boss_dmg = _gym_damage(
                 jnp.float32(boss_move_power), jnp.float32(boss_atk_f), _stat(s, act, 2),
                 s.eff[btype, c_dt],
             )
@@ -458,9 +473,9 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
         a_dt = _stat(s, active, 6).astype(jnp.int32)
         btype = s.gym_type[s.battle_gym]
         btype2 = s.gym_type2[s.battle_gym]
-        player_dmg = _damage(a_pow, a_atk, jnp.float32(boss_def_f),
-                             _boss_def_eff(s.eff, a_mt, btype, btype2))
-        boss_dmg = _damage(
+        player_dmg = _gym_damage(a_pow, a_atk, jnp.float32(boss_def_f),
+                                 _boss_def_eff(s.eff, a_mt, btype, btype2))
+        boss_dmg = _gym_damage(
             jnp.float32(boss_move_power), jnp.float32(boss_atk_f), a_def, s.eff[btype, a_dt]
         )
         player_first = a_spd >= boss_spd
