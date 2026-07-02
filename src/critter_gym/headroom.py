@@ -60,3 +60,51 @@ def classify_headroom(
     return HeadroomVerdict(
         verdict=verdict, ppo_mean=m, ppo_std=s, oracle=float(oracle), ratio=m / oracle,
     )
+
+
+class DepthVerdict(NamedTuple):
+    """Output of :func:`classify_depth` (plain floats / str — serializable, deterministic)."""
+
+    verdict: str  # "deeper-robust" | "not-deeper" | "inconclusive"
+    single_mean: float
+    single_std: float
+    multi_mean: float
+    multi_std: float
+    gap: float  # single_mean - multi_mean (in oracle-fraction units)
+
+
+def classify_depth(
+    single_fracs: Sequence[float], multi_fracs: Sequence[float],
+    *, single_winnable: bool, multi_winnable: bool,
+) -> DepthVerdict:
+    """Is the multi-type boss ROBUSTLY deeper than single-type? (pre-registered rule).
+
+    Inputs are per-run **oracle fractions** (gym-clears / that config's oracle — normalized
+    because the two configs have different oracle ceilings). Rule frozen before the data
+    (multitype-boss-headroom plan):
+
+    - ``deeper-robust``: ``mean(single) - mean(multi) > max(std_single, std_multi)`` AND both
+      configs winnable (a non-winnable config would make the lever unfair, voiding the read).
+    - ``not-deeper``: the gap is <= 0 — the scout signal is refuted; report as-is.
+    - ``inconclusive``: otherwise (a positive gap within run noise, or a non-winnable config).
+
+    Raises on an empty run set (no meaningful statistics).
+    """
+    s_runs = np.asarray(list(single_fracs), dtype=float)
+    m_runs = np.asarray(list(multi_fracs), dtype=float)
+    if s_runs.size == 0 or m_runs.size == 0:
+        raise ValueError("single_fracs and multi_fracs must be non-empty")
+    sm, ss = float(s_runs.mean()), float(s_runs.std())
+    mm, ms = float(m_runs.mean()), float(m_runs.std())
+    gap = sm - mm
+    if gap <= 0:
+        verdict = "not-deeper"
+    elif not (single_winnable and multi_winnable):
+        verdict = "inconclusive"
+    elif gap > max(ss, ms):
+        verdict = "deeper-robust"
+    else:
+        verdict = "inconclusive"
+    return DepthVerdict(
+        verdict=verdict, single_mean=sm, single_std=ss, multi_mean=mm, multi_std=ms, gap=gap,
+    )
