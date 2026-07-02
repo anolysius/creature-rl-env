@@ -34,7 +34,8 @@ reimplementation).
 
 ## Binding contract (important)
 
-Binding is by the sealed-eval **commitment** — a hash of the *resolved* knobs (grid/boss/types/…)
+Binding is by the sealed-eval **commitment** — a hash of the *resolved* knobs (grid/boss/types/
+max_steps/patch_radius/num_gyms/…)
 plus the secret seeds, **not the tier label**. A certificate binds to an offer iff it was issued
 on the same resolved sealed eval. Consequences:
 

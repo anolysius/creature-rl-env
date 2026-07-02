@@ -128,6 +128,29 @@ def test_eval_seeds_regenerate_different_master() -> None:
     assert a != b  # a different master_seed yields a fresh, different block
 
 
+def test_sealed_defaults_difficulty_levers_backward_compat() -> None:
+    # Defaults equal the CritterEnv defaults, so the sealed env is byte-identical to before.
+    s = SealedEvalSet(master_seed=7, n_worlds=2)
+    assert s.patch_radius == 2 and s.num_gyms == 3
+    env = s.env_factory()()
+    assert env.patch_radius == 2 and env.num_gyms == 3
+
+
+def test_sealed_env_honors_difficulty_levers() -> None:
+    # A sealed eval carries patch_radius/num_gyms into its env (faithful to a tuned tier).
+    s = SealedEvalSet(master_seed=7, n_worlds=2, grid_size=16, patch_radius=1, num_gyms=5)
+    env = s.env_factory()()
+    assert env.patch_radius == 1 and env.num_gyms == 5
+
+
+def test_sealed_rejects_invalid_levers() -> None:
+    import pytest
+    with pytest.raises(ValueError):
+        SealedEvalSet(master_seed=7, patch_radius=-1)
+    with pytest.raises(ValueError):
+        SealedEvalSet(master_seed=7, num_gyms=0)
+
+
 # --- AC2: contamination guard (the moat mechanic) ----------------------------
 def test_verify_sealed_clean_train_ok() -> None:
     s = SealedEvalSet(master_seed=1, n_worlds=8)

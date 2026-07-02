@@ -35,13 +35,14 @@ _KNOBS = (
     "grid_size", "num_gyms", "num_creatures", "max_steps", "patch_radius",
     "num_types", "boss_hp", "boss_atk", "boss_def", "commit_battles",
 )
-# Of those, the ones SealedEvalSet.__init__ actually accepts. The rest are dropped by
-# sealed_config (see its docstring for the honesty note): num_gyms / patch_radius are difficulty
-# levers SealedEvalSet cannot represent, and num_creatures is not a SealedEvalSet arg either.
+# Of those, the ones SealedEvalSet.__init__ accepts. SealedEvalSet now carries the difficulty
+# levers patch_radius / num_gyms, so a tier's sealed variant is faithful to the full tier env.
+# Only num_creatures is dropped (it is not a SealedEvalSet arg — it is an obs-bound max count).
 _SEALED_KNOBS = (
     "grid_size", "num_types", "max_steps", "boss_hp", "boss_atk", "boss_def", "commit_battles",
+    "patch_radius", "num_gyms",
 )
-_SEALED_DROPPED = ("num_gyms", "patch_radius", "num_creatures")
+_SEALED_DROPPED = ("num_creatures",)
 
 
 class TierSpec(NamedTuple):
@@ -189,11 +190,10 @@ def tier_env_factory(name: str, **overrides: Any) -> Callable[[], CritterEnv]:
 def sealed_config(name: str) -> dict[str, Any]:
     """The tier's knobs restricted to what :class:`SealedEvalSet` accepts.
 
-    ``SealedEvalSet.__init__`` does not take ``num_gyms``, ``patch_radius`` or ``num_creatures``;
-    this function **drops** them (``_SEALED_DROPPED``). Honesty note: ``patch_radius``/``num_gyms``
-    are difficulty levers, so a sealed eval built from a tier may be *less hard* than the full
-    tier env — the dropped levers are not reflected in the sealed variant. Extending SealedEvalSet
-    to carry them is a follow-up."""
+    ``SealedEvalSet`` carries the difficulty levers ``patch_radius``/``num_gyms``, so a tier's
+    sealed variant is **faithful** to the full tier env. Only ``num_creatures`` is dropped
+    (``_SEALED_DROPPED``) — it is not a ``SealedEvalSet`` arg (an obs-bound max count, not a
+    world knob the eval parametrizes)."""
     spec = get_tier(name)
     return {k: getattr(spec, k) for k in _SEALED_KNOBS}
 
@@ -202,9 +202,9 @@ def build_sealed(name: str, master_seed: int, **overrides: Any) -> SealedEvalSet
     """Build a :class:`SealedEvalSet` from tier ``name`` (supported knob subset + overrides).
 
     ``overrides`` may set tier knobs (re-validated through :func:`validate_tier_spec` — no guard
-    bypass) or SealedEvalSet-specific args like ``n_worlds``. Difficulty levers SealedEvalSet
-    cannot represent (``num_gyms``/``patch_radius``/``num_creatures``) are dropped — see
-    :func:`sealed_config`."""
+    bypass) or SealedEvalSet-specific args like ``n_worlds``. The sealed variant carries the
+    difficulty levers ``patch_radius``/``num_gyms`` (faithful to the tier); only ``num_creatures``
+    is dropped — see :func:`sealed_config`."""
     spec = get_tier(name)
     tier_over = {k: v for k, v in overrides.items() if k in _KNOBS}
     sealed_over = {k: v for k, v in overrides.items() if k not in _KNOBS}

@@ -2,8 +2,9 @@
 
 These pin the *custom/hard env tier* sales surface (M5-EC2): curated `standard`/`hard` presets,
 a validation guard that rejects insane or obviously-unwinnable knob combos, deterministic +
-distinct tier envs, an honest difficulty descriptor, and a sealed-eval tie-in that maps only the
-knobs `SealedEvalSet` actually accepts (dropping `num_gyms`/`patch_radius`, documented honestly).
+distinct tier envs, an honest difficulty descriptor, and a sealed-eval tie-in that carries the
+difficulty levers `SealedEvalSet` accepts (incl. `patch_radius`/`num_gyms`) and drops only
+`num_creatures` (an obs-bound max count, not a `SealedEvalSet` arg), documented honestly.
 """
 from __future__ import annotations
 
@@ -159,13 +160,13 @@ def test_hard_difficulty_note_is_honest():
     assert "open" in note or "미측" in note or "unmeasured" in note
 
 
-def test_sealed_config_drops_unsupported_knobs():
+def test_sealed_config_carries_difficulty_levers():
+    # SealedEvalSet now carries patch_radius/num_gyms — a tier's sealed variant is faithful.
     cfg = sealed_config("hard")
-    # SealedEvalSet.__init__ does not accept these — they must be dropped.
-    assert "num_gyms" not in cfg
-    assert "patch_radius" not in cfg
-    # And it must carry the supported difficulty knobs.
-    assert cfg["grid_size"] == get_tier("hard").grid_size
+    hard = get_tier("hard")
+    assert cfg["patch_radius"] == hard.patch_radius
+    assert cfg["num_gyms"] == hard.num_gyms
+    assert cfg["grid_size"] == hard.grid_size
 
 
 def test_build_sealed_maps_supported_knobs():
@@ -174,6 +175,25 @@ def test_build_sealed_maps_supported_knobs():
     hard = get_tier("hard")
     assert sealed.grid_size == hard.grid_size
     assert sealed.boss_hp == hard.boss_hp
+    # The difficulty levers now reach the sealed eval (faithful to the tier).
+    assert sealed.patch_radius == hard.patch_radius
+    assert sealed.num_gyms == hard.num_gyms
+
+
+def test_build_sealed_reflects_custom_tuned_levers():
+    # The gap this fix closes: a CUSTOM tier tuning patch_radius/num_gyms to non-default values
+    # is now faithfully carried into its sealed eval (previously dropped).
+    from critter_gym.env_tier import TierSpec, register_tier
+    spec = TierSpec(
+        name="custom_levers", grid_size=12, num_gyms=5, num_creatures=6, max_steps=260,
+        patch_radius=1, num_types=4, boss_hp=140, boss_atk=13, boss_def=13,
+        commit_battles=False, harder_knobs=("patch_radius", "num_gyms"),
+        difficulty_note="custom tier tuning view radius + gym count",
+    )
+    register_tier("custom_levers", spec)
+    sealed = build_sealed("custom_levers", master_seed=1)
+    assert sealed.patch_radius == 1
+    assert sealed.num_gyms == 5
 
 
 def test_build_sealed_accepts_overrides():

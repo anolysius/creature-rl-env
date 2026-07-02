@@ -31,13 +31,18 @@ instantiates a curated difficulty grade by name, or defines a custom tier (valid
 | `standard` | grid 10, gyms 3, steps 200, view_r 2, types 3, boss 120/12/12 | Free-baseline (CritterEnv defaults). |
 | `hard` | grid 16, gyms 3, steps 300, view_r 2, types 3, boss 120/12/12 | Measured: feedforward PPO ~11–16% of oracle; oracle winnable. SOTA/recurrent = OPEN. |
 
-## Sealed-eval tie-in — dropped knobs
+## Sealed-eval tie-in — faithful difficulty
 
-`SealedEvalSet.__init__` does not accept `num_gyms`, `patch_radius`, or `num_creatures`.
-`sealed_config` / `build_sealed` **drop** them (`_SEALED_DROPPED`). Since `patch_radius`/`num_gyms`
-are difficulty levers, a sealed eval built from a tier may be **less hard** than the full tier env
-— the dropped levers are not reflected in the sealed variant. Extending `SealedEvalSet` to carry
-them is a human-gated follow-up.
+`SealedEvalSet` carries the difficulty levers `patch_radius` and `num_gyms` (as well as
+`grid_size`/`num_types`/`max_steps`/`boss_*`/`commit_battles`), so a tier's sealed variant is
+**faithful** to the full tier env, and those levers are bound in the sealed-eval commitment (a
+seller cannot swap them post-hoc) and exposed on the buyer manifest (transparency about what is
+evaluated). Only `num_creatures` is dropped by `sealed_config` / `build_sealed` (`_SEALED_DROPPED`)
+— it is an obs-bound max count, not a `SealedEvalSet` arg.
+
+> The built-in `hard` tier's `patch_radius`/`num_gyms` (2 / 3) already equal the defaults, so its
+> sealed variant was already faithful; this fidelity matters for **custom tiers** that tune these
+> levers to non-default values.
 
 ## Demo
 
