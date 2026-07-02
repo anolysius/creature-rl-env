@@ -76,6 +76,7 @@ class SealedEvalSet:
         self, master_seed: int, n_worlds: int = 16, *, num_types: int = 8,
         commit_battles: bool = True, max_steps: int = 200,
         grid_size: int = 10, boss_hp: int = 120, boss_atk: int = 12, boss_def: int = 12,
+        patch_radius: int = 2, num_gyms: int = 3,
     ) -> None:
         if n_worlds <= 0:
             raise ValueError("n_worlds must be positive")
@@ -83,6 +84,8 @@ class SealedEvalSet:
             raise ValueError("max_steps must be positive")
         if grid_size <= 0 or boss_hp <= 0:
             raise ValueError("grid_size and boss_hp must be positive")
+        if patch_radius < 0 or num_gyms <= 0:
+            raise ValueError("patch_radius must be >= 0 and num_gyms must be positive")
         self.master_seed = int(master_seed)
         self.n_worlds = int(n_worlds)
         self.num_types = int(num_types)
@@ -97,6 +100,12 @@ class SealedEvalSet:
         self.boss_hp = int(boss_hp)
         self.boss_atk = int(boss_atk)
         self.boss_def = int(boss_def)
+        # Difficulty levers the sealed eval carries so a tier's sealed variant is faithful to
+        # the full tier env (defaults = CritterEnv defaults => byte-identical). patch_radius is
+        # the agent's view radius (a small radius on a large grid = partial observability);
+        # num_gyms is how many gyms must be cleared.
+        self.patch_radius = int(patch_radius)
+        self.num_gyms = int(num_gyms)
 
     def _offset(self) -> int:
         """A secret, well-spread offset into the sealed region derived from ``master_seed``."""
@@ -112,9 +121,11 @@ class SealedEvalSet:
         """A fresh numpy ``CritterEnv`` (commit-v0) matching this set's config."""
         num_types, commit, steps = self.num_types, self.commit_battles, self.max_steps
         grid, b_hp, b_atk, b_def = self.grid_size, self.boss_hp, self.boss_atk, self.boss_def
+        patch, gyms = self.patch_radius, self.num_gyms
         return lambda: CritterEnv(
             commit_battles=commit, vary=True, num_types=num_types, max_steps=steps,
             grid_size=grid, boss_hp=b_hp, boss_atk=b_atk, boss_def=b_def,
+            patch_radius=patch, num_gyms=gyms,
         )
 
 

@@ -87,6 +87,16 @@ def test_commitment_does_not_leak_seeds():
     assert len(commit) == 64 and all(c in "0123456789abcdef" for c in commit)
 
 
+def test_commitment_binds_difficulty_levers():
+    # The commitment binds patch_radius/num_gyms, so a seller cannot swap the difficulty levers
+    # after issuing without the commitment changing (rug-pull guard extended).
+    base = SealedEvalSet(master_seed=7, n_worlds=3, grid_size=6, patch_radius=2, num_gyms=3)
+    diff_patch = SealedEvalSet(master_seed=7, n_worlds=3, grid_size=6, patch_radius=1, num_gyms=3)
+    diff_gyms = SealedEvalSet(master_seed=7, n_worlds=3, grid_size=6, patch_radius=2, num_gyms=4)
+    assert seed_commitment(base) != seed_commitment(diff_patch)
+    assert seed_commitment(base) != seed_commitment(diff_gyms)
+
+
 # --- Step 3: buyer manifest (no secret + signed) ---------------------------------------
 
 def test_manifest_round_trip():
@@ -103,6 +113,16 @@ def test_manifest_hides_secret_seeds_and_offset():
         assert str(s) not in blob
     # The secret offset must not appear either.
     assert str(sealed._offset()) not in blob
+
+
+def test_manifest_exposes_difficulty_levers():
+    # A buyer must see the difficulty levers they are evaluated on (transparency), while the
+    # secret seeds stay hidden.
+    sealed = SealedEvalSet(master_seed=7, n_worlds=3, grid_size=16, patch_radius=1, num_gyms=5)
+    m = build_manifest(sealed, KEY, KEY_ID)
+    assert m.patch_radius == 1 and m.num_gyms == 5
+    parsed = json.loads(m.to_json())
+    assert parsed["patch_radius"] == 1 and parsed["num_gyms"] == 5
 
 
 def test_manifest_signature_valid_and_tamper_evident():

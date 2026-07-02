@@ -96,6 +96,8 @@ def seed_commitment(sealed: SealedEvalSet) -> str:
         "boss_hp": sealed.boss_hp,
         "boss_atk": sealed.boss_atk,
         "boss_def": sealed.boss_def,
+        "patch_radius": sealed.patch_radius,
+        "num_gyms": sealed.num_gyms,
     }
     return hashlib.sha256(b"critter-commit:" + _canonical(material)).hexdigest()
 
@@ -117,6 +119,8 @@ class EvalManifest(NamedTuple):
     num_types: int
     max_steps: int
     commit_battles: bool
+    patch_radius: int      # public difficulty lever: agent view radius (small on big grid = POMDP)
+    num_gyms: int          # public difficulty lever: how many gyms must be cleared
     test_seed_offset: int  # public region boundary: training seeds must be below this
     sealed_base: int       # public: sealed blocks live at/above this (informational)
     seed_commitment: str
@@ -149,6 +153,8 @@ def build_manifest(sealed: SealedEvalSet, key: bytes, key_id: str) -> EvalManife
         "num_types": sealed.num_types,
         "max_steps": sealed.max_steps,
         "commit_battles": sealed.commit_battles,
+        "patch_radius": sealed.patch_radius,
+        "num_gyms": sealed.num_gyms,
         "test_seed_offset": TEST_SEED_OFFSET,
         "sealed_base": _SEALED_BASE,
         "seed_commitment": seed_commitment(sealed),

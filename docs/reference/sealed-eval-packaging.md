@@ -19,7 +19,7 @@ signed certificate binding the contamination verdict + score.
 |---|---|
 | `sign_payload(payload, key) -> str` | HMAC-SHA256 hexdigest over a canonical (sorted-key) serialization. |
 | `verify_signature(payload, sig, key) -> bool` | Constant-time (`hmac.compare_digest`) signature check. |
-| `seed_commitment(sealed) -> str` | One-way sha256 over the sorted secret seeds + world config. Rug-pull guard; reveals no seeds. |
+| `seed_commitment(sealed) -> str` | One-way sha256 over the sorted secret seeds + world config (`grid_size`/`num_types`/`max_steps`/`boss_*`/`commit_battles`/`patch_radius`/`num_gyms`). Rug-pull guard; reveals no seeds. |
 | `EvalManifest` | Distributable, **signed** description of a sealed eval. No secret seeds/offset. |
 | `build_manifest(sealed, key, key_id) -> EvalManifest` | Seller builds + signs a buyer-facing manifest. |
 | `verify_manifest(manifest, key) -> bool` | Tamper-evidence: any field change breaks the signature. |
