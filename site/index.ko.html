@@ -28,6 +28,8 @@
     th, td { border: 1px solid #e2e2e2; padding: 0.45rem 0.7rem; text-align: right; }
     th:nth-child(2), td:nth-child(2) { text-align: left; }
     thead { background: #f4f5ff; }
+    .table-wrap { overflow-x: auto; }
+    .note-cell { text-align: left; font-size: 0.86rem; min-width: 22rem; }
     tbody tr { transition: background 0.15s ease; }
     tbody tr:hover { background: #f4f5ff; }
     img.asset { max-width: 100%; border: 1px solid #eee; border-radius: 6px; }
@@ -107,6 +109,22 @@
     <h2>왜 이 eval 이 해자(moat)인가</h2>
     <ul><li><strong>오염 불가.</strong> 평가 세계는 매 실행마다 held-out 구역의 비밀 시드에서 재생성되고, 제출자가 선언한 학습 시드가 eval 블록과 겹치는지 검사되므로 &ldquo;테스트로 학습할 수 없었다&rdquo;가 <em>검증 가능</em>합니다. 고정 벤치마크는 언젠가 유출되지만, 이건 <strong>외울 수 없습니다</strong>.</li><li><strong>RLVR 채점.</strong> 점수는 오직 <strong>검증 가능한</strong> subgoal(체육관 클리어·포획·진화)에서만 나옵니다 — 불리언, 게이밍 불가, 손튜닝 보상 없음.</li><li><strong>게이밍 불가 추론.</strong> 숨은 타입표는 관측에 절대 들어가지 않으므로, 제출물은 처음 보는 세계에서 <em>맥락 내에서 규칙을 추론</em>해야만 점수를 얻습니다 — 조회하거나 외울 수 없습니다.</li></ul>
     <p><a href="https://github.com/anolysius/creature-rl-env">GitHub 소스 &amp; 논문 &rarr;</a></p>
+  </section>
+
+  <section>
+    <h2>난이도 티어</h2>
+    <p>티어 API(<code>critter_gym.env_tier</code>)의 curated 난이도 등급입니다 — 아래 설명은 <strong>코드에서 원문 그대로</strong> 렌더되므로 이 페이지는 코드보다 더 세게 주장할 수 없습니다. <strong>프로토타입</strong> 구매자 흐름(시연된 artifact 이지 운영 서비스가 아님)에서는, 구매자가 티어를 고르고 그 봉인 eval 의 <strong>서명된(비밀 미노출) 매니페스트</strong>를 받아 제출하면, 그 티어에 묶인 서명된 오염-불가 <strong>인증서</strong>를 받습니다.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>티어</th><th>세계</th>
+      <th>난이도 손잡이</th><th>난이도 (측정된 사실, 코드 원문)</th></tr></thead>
+      <tbody>
+      <tr><td><strong>standard</strong></td><td>10&times;10, 5&times;5 view, 3 gyms, 200 steps</td><td>(기본)</td><td class="note-cell">The free-baseline difficulty (CritterEnv defaults). A scripted oracle clears it comfortably; a feedforward PPO reaches a large fraction of oracle.</td></tr>
+      <tr><td><strong>hard</strong></td><td>16&times;16, 5&times;5 view, 3 gyms, 300 steps</td><td>grid_size, max_steps</td><td class="note-cell">Measured hard config (larger map + longer horizon at a small fixed view). A feedforward PPO reaches only ~11-16% of the scripted oracle here (vs ~41% at grid10), while the oracle stays winnable (~2.81 gyms). OPEN (unmeasured): difficulty for a SOTA/recurrent agent is not yet established -- do not claim it as SOTA-hard.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note"><strong>정직한 범위.</strong> 티어와 서명-인증서 흐름은 <strong>프로토타입 artifact</strong>입니다(커스텀 티어는 검증만 되고 측정되지 않음). 실제 판매·가격·hosting 은 사람의 결정입니다.</p>
   </section>
 
   <hr>

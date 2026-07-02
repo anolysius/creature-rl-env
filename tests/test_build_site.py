@@ -140,3 +140,59 @@ def test_render_site_band_caption_is_honest() -> None:
     en = build_site.render_site(_board(), generated_note="t").lower()
     assert "scripted" in en          # scripted proxy band
     assert "14%" not in en           # the paid LLM number is not hardcoded on the page
+
+
+# --- Difficulty-tiers section (site-tier-section): env_tier SSOT, no hardcoded claims ----
+
+def test_render_site_tiers_from_env_tier_ssot() -> None:
+    """The tier rows render the BUILT-IN tiers straight from env_tier (the SSOT) — the page
+    can never claim more than the code does (the difficulty_note carries the measured facts
+    and the 'SOTA/recurrent OPEN' caveat)."""
+    import html as html_mod
+
+    from critter_gym.env_tier import get_tier
+
+    page = build_site.render_site(_board(), generated_note="test")
+    for name in ("standard", "hard"):
+        t = get_tier(name)
+        assert name in page
+        assert html_mod.escape(t.difficulty_note) in page  # SSOT verbatim, escaped
+        assert str(t.grid_size) in page
+
+
+def test_render_site_tiers_do_not_leak_custom_registrations() -> None:
+    """Registering a custom tier (as tests legitimately do in-process) must NOT leak it onto
+    the sales page — the section renders a fixed built-in list, not the global registry."""
+    from critter_gym.env_tier import TierSpec, register_tier
+
+    register_tier("site_leak_probe", TierSpec(
+        name="site_leak_probe", grid_size=12, num_gyms=4, num_creatures=6, max_steps=260,
+        patch_radius=2, num_types=4, boss_hp=140, boss_atk=13, boss_def=13,
+        commit_battles=False, harder_knobs=("grid_size",),
+        difficulty_note="a probe tier that must never appear on the site",
+    ))
+    page = build_site.render_site(_board(), generated_note="test")
+    assert "site_leak_probe" not in page
+    assert "must never appear on the site" not in page
+
+
+def test_render_site_tiers_korean() -> None:
+    """The ko page carries Korean tier labels while the difficulty_note stays the English
+    SSOT verbatim (same pattern as the palette legend)."""
+    import html as html_mod
+
+    from critter_gym.env_tier import get_tier
+
+    page = build_site.render_site(_board(), generated_note="test", lang="ko")
+    assert "난이도 티어" in page
+    assert html_mod.escape(get_tier("hard").difficulty_note) in page
+
+
+def test_render_site_tiers_honest_caption() -> None:
+    """Both languages carry the buyer-flow line and the human-gate honesty caption."""
+    en = build_site.render_site(_board(), generated_note="test", lang="en")
+    ko = build_site.render_site(_board(), generated_note="test", lang="ko")
+    assert "signed" in en and "certificate" in en          # buyer flow: offer -> certificate
+    assert "human decision" in en or "human gate" in en
+    assert "서명" in ko and "인증서" in ko
+    assert "사람" in ko
