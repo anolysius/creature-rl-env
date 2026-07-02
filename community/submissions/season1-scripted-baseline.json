@@ -1,0 +1,20 @@
+{
+  "date": "2026-07-02",
+  "heldout_mean": 0.75,
+  "model": "scripted-baseline (organizer example)",
+  "n_worlds": 16,
+  "reproduce": "python scripts/community_submit.py --demo --n-worlds 16",
+  "schema_version": 1,
+  "season": 1,
+  "self_reported": true,
+  "spec": {
+    "grid_size": 10,
+    "max_steps": 200,
+    "n_heldin": 100,
+    "n_heldout": 100,
+    "num_creatures": 5,
+    "num_gyms": 3,
+    "patch_radius": 2
+  },
+  "submitter": "crittergym (organizer)"
+}
