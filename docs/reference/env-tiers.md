@@ -6,10 +6,12 @@ instantiates a curated difficulty grade by name, or defines a custom tier (valid
 
 > **Honest scope (prototype).** The `hard` tier's difficulty is what was **measured** — a
 > feedforward PPO reaches only ~11–16% of the scripted oracle on the grid16 config while the
-> oracle stays winnable (~2.81 gyms). Whether it is hard for a **SOTA/recurrent** agent is
-> **OPEN (unmeasured)**; the tier descriptor says so and the module never claims difficulty it
-> did not measure. The validation guard is a *static sanity* check, not a proof of winnability.
-> Real sale / pricing / hosting is a human gate.
+> oracle stays winnable (~2.81 gyms). A **recurrent** PPO was measured at a *related, deeper*
+> grid16 config (5 gyms, 420 steps — hard-benchmark #3/#5): ~32–43% of oracle, still far below
+> the ceiling. **OPEN (unmeasured)**: recurrent agents at this *exact* tier config, and
+> SOTA-class difficulty anywhere; the tier descriptor says so and the module never claims
+> difficulty it did not measure. The validation guard is a *static sanity* check, not a proof
+> of winnability. Real sale / pricing / hosting is a human gate.
 
 ## Public API (`critter_gym.env_tier`)
 
@@ -29,7 +31,7 @@ instantiates a curated difficulty grade by name, or defines a custom tier (valid
 | Tier | Knobs | Difficulty |
 |---|---|---|
 | `standard` | grid 10, gyms 3, steps 200, view_r 2, types 3, boss 120/12/12 | Free-baseline (CritterEnv defaults). |
-| `hard` | grid 16, gyms 3, steps 300, view_r 2, types 3, boss 120/12/12 | Measured: feedforward PPO ~11–16% of oracle; oracle winnable. SOTA/recurrent = OPEN. |
+| `hard` | grid 16, gyms 3, steps 300, view_r 2, types 3, boss 120/12/12 | Measured: feedforward PPO ~11–16% of oracle; oracle winnable. Recurrent PPO ~32–43% at a *related* deeper config (#3/#5); this exact config + SOTA = OPEN. |
 
 ## Sealed-eval tie-in — faithful difficulty
 

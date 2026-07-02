@@ -144,8 +144,10 @@ _HARD = TierSpec(
     difficulty_note=(
         "Measured hard config (larger map + longer horizon at a small fixed view). A feedforward "
         "PPO reaches only ~11-16% of the scripted oracle here (vs ~41% at grid10), while the "
-        "oracle stays winnable (~2.81 gyms). OPEN (unmeasured): difficulty for a SOTA/recurrent "
-        "agent is not yet established -- do not claim it as SOTA-hard."
+        "oracle stays winnable (~2.81 gyms). A recurrent PPO was measured at a related, deeper "
+        "grid16 config (5 gyms, 420 steps): ~32-43% of oracle -- still far below the ceiling. "
+        "OPEN (unmeasured): recurrent agents at this exact tier config, and SOTA-class "
+        "difficulty anywhere -- do not claim it as SOTA-hard."
     ),
 )
 register_tier("standard", _STANDARD)

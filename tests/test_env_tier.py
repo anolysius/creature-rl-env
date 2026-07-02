@@ -158,6 +158,11 @@ def test_hard_difficulty_note_is_honest():
     # Cites the measured evidence and flags the unmeasured claim as open.
     assert "oracle" in note
     assert "open" in note or "미측" in note or "unmeasured" in note
+    # Precision (hard-note-precision): the note must acknowledge the recurrent measurement at
+    # the RELATED deeper config (hard-benchmark #3/#5) while keeping this exact config open —
+    # neither over-claiming (measured here) nor under-claiming (nothing known).
+    assert "recurrent" in note
+    assert "related" in note
 
 
 def test_sealed_config_carries_difficulty_levers():
