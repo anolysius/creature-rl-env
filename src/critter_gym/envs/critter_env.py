@@ -78,6 +78,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         boss_def: int = 12,
         commit_battles: bool = False,
         min_gyms: int | None = None,
+        boss_secondary: bool = False,
         render_mode: str | None = None,
     ) -> None:
         super().__init__()
@@ -106,6 +107,8 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.boss_hp = boss_hp
         self.boss_atk = boss_atk
         self.boss_def = boss_def
+        # Opt-in: give each gym boss a HIDDEN secondary type (deeper inference). Off = byte-id.
+        self.boss_secondary = boss_secondary
         # team-commit boss fights: one committed champion, no switching / no
         # force-switch cycling (DESIGN §3.1.1). Default False = M1 economy.
         self.commit_battles = commit_battles
@@ -143,6 +146,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self._creatures: set[tuple[int, int]] = set()
         self._gym_tiles: dict[tuple[int, int], int] = {}
         self._gym_types: list[ElementType] = []
+        self._gym_secondary: list[ElementType | None] = []
         self._gym_defeated: list[bool] = []
         self._region_chart: TypeChart = FIXED_CHART
         self._caught = 0
@@ -177,11 +181,15 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             num_types=self.num_types,
             super_mult=self.super_mult,
             min_gyms=self.min_gyms,
+            boss_secondary=self.boss_secondary,
         )
 
         self._creatures = set(region.creatures)
         self._gym_tiles = {pos: i for i, (pos, _) in enumerate(region.gyms)}
         self._gym_types = [t for (_, t) in region.gyms]
+        # Parallel HIDDEN secondary boss types (empty in region => all single-type).
+        sec = region.boss_secondary_types
+        self._gym_secondary = list(sec) if sec else [None] * len(region.gyms)
         self._gym_defeated = [False] * len(region.gyms)
         self._region_chart = region.chart
         self._agent_pos = np.array(region.agent_start, dtype=np.int64)
@@ -243,6 +251,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         boss = gym_boss(
             self._gym_types[idx], idx,
             hp=self.boss_hp, atk=self.boss_atk, df=self.boss_def,
+            secondary_type=self._gym_secondary[idx],
         )
         self._battle = Battle(
             BattleState(party_a=self._party, party_b=boss),

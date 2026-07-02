@@ -140,7 +140,8 @@ class JaxEnvState(NamedTuple):
     agent_pos: jax.Array  # (2,) int32
     creature_mask: jax.Array  # (GRID, GRID) bool
     gym_pos: jax.Array  # (MAX_GYMS, 2) int32 (unused slots = -1)
-    gym_type: jax.Array  # (MAX_GYMS,) int32
+    gym_type: jax.Array  # (MAX_GYMS,) int32 — boss PRIMARY type (also its move type)
+    gym_type2: jax.Array  # (MAX_GYMS,) int32 — hidden secondary boss DEF type, -1 = none
     gym_active: jax.Array  # (MAX_GYMS,) bool — real gyms for this seed
     gym_defeated: jax.Array  # (MAX_GYMS,) bool
     eff: jax.Array  # (NUM_TYPES, NUM_TYPES) float32
@@ -174,6 +175,16 @@ def _stat(s: JaxEnvState, idx: jax.Array, col: int) -> jax.Array:
 
 def _damage(power: jax.Array, atk: jax.Array, df: jax.Array, eff: jax.Array) -> jax.Array:
     return jnp.maximum(1.0, jnp.floor(power * atk / df * eff))
+
+
+def _boss_def_eff(
+    eff: jax.Array, move_type: jax.Array, def1: jax.Array, def2: jax.Array
+) -> jax.Array:
+    """Effectiveness of ``move_type`` vs a boss defending with ``def1`` (+ optional ``def2``,
+    -1 = none). The product over both types — matches numpy ``TypeChart.multi_effectiveness``."""
+    e1 = eff[move_type, def1]
+    e2 = jnp.where(def2 < 0, jnp.float32(1.0), eff[move_type, jnp.maximum(def2, 0)])
+    return e1 * e2
 
 
 class JaxEnv(NamedTuple):
@@ -215,16 +226,22 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             cm[r, c] = True
         gym_pos = np.full((max_gyms, 2), -1, dtype=np.int32)
         gym_type = np.zeros((max_gyms,), dtype=np.int32)
+        gym_type2 = np.full((max_gyms,), -1, dtype=np.int32)  # -1 = no secondary (single-type)
         gym_active = np.zeros((max_gyms,), dtype=bool)
+        secondaries = region.boss_secondary_types  # () when off => all single-type
         for i, ((r, c), t) in enumerate(region.gyms):
             gym_pos[i] = (r, c)
             gym_type[i] = _TYPE_TO_INT[t]
+            sec = secondaries[i] if secondaries else None
+            if sec is not None:
+                gym_type2[i] = _TYPE_TO_INT[sec]
             gym_active[i] = True
         return JaxEnvState(
             agent_pos=jnp.asarray(region.agent_start, dtype=jnp.int32),
             creature_mask=jnp.asarray(cm),
             gym_pos=jnp.asarray(gym_pos),
             gym_type=jnp.asarray(gym_type),
+            gym_type2=jnp.asarray(gym_type2),
             gym_active=jnp.asarray(gym_active),
             gym_defeated=jnp.zeros((max_gyms,), dtype=bool),
             eff=_eff_matrix(region.chart),
@@ -347,10 +364,11 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
             btype = s.gym_type[s.battle_gym]
             c_mt = _stat(s, act, 5).astype(jnp.int32)
             c_dt = _stat(s, act, 6).astype(jnp.int32)
+            btype2 = s.gym_type2[s.battle_gym]
             champ_dmg = jnp.where(
                 action < 4,
                 _damage(_stat(s, act, 4), attack_of(s, act), jnp.float32(boss_def_f),
-                        s.eff[c_mt, btype]),
+                        _boss_def_eff(s.eff, c_mt, btype, btype2)),
                 0.0,
             )
             boss_dmg = _damage(
@@ -439,7 +457,9 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
         a_mt = _stat(s, active, 5).astype(jnp.int32)
         a_dt = _stat(s, active, 6).astype(jnp.int32)
         btype = s.gym_type[s.battle_gym]
-        player_dmg = _damage(a_pow, a_atk, jnp.float32(boss_def_f), s.eff[a_mt, btype])
+        btype2 = s.gym_type2[s.battle_gym]
+        player_dmg = _damage(a_pow, a_atk, jnp.float32(boss_def_f),
+                             _boss_def_eff(s.eff, a_mt, btype, btype2))
         boss_dmg = _damage(
             jnp.float32(boss_move_power), jnp.float32(boss_atk_f), a_def, s.eff[btype, a_dt]
         )

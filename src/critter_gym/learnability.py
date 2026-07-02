@@ -27,6 +27,7 @@ from functools import partial
 
 import numpy as np
 
+from critter_gym.battle import Side
 from critter_gym.envs.critter_env import CritterEnv
 from critter_gym.region import is_held_out
 from critter_gym.types import ElementType
@@ -56,14 +57,36 @@ def _nav_to_nearest_gym(env: CritterEnv) -> int:
     return 3      # MOVE_W
 
 
-def _favorable_type(env: CritterEnv, enemy: ElementType) -> ElementType | None:
-    """A party starter type that is super-effective vs ``enemy`` under the chart."""
+def _favorable_type_vs(
+    env: CritterEnv, defender_types: tuple[ElementType, ...]
+) -> ElementType | None:
+    """A party starter type whose move is super-effective vs the defender's FULL type set.
+
+    Uses ``multi_effectiveness`` (the product over the defender's types), so a multi-type boss
+    is scored correctly. For a single-type defender this reduces to plain ``effectiveness``."""
     best, best_eff = None, env._region_chart.super_mult - 0.001
     for c in env._party:
-        eff = env._region_chart.effectiveness(c.types[0], enemy)
+        eff = env._region_chart.multi_effectiveness(c.types[0], defender_types)
         if eff > best_eff:
             best, best_eff = c.types[0], eff
     return best
+
+
+def _favorable_type(env: CritterEnv, enemy: ElementType) -> ElementType | None:
+    """A party starter type that is super-effective vs a single ``enemy`` type (observable)."""
+    return _favorable_type_vs(env, (enemy,))
+
+
+def _boss_types(env: CritterEnv, enemy: ElementType) -> tuple[ElementType, ...]:
+    """The active boss's FULL defending types (incl. the hidden secondary) from env internals —
+    the chart-knowing oracle's ground truth. Falls back to the observed primary if no battle."""
+    battle = getattr(env, "_battle", None)
+    if battle is not None:
+        try:
+            return tuple(battle.state.active(Side.B).types)
+        except Exception:
+            pass
+    return (enemy,)
 
 
 # -- reference arms -----------------------------------------------------------
@@ -89,7 +112,9 @@ class _Arm:
         if self.arm == "type_blind":
             return None                          # never switch — fight with creature 0
         if self.arm == "oracle":
-            return _favorable_type(env, enemy)   # perfect chart knowledge (upper bound)
+            # Perfect chart knowledge (upper bound): score against the boss's FULL types,
+            # including a hidden secondary. infer/probe below stay on the observed primary.
+            return _favorable_type_vs(env, _boss_types(env, enemy))
         if self.arm == "infer":
             if self._memory is None:
                 self._memory = {}

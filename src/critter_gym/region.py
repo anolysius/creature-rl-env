@@ -50,9 +50,13 @@ class Region:
 
     grid_size: int
     creatures: list[tuple[int, int]]
-    gyms: list[tuple[tuple[int, int], ElementType]]  # (position, boss type)
+    gyms: list[tuple[tuple[int, int], ElementType]]  # (position, boss PRIMARY type)
     agent_start: tuple[int, int]
     chart: TypeChart  # per-seed type-effectiveness table (hidden from obs)
+    # Optional per-gym HIDDEN secondary boss type, parallel to ``gyms`` (deeper hidden-rule
+    # inference — the agent sees only the primary; effectiveness is the product over both types).
+    # Empty tuple = every boss is single-type (byte-identical to the historical world).
+    boss_secondary_types: tuple[ElementType | None, ...] = ()
 
 
 def generate_region(
@@ -65,6 +69,7 @@ def generate_region(
     num_types: int = 3,
     super_mult: float = SUPER_EFFECTIVE,
     min_gyms: int | None = None,
+    boss_secondary: bool = False,
 ) -> Region:
     """Deterministically build a region from ``seed``.
 
@@ -151,7 +156,20 @@ def generate_region(
     gym_coords = coords[n_creatures : n_creatures + n_gyms]
     gyms = list(zip(gym_coords, boss_types))
     agent_start = coords[-1]
-    return Region(grid_size, creatures, gyms, agent_start, chart)
+
+    # Optional HIDDEN secondary boss type per gym (deeper inference). Drawn AFTER the primary
+    # placement so enabling it never perturbs the historical draw sequence (off => byte-identical).
+    # Each secondary is a different active type than the primary; the effectiveness the agent
+    # faces is the product over both types (numpy Battle handles this via multi_effectiveness).
+    boss_secondary_types: tuple[ElementType | None, ...] = ()
+    if boss_secondary:
+        secondaries: list[ElementType | None] = []
+        for primary in boss_types:
+            others = [t for t in active_types if t != primary]
+            secondaries.append(others[int(rng.integers(0, len(others)))] if others else None)
+        boss_secondary_types = tuple(secondaries)
+
+    return Region(grid_size, creatures, gyms, agent_start, chart, boss_secondary_types)
 
 
 # -- train/test split ---------------------------------------------------------

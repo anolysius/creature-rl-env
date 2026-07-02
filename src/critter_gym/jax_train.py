@@ -110,6 +110,28 @@ def hard_env_spec(
     )
 
 
+def multitype_hard_env_spec(
+    *, grid: int = 16, num_gyms: int = 5, num_types: int = 8, max_creatures: int = 6,
+    max_steps: int = 420, patch_radius: int = 2,
+) -> EnvSpec:
+    """The **deeper-inference** hard config: the memory-headroom config (:func:`hard_env_spec`)
+    plus an opt-in HIDDEN secondary boss type (``boss_secondary=True``). The player-vs-boss
+    effectiveness is the product over both types, but the observation reveals only the primary —
+    so the second type must be inferred from battle outcomes (deeper hidden-rule inference than a
+    single-type boss). Same machinery/config as `hard_env_spec`; parity vs
+    `CritterEnv(boss_secondary=True, **same)` is gated by
+    ``tests/test_jax_multitype_boss_parity.py``. Whether this is *robustly* harder than the
+    single-type config is a follow-up multi-seed, pre-registered measurement (this spec only
+    enables the scout)."""
+    cfg = JaxEnvConfig(grid=grid, patch_radius=patch_radius, max_steps=max_steps,
+                       max_gyms=num_gyms)
+    return EnvSpec(
+        make_jax_env(cfg),
+        lambda s: generate_region(s, grid, max_creatures, num_gyms, vary=True,
+                                  num_types=num_types, min_gyms=num_gyms, boss_secondary=True),
+    )
+
+
 class TrainConfig(NamedTuple):
     """Hyperparameters for the A2C demo (small by design — visible learning in seconds)."""
 
