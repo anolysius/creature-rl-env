@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from critter_gym.creatures import Creature
-from critter_gym.types import TypeChart
+from critter_gym.types import NEUTRAL, TypeChart
 
 POTION_HEAL = 20
 DEFAULT_MAX_TURNS = 200
@@ -99,6 +99,7 @@ class Battle:
         chart: TypeChart | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
         commit_mode: bool = False,
+        strict_battle: bool = False,
     ) -> None:
         self.state = state
         self.chart = chart or TypeChart()
@@ -110,6 +111,12 @@ class Battle:
         # cross-battle *inference* of the hidden type chart becomes load-bearing
         # (DESIGN §3.1.1). Default False keeps M1 battle behavior unchanged.
         self.commit_mode = commit_mode
+        # strict battle (opt-in): a resisted (< NEUTRAL effectiveness) attack deals 0
+        # instead of the min-1 chip, symmetrically for both sides — so pure attrition
+        # can no longer win a resisted matchup and landing effective hits becomes
+        # load-bearing (paper §5 limitation (i)). Default False keeps the historical
+        # economy byte-identical. Mutual-zero stalemates end via the max_turns draw.
+        self.strict_battle = strict_battle
         self.terminated = False
         self.truncated = False
         self.winner: Side | None = None
@@ -120,6 +127,8 @@ class Battle:
         """Deterministic damage for a move (also used to score scripted choices)."""
         move = attacker.moves[move_index]
         eff = self.chart.multi_effectiveness(move.type, defender.types)
+        if self.strict_battle and eff < NEUTRAL:
+            return 0
         return max(1, int(move.power * attacker.attack / defender.defense * eff))
 
     def step(self, action_a: BattleAction, action_b: BattleAction) -> StepResult:
@@ -210,7 +219,12 @@ class Battle:
 def scripted_opponent(
     state: BattleState, side: Side, chart: TypeChart | None = None
 ) -> BattleAction:
-    """Greedy, type-aware policy: pick the move with the highest deterministic damage."""
+    """Greedy, type-aware policy: pick the move with the highest deterministic damage.
+
+    Scores with the legacy min-1 formula regardless of ``strict_battle``: every current
+    creature carries exactly one move, so the argmax is invariant. Revisit if multi-move
+    creatures land (a resisted high-power move could outrank an effective low-power one).
+    """
     chart = chart or TypeChart()
     attacker = state.active(side)
     defender = state.active(_other(side))

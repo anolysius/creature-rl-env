@@ -79,6 +79,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         commit_battles: bool = False,
         min_gyms: int | None = None,
         boss_secondary: bool = False,
+        strict_battle: bool = False,
         render_mode: str | None = None,
     ) -> None:
         super().__init__()
@@ -109,6 +110,9 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.boss_def = boss_def
         # Opt-in: give each gym boss a HIDDEN secondary type (deeper inference). Off = byte-id.
         self.boss_secondary = boss_secondary
+        # Opt-in strict battle: resisted (< NEUTRAL) attacks deal 0 — no attrition wins
+        # on resisted matchups (see battle.Battle). Off = byte-identical economy.
+        self.strict_battle = strict_battle
         # team-commit boss fights: one committed champion, no switching / no
         # force-switch cycling (DESIGN §3.1.1). Default False = M1 economy.
         self.commit_battles = commit_battles
@@ -257,6 +261,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             BattleState(party_a=self._party, party_b=boss),
             chart=self._region_chart,
             commit_mode=self.commit_battles,
+            strict_battle=self.strict_battle,
         )
         self._battle_gym_idx = idx  # captured at entry — robust to action-space changes
         self._mode = "battle"
