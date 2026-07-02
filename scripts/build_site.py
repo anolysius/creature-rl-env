@@ -30,6 +30,7 @@ import json
 import shutil
 from pathlib import Path
 
+from critter_gym.env_tier import get_tier
 from critter_gym.leaderboard import BenchmarkSpec, Leaderboard, LeaderboardEntry
 from critter_gym.render import _AGENT, _BG, _CREATURE, _GYM_ACTIVE, _GYM_DEFEATED
 
@@ -104,6 +105,21 @@ _COPY: dict[str, dict[str, str]] = {
         "moat_3": "<strong>Un-gameable inference.</strong> The hidden type-chart is never in the "
                   "observation, so a submission can only score by <em>inferring the rules in "
                   "context</em> on a never-seen world — it cannot be looked up or memorized.",
+        "tiers_h": "Difficulty tiers",
+        "tiers_p": "Curated difficulty grades from the tier API "
+                   "(<code>critter_gym.env_tier</code> — the notes below are rendered "
+                   "<strong>verbatim from the code</strong>, so this page can never claim more "
+                   "than the code does). In the <strong>prototype</strong> buyer flow (a "
+                   "demonstrated artifact, not a live service), a buyer picks a tier, gets a "
+                   "<strong>signed, secret-free manifest</strong> for its sealed eval, submits, "
+                   "and receives a signed contamination-proof <strong>certificate</strong> "
+                   "bound to that tier.",
+        "tiers_th_tier": "tier", "tiers_th_world": "world", "tiers_th_harder": "harder knobs",
+        "tiers_th_note": "difficulty (measured facts, verbatim from code)",
+        "tiers_baseline": "(baseline)",
+        "tiers_honest": "<strong>Honest scope.</strong> Tiers and the signed-certificate flow "
+                        "are <strong>prototype artifacts</strong> (custom tiers are validated, "
+                        "not measured). Real sale, pricing and hosting stay a human decision.",
         "repo": "Source &amp; paper on GitHub &rarr;",
         "honest": "<strong>Honest scope.</strong> This is a <strong>prototype</strong> launch "
                   "page, not a hosted product. Sealing here is <strong>in-process</strong> (a "
@@ -171,6 +187,19 @@ _COPY: dict[str, dict[str, str]] = {
         "moat_3": "<strong>게이밍 불가 추론.</strong> 숨은 타입표는 관측에 절대 들어가지 않으므로, "
                   "제출물은 처음 보는 세계에서 <em>맥락 내에서 규칙을 추론</em>해야만 점수를 "
                   "얻습니다 — 조회하거나 외울 수 없습니다.",
+        "tiers_h": "난이도 티어",
+        "tiers_p": "티어 API(<code>critter_gym.env_tier</code>)의 curated 난이도 등급입니다 — "
+                   "아래 설명은 <strong>코드에서 원문 그대로</strong> 렌더되므로 이 페이지는 "
+                   "코드보다 더 세게 주장할 수 없습니다. <strong>프로토타입</strong> 구매자 "
+                   "흐름(시연된 artifact 이지 운영 서비스가 아님)에서는, 구매자가 티어를 고르고 "
+                   "그 봉인 eval 의 <strong>서명된(비밀 미노출) 매니페스트</strong>를 받아 "
+                   "제출하면, 그 티어에 묶인 서명된 오염-불가 <strong>인증서</strong>를 받습니다.",
+        "tiers_th_tier": "티어", "tiers_th_world": "세계", "tiers_th_harder": "난이도 손잡이",
+        "tiers_th_note": "난이도 (측정된 사실, 코드 원문)",
+        "tiers_baseline": "(기본)",
+        "tiers_honest": "<strong>정직한 범위.</strong> 티어와 서명-인증서 흐름은 "
+                        "<strong>프로토타입 artifact</strong>입니다(커스텀 티어는 검증만 되고 "
+                        "측정되지 않음). 실제 판매·가격·hosting 은 사람의 결정입니다.",
         "repo": "GitHub 소스 &amp; 논문 &rarr;",
         "honest": "<strong>정직한 범위.</strong> 이건 <strong>프로토타입</strong> 런치 페이지이지 "
                   "hosted 제품이 아닙니다. 여기서 봉인은 <strong>in-process</strong>입니다"
@@ -217,6 +246,36 @@ def _rows_html(entries: tuple[LeaderboardEntry, ...]) -> str:
     return "\n".join(out)
 
 
+# The tiers section renders THIS fixed built-in list, never the global registry — tests (and
+# buyers) legitimately register custom tiers in-process, and those must not leak onto the page.
+_SITE_TIERS = ("standard", "hard")
+
+
+def _tiers_html(c: dict[str, str]) -> str:
+    """The difficulty-tier rows, straight from the env_tier SSOT (values HTML-escaped).
+
+    Only the built-in tiers (`_SITE_TIERS`) are rendered. The `difficulty_note` is the code's
+    own honest description (measured facts + the 'SOTA/recurrent OPEN' caveat), escaped and
+    rendered verbatim — the page cannot claim more than the code does (no hardcoded numbers)."""
+    out = []
+    for name in _SITE_TIERS:
+        t = get_tier(name)
+        view = 2 * t.patch_radius + 1
+        world = f"{t.grid_size}&times;{t.grid_size}, {view}&times;{view} view, " \
+                f"{t.num_gyms} gyms, {t.max_steps} steps"
+        harder = html.escape(", ".join(t.harder_knobs)) if t.harder_knobs \
+            else c["tiers_baseline"]
+        out.append(
+            "      <tr>"
+            f"<td><strong>{html.escape(t.name)}</strong></td>"
+            f"<td>{world}</td>"
+            f"<td>{harder}</td>"
+            f"<td class=\"note-cell\">{html.escape(t.difficulty_note)}</td>"
+            "</tr>"
+        )
+    return "\n".join(out)
+
+
 def render_site(
     leaderboard: Leaderboard, *, generated_note: str, lang: str = "en", demo_cleared: bool = True,
 ) -> str:
@@ -232,6 +291,7 @@ def render_site(
     spec = html.escape(json.dumps(leaderboard.spec.to_dict(), sort_keys=True))
     rows = _rows_html(leaderboard.entries)
     legend = _legend_html(c)
+    tiers = _tiers_html(c)
     demo_caption = c["demo_cleared"] if demo_cleared else c["demo_uncleared"]
     return f"""<!DOCTYPE html>
 <html lang="{lang}">
@@ -263,6 +323,8 @@ def render_site(
     th, td {{ border: 1px solid #e2e2e2; padding: 0.45rem 0.7rem; text-align: right; }}
     th:nth-child(2), td:nth-child(2) {{ text-align: left; }}
     thead {{ background: #f4f5ff; }}
+    .table-wrap {{ overflow-x: auto; }}
+    .note-cell {{ text-align: left; font-size: 0.86rem; min-width: 22rem; }}
     tbody tr {{ transition: background 0.15s ease; }}
     tbody tr:hover {{ background: #f4f5ff; }}
     img.asset {{ max-width: 100%; border: 1px solid #eee; border-radius: 6px; }}
@@ -337,6 +399,21 @@ def render_site(
     <h2>{c['moat_h']}</h2>
     <ul><li>{c['moat_1']}</li><li>{c['moat_2']}</li><li>{c['moat_3']}</li></ul>
     <p><a href="{_REPO_URL}">{c['repo']}</a></p>
+  </section>
+
+  <section>
+    <h2>{c['tiers_h']}</h2>
+    <p>{c['tiers_p']}</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>{c['tiers_th_tier']}</th><th>{c['tiers_th_world']}</th>
+      <th>{c['tiers_th_harder']}</th><th>{c['tiers_th_note']}</th></tr></thead>
+      <tbody>
+{tiers}
+      </tbody>
+    </table>
+    </div>
+    <p class="note">{c['tiers_honest']}</p>
   </section>
 
   <hr>
