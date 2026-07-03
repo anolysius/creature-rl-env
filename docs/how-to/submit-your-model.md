@@ -50,6 +50,23 @@ track** (signed certificates); this track is for fun, bragging rights, and hones
 5. **Open a PR** adding your file to `community/submissions/`. Once merged and the site is
    rebuilt, you're on the board.
 
+## Entering an LLM (agentic) model
+
+An LLM agent can be scored end-to-end with one command — same env, season seeds and
+metric as every entry (the shared scorer `community.score_submission_on_season`):
+
+```bash
+python scripts/community_submit.py --llm --provider claude-cli --battle-memory \
+  --submitter you --model-name "claude-fable-5 (claude-cli)" --n-worlds 8
+```
+
+- ⚠️ **Cost is yours**: every env step is one LLM call — up to `n_worlds × 200` calls
+  (8 worlds ≈ 1600 worst case). `--provider anthropic` uses the API
+  (`ANTHROPIC_API_KEY`); `claude-cli` uses your local Claude Code subscription.
+- The score is still **self-reported** (the schema forces the flag), and committing the
+  produced JSON — actually entering the board — is your explicit decision.
+- Label the model honestly (`--model-name`): the exact model id and backend.
+
 ## Rules (honor system)
 
 - **Score only on the season's seeds** with the **pinned spec** — the validator rejects any

@@ -147,3 +147,85 @@ def test_committed_example_submission_validates():
     assert files, "expected at least the organizer example submission"
     for f in files:
         assert validate_submission(json.loads(f.read_text())) == [], f.name
+
+
+# -- LLM entry wiring (eval-product/community-llm-entry) --------------------------
+
+
+def test_score_submission_on_season_reproduces_demo_number():
+    # The shared scorer with the scripted-baseline policy must reproduce the committed
+    # organizer example (0.75 on 16 season-1 worlds) — proving --demo and an LLM entry
+    # score through the SAME env/seeds/metric (no second scoring loop).
+    from critter_gym.baselines import greedy_policy
+    from critter_gym.community import score_submission_on_season
+    from critter_gym.leaderboard import BenchmarkSpec
+
+    grid = BenchmarkSpec().grid_size
+    mean = score_submission_on_season(
+        lambda obs: greedy_policy(obs, grid_size=grid), season=1, n_worlds=16
+    )
+    assert round(mean, 3) == 0.75
+
+
+def test_score_submission_resets_agent_per_world():
+    from critter_gym.community import score_submission_on_season
+
+    class FakeAgent:
+        def __init__(self) -> None:
+            self.resets = 0
+
+        def act(self, obs) -> int:
+            return 0
+
+        def reset(self) -> None:
+            self.resets += 1
+
+    agent = FakeAgent()
+    score_submission_on_season(agent, season=1, n_worlds=3)
+    assert agent.resets == 3  # memory isolation: one reset per world (sealed-track rule)
+
+
+def test_llm_agent_end_to_end_submission_is_schema_valid():
+    # AC2: a (fake-completed) llm_eval agent scored by the shared scorer, assembled by
+    # build_submission, must pass the CI validator — zero real LLM calls.
+    from critter_gym.community import build_submission, score_submission_on_season
+    from critter_gym.llm_eval import StatefulLLMAgent
+
+    calls: list[str] = []
+
+    def fake_complete(prompt: str) -> str:
+        calls.append(prompt)
+        return "0"
+
+    agent = StatefulLLMAgent(fake_complete, window=4)
+    mean = score_submission_on_season(agent, season=1, n_worlds=2)
+    sub = build_submission(
+        model="fake-llm (unit test)", submitter="ci", heldout_mean=mean, n_worlds=2,
+        season=1, reproduce="pytest tests/test_community.py", date="2026-07-03",
+    )
+    assert validate_submission(sub) == []
+    assert sub["self_reported"] is True
+    assert len(calls) > 0  # every decision went through the (fake) LLM
+
+
+def test_build_submission_rejects_invalid():
+    import pytest
+
+    from critter_gym.community import build_submission
+
+    with pytest.raises(ValueError):
+        build_submission(
+            model="x", submitter="y", heldout_mean=99.0,  # out of [0, num_gyms]
+            n_worlds=1, season=1, reproduce="cmd", date="2026-07-03",
+        )
+
+
+def test_runner_exposes_llm_flag_without_calling_llm():
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "scripts/community_submit.py", "--help"],
+        capture_output=True, text=True, check=True,
+    )
+    assert "--llm" in out.stdout and "--provider" in out.stdout
