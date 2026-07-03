@@ -57,12 +57,55 @@ arena SE-rate is only meaningful **against the arena band** (both anchors), neve
 against the overworld band, and arena scores must not be spliced into overworld
 tables.
 
+## Measured — Claude Fable 5 via claude-cli (2026-07-02, user-approved quota)
+
+**Protocol (pre-registered before data):**
+`python scripts/llm_eval_run.py --provider claude-cli --arena --battle-memory
+--runs 3 --worlds 3 --k-battles 10 --max-steps 120`, then a **+2-run expansion with
+thresholds unchanged** (the #3/#5 precedent for a borderline 3-run read). Per-run
+`se_inference_score` against that run's own arena band; verdict by
+`classify_inference` (frozen: infers ≥ 0.50 pessimistic, floor ≤ 0.10 optimistic,
+k = 1.0). Model id **`claude-fable-5`** confirmed from the CLI's `modelUsage`
+metadata (not self-report).
+
+| | SE-rate | wins /10 | battle moves |
+|---|---|---|---|
+| oracle (chart-knowing) | 100% | 10.00 | 60 |
+| infer (proxy, not an LLM) | 97% | 9.33 | 58 |
+| type_blind / probe (chance anchors) | 40% / 40% | 3.33 | 50 |
+| **Claude Fable 5 (battle-memory)** | **48%** | — | 42–46 per run |
+
+**Verdict:** per-run scores 0.12 ± 0.04 (3 runs) and 0.15 ± 0.02 (+2 runs); exact
+moment combination (same command, seeds, deterministic band) gives
+**0.132 ± 0.037 (n = 5) → INCONCLUSIVE** — and *terminally* so: with the mean at
+0.132 > floor_eps 0.10, even zero variance could never satisfy the floor bound, and
+infers (≥ 0.50) is far out of reach. More runs cannot change the verdict, so the
+measurement closes honestly at 5 runs.
+
+**Reading (per the interpretation rules declared before the data):**
+
+1. **The engagement hypothesis is rejected as the main explanation.** With battles
+   guaranteed (42–46 battle moves per run — comparable to the scripted arms' 50–60),
+   Fable 5's SE-rate stayed ~8 pp above the chance anchors (48% vs 40%), far below
+   the inferring proxy (97%). The overworld near-floor SE-rate was not primarily an
+   exploration/survival artifact; the in-context inference deficit is real.
+2. **But "robustly at the chart-blind floor" would also be an overclaim** — the
+   above-chance margin is small yet consistent across all 5 runs (the model was seen
+   reusing observed damage from its battle notes). Honest label: *a weak, consistent
+   above-chance signal, far from inference*.
+
+**Boundaries of this measurement:** one config, one 3-world seed set, claude-cli
+backend, battle-memory agent, scripted-proxy band; the 5-run combination uses the
+printed (2-decimal) run moments — the verdict is robust to that rounding (worst-case
+bounds stay outside both thresholds).
+
 ## Boundaries (read before quoting)
 
-- Scripted arms only so far (the `infer` arm is an inference *proxy*, not an LLM);
-  one seed set; no robust threshold on the band itself.
-- The real-LLM arena measurement is **not done in this task** — it costs quota and is
-  gated on user approval. Until then, the engagement-vs-inference question is
-  *instrumented*, not *answered*.
+- The `infer` arm is an inference *proxy*, not an LLM; one seed set; no robust
+  threshold on the band itself.
+- The engagement-vs-inference question is now **measured** (see above): engagement is
+  not the explanation; the verdict on inference itself is a terminal INCONCLUSIVE —
+  a weak, consistent above-chance signal, far from the expert.
 - Diagnostic instrument ≠ leaderboard config: arena numbers are for separating failure
-  modes, not for ranking submissions.
+  modes, not for ranking submissions (a leaderboard entry runs the community season
+  spec instead).
