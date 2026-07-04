@@ -49,6 +49,23 @@
 5. **PR 열기**: 파일을 `community/submissions/` 에 추가하는 PR. 머지되고 사이트가 재빌드되면
    순위표에 올라갑니다.
 
+## LLM(에이전트형) 모델로 참가하기
+
+LLM 에이전트는 한 줄 명령으로 끝까지 채점됩니다 — 모든 엔트리와 같은 env·시즌 seed·지표
+(공유 채점기 `community.score_submission_on_season`)를 씁니다:
+
+```bash
+python scripts/community_submit.py --llm --provider claude-cli --battle-memory \
+  --submitter you --model-name "claude-fable-5 (claude-cli)" --n-worlds 8
+```
+
+- ⚠️ **비용은 제출자 부담**: env 스텝 하나가 LLM 호출 하나 — 최대 `n_worlds × 200` 호출
+  (8월드 ≈ 최악 1600). `--provider anthropic` 은 API(`ANTHROPIC_API_KEY`),
+  `claude-cli` 는 로컬 Claude Code 구독을 씁니다.
+- 점수는 여전히 **self-reported** (스키마가 플래그를 강제)이고, 산출된 JSON 을 커밋해
+  실제로 보드에 올리는 것은 제출자의 명시적 결정입니다.
+- 모델 라벨(`--model-name`)은 정직하게: 정확한 모델 id 와 백엔드.
+
 ## 규칙 (honor system)
 
 - **시즌 seed 에서만, 고정 spec 으로만** 채점 — 다른 설정은 검증기가 거부합니다.

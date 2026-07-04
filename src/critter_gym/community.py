@@ -117,6 +117,61 @@ def validate_submission(sub: dict[str, Any]) -> list[str]:
     return errors
 
 
+def score_submission_on_season(agent: Any, *, season: int = 1, n_worlds: int = 16) -> float:
+    """Mean gym-clears of ``agent`` on the season's public block — THE community metric.
+
+    The single scoring loop every community entry shares (``--demo`` and LLM entries alike):
+    the pinned ``BenchmarkSpec`` env, the season's ``season_seeds``, and pure mean gym-clears
+    (RLVR-clean, bounded by ``num_gyms``). ``agent`` is a callable ``obs -> action`` or an
+    object with ``act(obs)`` (the :mod:`critter_gym.llm_eval` agents); an optional ``reset()``
+    hook is called before each world — memory isolation between worlds, the same rule the
+    sealed track applies to stateful submissions."""
+    spec = BenchmarkSpec()
+    policy = agent.act if hasattr(agent, "act") else agent
+    reset_fn = getattr(agent, "reset", None)
+    factory = spec.env_factory()
+    clears: list[int] = []
+    for seed in season_seeds(season, n_worlds):
+        if reset_fn is not None:
+            reset_fn()
+        env = factory()
+        obs, _ = env.reset(seed=int(seed))
+        done = False
+        while not done:
+            obs, _r, term, trunc, _info = env.step(int(policy(obs)))
+            done = bool(term or trunc)
+        clears.append(int(sum(env._gym_defeated)))
+    return float(sum(clears) / len(clears))
+
+
+def build_submission(
+    *, model: str, submitter: str, heldout_mean: float, n_worlds: int,
+    season: int, reproduce: str, date: str,
+) -> dict[str, Any]:
+    """Assemble a schema-valid community submission dict (or raise ``ValueError``).
+
+    Fills the pinned ``spec``, the current ``SCHEMA_VERSION`` and the forced
+    ``self_reported: true`` flag, rounds the score to 3 decimals, then runs
+    :func:`validate_submission` on the result — a built submission can never be
+    silently out-of-schema."""
+    sub: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "season": season,
+        "model": model,
+        "submitter": submitter,
+        "heldout_mean": round(float(heldout_mean), 3),
+        "n_worlds": n_worlds,
+        "spec": season_spec(),
+        "reproduce": reproduce,
+        "date": date,
+        "self_reported": True,
+    }
+    errors = validate_submission(sub)
+    if errors:
+        raise ValueError(f"built submission is not schema-valid: {errors}")
+    return sub
+
+
 def load_submissions(directory: Path | str) -> tuple[list[dict], list[tuple[str, list[str]]]]:
     """Load, validate and rank all ``*.json`` submissions in ``directory``.
 
