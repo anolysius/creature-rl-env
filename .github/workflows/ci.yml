@@ -26,7 +26,9 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       - name: Types (mypy)
-        run: mypy src
+        # Match the analysis target to the interpreter: on 3.12 the resolved
+        # numpy ships PEP 695 stubs that a 3.9 target refuses to parse.
+        run: mypy src --python-version ${{ matrix.python-version }}
       - name: Tests (jax-dependent tests auto-skip)
         run: pytest -q
       - name: Community submissions gate (--validate every committed JSON)
