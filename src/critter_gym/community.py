@@ -117,7 +117,10 @@ def validate_submission(sub: dict[str, Any]) -> list[str]:
     return errors
 
 
-def score_submission_on_season(agent: Any, *, season: int = 1, n_worlds: int = 16) -> float:
+def score_submission_on_season(
+    agent: Any, *, season: int = 1, n_worlds: int = 16,
+    on_world: Any = None,
+) -> float:
     """Mean gym-clears of ``agent`` on the season's public block — THE community metric.
 
     The single scoring loop every community entry shares (``--demo`` and LLM entries alike):
@@ -125,7 +128,9 @@ def score_submission_on_season(agent: Any, *, season: int = 1, n_worlds: int = 1
     (RLVR-clean, bounded by ``num_gyms``). ``agent`` is a callable ``obs -> action`` or an
     object with ``act(obs)`` (the :mod:`critter_gym.llm_eval` agents); an optional ``reset()``
     hook is called before each world — memory isolation between worlds, the same rule the
-    sealed track applies to stateful submissions."""
+    sealed track applies to stateful submissions. ``on_world`` (optional) is called after
+    each world as ``on_world(world_index, seed, clears)`` — progress visibility for long
+    (per-step-LLM) runs; ``None`` (default) is byte-identical to the prior behavior."""
     spec = BenchmarkSpec()
     policy = agent.act if hasattr(agent, "act") else agent
     reset_fn = getattr(agent, "reset", None)
@@ -141,6 +146,8 @@ def score_submission_on_season(agent: Any, *, season: int = 1, n_worlds: int = 1
             obs, _r, term, trunc, _info = env.step(int(policy(obs)))
             done = bool(term or trunc)
         clears.append(int(sum(env._gym_defeated)))
+        if on_world is not None:
+            on_world(len(clears) - 1, int(seed), clears[-1])
     return float(sum(clears) / len(clears))
 
 

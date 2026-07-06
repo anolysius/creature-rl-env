@@ -527,3 +527,51 @@ def test_claude_cli_complete_exists_and_errors_on_missing_binary() -> None:
 
     with pytest.raises(FileNotFoundError):
         llm_eval.claude_cli_complete(binary="definitely-not-a-real-binary-xyz")
+
+
+# -- claude_cli_complete retry-on-timeout (eval-product/cli-complete-retry) --------
+
+
+def _timeout_then_ok(n_timeouts: int):
+    """A fake subprocess.run: raises TimeoutExpired ``n_timeouts`` times, then succeeds."""
+    import subprocess
+    from types import SimpleNamespace
+
+    calls = {"n": 0}
+
+    def fake_run(cmd, **kwargs):
+        calls["n"] += 1
+        if calls["n"] <= n_timeouts:
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout", 0))
+        return SimpleNamespace(stdout="  3  \n", stderr="")
+
+    return fake_run, calls
+
+
+def test_cli_complete_retries_timeouts_then_returns(monkeypatch) -> None:
+    import subprocess as _sp
+
+    from critter_gym import llm_eval
+
+    fake_run, calls = _timeout_then_ok(2)
+    monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda b: "/usr/bin/claude")
+    complete = llm_eval.claude_cli_complete()
+    assert complete("prompt") == "3"       # 2 timeouts -> 3rd attempt returns
+    assert calls["n"] == 3                 # exactly initial + 2 retries
+
+
+def test_cli_complete_raises_after_retries_exhausted(monkeypatch) -> None:
+    import subprocess as _sp
+
+    import pytest
+
+    from critter_gym import llm_eval
+
+    fake_run, calls = _timeout_then_ok(99)
+    monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda b: "/usr/bin/claude")
+    complete = llm_eval.claude_cli_complete()
+    with pytest.raises(_sp.TimeoutExpired):
+        complete("prompt")                 # never silently substitutes an action
+    assert calls["n"] == 3                 # all 3 attempts consumed, then raise
