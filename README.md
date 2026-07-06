@@ -59,6 +59,16 @@ recipe (한국어 mirror linked inside each):
 
 한국어 가이드: 각 문서 안의 `.ko.md` 링크 · 시작하기 → [README.ko.md](README.ko.md)
 
+## Reporting problems (and how corrections work)
+
+Bug reports and challenges to any published number are **welcome** — open a GitHub issue.
+Every figure in this repo ships with its reproduction command and seeds; if something does
+not reproduce, that is a finding, not an annoyance. Confirmed errors are fixed and the
+correction is **published in `docs/CHANGELOG.md`** (this project has downgraded its own
+results before and will do it again). Provenance, transparently: this project was built by
+a human-directed AI coding agent (Claude) — every commit carries an AI co-authorship
+trailer, and measurements follow pre-registered decision rules frozen before data.
+
 ## What it measures
 
 - **Verifiable subgoals (RLVR):** catch ≥ C creatures · evolve ≥ 1 · defeat each gym · defeat the final boss.

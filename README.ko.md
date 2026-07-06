@@ -56,6 +56,15 @@ CritterGym은 하나의 env로 네 가지 연구 워크플로를 지원합니다
 | **장르 전이 측정** — 학습 안 한 env *family*로 일반화되는가? | [how-to/measure-genre-transfer](docs/how-to/measure-genre-transfer.ko.md) |
 | **observation/action/reward 계약**과 env-variant 노브 조회 | [reference/observation-action-space](docs/reference/observation-action-space.ko.md) |
 
+## 문제 제보 (그리고 정정이 작동하는 방식)
+
+버그 제보와 공개 수치에 대한 이의 제기를 **환영합니다** — GitHub 이슈로 열어주세요.
+이 저장소의 모든 수치는 재현 명령·시드와 함께 제공됩니다; 재현이 안 되면 그것 자체가
+발견입니다. 확인된 오류는 수정하고 정정 내역을 **`docs/CHANGELOG.md` 에 공개 기록**합니다
+(이 프로젝트는 자신의 결과를 스스로 하향 정정해 온 이력이 있고, 앞으로도 그렇게 합니다).
+출처 투명성: 이 프로젝트는 사람이 지휘한 AI 코딩 에이전트(Claude)가 구축했습니다 — 모든
+커밋에 AI 공동저자 트레일러가 있으며, 측정은 데이터 이전에 동결된 사전약정 규칙을 따릅니다.
+
 ## 측정하는 것 (요약)
 
 - **검증 가능 서브골 (RLVR):** 생물 ≥ C 마리 catch · ≥ 1 진화 · 각 체육관 격파 · 최종 보스 격파.
