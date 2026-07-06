@@ -1,0 +1,37 @@
+# Deploys the static leaderboard site (site/) to GitHub Pages.
+#
+# This workflow is a PREPARATION artifact: it is a no-op until a human enables
+# Pages in the repo settings (Settings -> Pages -> Source: "GitHub Actions").
+# Making the site public is a human gate — merging this file does not publish
+# anything by itself.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+      - id: deployment
+        uses: actions/deploy-pages@v4

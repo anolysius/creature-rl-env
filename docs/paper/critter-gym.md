@@ -371,8 +371,13 @@ CritterGym is a **procedural-generalization** benchmark and should be compared t
   *values* (the hidden type chart) on top of layout — one notch beyond layout-only.
 - **Craftax** emphasizes speed (JAX) and open-ended achievements; its lesson — *throughput
   is the adoption gate* — directly informs our numpy-first → JAX-port roadmap.
-- **XLand-MiniGrid** targets meta-RL across task distributions; CritterGym's env-family
-  split targets the related but distinct *genre*-level transfer.
+- **XLand-MiniGrid** targets meta-RL across large ruleset distributions, and — like us —
+  hides the rules from the agent. The distinction is an *axis*, not a level: XLand agents
+  discover discrete rule *structure* across meta-trial adaptation, while CritterGym hides
+  continuous mechanic *values* (the type chart) estimated from quantitative damage feedback
+  within a single episode — and we verify the inference is load-bearing with a frozen
+  scripted gate. Its env-family analogue also differs: our family split targets *genre*-level
+  transfer.
 
 Pokémon-RL is a metaphor, not a peer: we traded its difficulty for measurability.
 
