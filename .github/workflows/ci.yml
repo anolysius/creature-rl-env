@@ -1,0 +1,51 @@
+# CritterGym CI — mirrors pyproject's split: core stays numpy-only (jax tests
+# auto-skip via importorskip), the JAX parity gate runs as its own job.
+# Also the community-track submission gate: every committed submission JSON must
+# pass the validator (schema + pinned spec + forced self_reported flag).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install (core + dev — numpy-only by design)
+        run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Types (mypy)
+        run: mypy src
+      - name: Tests (jax-dependent tests auto-skip)
+        run: pytest -q
+      - name: Community submissions gate (--validate every committed JSON)
+        run: |
+          for f in community/submissions/*.json; do
+            python scripts/community_submit.py --validate "$f"
+          done
+
+  jax-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # jax<=0.4.30 is the last line supporting py3.9 (the repo's floor) —
+          # the parity gate runs on the floor so numpy<->JAX 0-mismatch is
+          # proven on the oldest supported interpreter.
+          python-version: "3.9"
+      - name: Install (core + dev + jax)
+        run: pip install -e ".[dev,jax]"
+      - name: Full test suite (incl. numpy<->JAX parity gates)
+        run: pytest -q
