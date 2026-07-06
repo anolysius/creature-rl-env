@@ -1,5 +1,7 @@
 # CritterGym
 
+[![ci](https://github.com/anolysius/creature-rl-env/actions/workflows/ci.yml/badge.svg)](https://github.com/anolysius/creature-rl-env/actions/workflows/ci.yml)
+
 > A procedurally-generated **creature-collection reinforcement-learning environment** for
 > benchmarking long-horizon agency, strategic reasoning, and generalization — fast, headless,
 > and Gymnasium-compatible. **Built for AI/RL researchers, not gamers.**
