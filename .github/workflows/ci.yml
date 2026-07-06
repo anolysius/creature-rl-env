@@ -27,8 +27,12 @@ jobs:
         run: ruff check .
       - name: Types (mypy)
         # Match the analysis target to the interpreter: on 3.12 the resolved
-        # numpy ships PEP 695 stubs that a 3.9 target refuses to parse.
-        run: mypy src --python-version ${{ matrix.python-version }}
+        # numpy ships PEP 695 stubs that a 3.9 target refuses to parse. And
+        # ignores needed under the 3.9-era stubs are "unused" under newer ones,
+        # so unused-ignore stays strict only on the 3.9 floor (source of truth).
+        run: >
+          mypy src --python-version ${{ matrix.python-version }}
+          ${{ matrix.python-version != '3.9' && '--no-warn-unused-ignores' || '' }}
       - name: Tests (jax-dependent tests auto-skip)
         run: pytest -q
       - name: Community submissions gate (--validate every committed JSON)
