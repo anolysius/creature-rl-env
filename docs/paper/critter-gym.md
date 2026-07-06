@@ -31,7 +31,10 @@ world-generation bug that did not guarantee an exploitable matchup) fixes the *m
 which a robust multi-run read of the frontier LLM is **inconclusive, near the chart-blind floor** —
 a single run that looked like partial inference did not replicate. The eval is nonetheless validated:
 a scripted inferrer robustly clears the band, so the model's near-floor result is a real signal, not
-a harness artifact.
+a harness artifact. A follow-up battle-only **arena probe** removes the last structural confound
+(overworld engagement) and the inference deficit persists: with battles guaranteed, a newer frontier
+model reads a terminal-inconclusive 0.13 ± 0.04 on the arena band — engagement was not the
+explanation.
 We are deliberate about scope: our instance-level generalization result is real and a
 necessary floor, and our genre-generalization work is an honest **foundation**, not a
 proof. We position CritterGym against procedural-generalization peers (Procgen, Craftax,
@@ -235,10 +238,29 @@ clean case study in *separating real capability limits from harness artifacts*:
   inference when it is present: the scripted `infer` arm robustly reads ≈89% super-effective, cleanly
   separated from the floor. So the LLM's near-floor result is a **real signal about the model, not a
   harness artifact** — an eval whose anchors are validated yet keeps surprising the experimenter is
-  behaving as an un-gameable eval should. The honest boundary that remains: with render and memory
-  confounds removed and the matchup guaranteed, a residual *engagement/survival* confound (the agent
-  logs few battle moves per episode) still separates "cannot infer" from "never sustains the
-  inference loop" — a strong signal, not yet a clean verdict, and a reason for the n = 8 multi-run.
+  behaving as an un-gameable eval should.
+
+- **The engagement confound, measured and closed (the arena probe).** One structural confound
+  remained after the three fixes above: an overworld episode lets "cannot infer" hide behind "never
+  sustains battle engagement" (dies or wanders before accumulating battle turns). We built a
+  **battle-only arena mode** (`ArenaEnv`: no overworld, K consecutive gym battles, the battle
+  economy untouched, the same SE-rate telemetry and pre-registered classifier) and validated the
+  instrument with the scripted band (oracle 100% vs. chance anchors ~40–46%; the arena's floor
+  anchors sit far above the overworld's because boss types recur, so arena scores are read only
+  against the arena band). A user-approved measurement of a **newer-generation frontier model
+  (claude-fable-5, model id confirmed from CLI metadata, battle-memory agent, 3+2 runs with frozen
+  thresholds)** read SE-rate 48% vs. anchors 40% — normalized **0.132 ± 0.037 over 5 runs →
+  INCONCLUSIVE, and terminally so** (the mean exceeds the floor bound, so no number of further runs
+  can flip the verdict; the measurement closes honestly at n = 5). Reading per the rules declared
+  before the data: **the engagement hypothesis is rejected as the main explanation** — with battles
+  structurally guaranteed (42–46 battle moves per run, comparable to the scripted arms) the model
+  stayed ~8 pp above chance, far below the scripted inferrer (97%) — yet "robustly at the floor"
+  would also be an overclaim (the small above-chance margin is consistent across all five runs).
+  **Model-generation caveat:** the earlier probes in this section measured `claude-opus-4-8`; the
+  arena measured `claude-fable-5`. These are different model generations — do not read the 14% ↔
+  48% pair as an overworld-vs-arena comparison; the structural conclusion (engagement is not the
+  explanation) is self-contained within the arena's own band. Full protocol and boundaries:
+  `docs/reference/battle-arena.md`.
 
 **Honest scope.** The current read is *inconclusive* (near the chart-blind floor), and even that is a
 *signal, not a verdict*: one inference-gated band, few sealed worlds, a scripted-oracle/inferring-arm
@@ -253,7 +275,12 @@ discriminating band is narrow — raise boss difficulty and even the oracle fail
 can win), collapsing discrimination; lower it and a chart-blind agent attritions its way to a win.
 The **super-effective-move rate** is the attrition-proof discriminator that survives this (oracle ≈
 100% vs. chart-blind floor, with a battle-economy redesign for a broad, clean *difficulty curve* as
-future work). (ii) That floor is itself **step-cap dependent** — the fixed-champion baseline reads
+future work). We tested the obvious fix and it **falsified**: an opt-in `strict_battle` rule
+(resisted attacks deal 0 instead of the min-1 chip) is implemented, parity-proven and winnability-
+swept — but a scripted probe shows it closes nothing, because the attrition actually runs on
+*neutral* chip damage, party cycling and battle re-entry healing, which the rule deliberately does
+not touch. Stronger variants change default rules and remain an open design decision
+(`docs/reference/strict-battle.md`). (ii) That floor is itself **step-cap dependent** — the fixed-champion baseline reads
 ≈27% of super-effective moves at a 40-step cap but ≈7% at 200 (more steps accumulate more neutral
 attrition moves), so a submission must be read against the band computed at the *same* cap (the
 harness does this automatically). (iii) "Could not have trained on it" is enforced in-process here;
@@ -356,9 +383,14 @@ each at parity 0. So the JAX engine covers the **full family breadth**, not just
 `jit`+`vmap`) trains family A on CPU in seconds at **≈170× the existing numpy/sb3 path**; the
 oracle-headroom table in Section 4 is produced on this loop.
 
-**Honest boundary.** CPU, single-run directions; a single jit env is slower than numpy (the
-win is batched `vmap`); the **≥10M steps/s GPU target (M4-EC3) is unmeasured** — the last open
-M4 item. Reproduce the throughput table with `python scripts/reproduce_results.py`.
+**GPU measured (M4-EC3 met).** On a free-tier NVIDIA T4, the fused `lax.scan` overworld
+rollout reaches **~950M steps/s** under `vmap` at batch 16384 (75.9M at b1024, 271M at
+b4096 — monotone in batch), **95× the ≥10M steps/s target**; CPU `vmap` reaches ~480M on
+the same slice and the full-episode env already clears the target on CPU (~22M steps/s).
+*Honest boundary:* single run, free T4, overworld slice — the full-episode env's branchy
+step compiles too slowly on a free T4 for a clean GPU figure (a minor follow-up on better
+hardware; the EC is already exceeded on CPU). A single jit env is slower than numpy — the
+win is batched `vmap`. Reproduce the CPU table with `python scripts/reproduce_results.py`.
 
 ---
 
@@ -385,9 +417,10 @@ Pokémon-RL is a metaphor, not a peer: we traded its difficulty for measurabilit
 
 ## 9. Honest limitations
 
-- **GPU throughput unmeasured.** The JAX port's CPU `vmap` already exceeds ≥10M steps/s on the
-  pure slices, but the M4-EC3 target is stated for GPU and not yet measured; a single jit env
-  is slower than numpy (the win is batched `vmap`, not per-env speed).
+- **GPU throughput is a single-run, overworld-slice figure.** The ~950M steps/s T4 number
+  (95× the target) is one run on free hardware, on the overworld slice only; the
+  full-episode env still lacks a GPU figure (though it clears the ≥10M target on CPU at ~22M
+  steps/s). A single jit env is slower than numpy (the win is batched `vmap`).
 - **PPO headroom is a baseline, not a sweep.** The 21–28%-of-oracle headroom is a tiny MLP at
   200 iters on CPU over 5 runs — more compute/tuning would raise PPO; the oracle is a scripted
   ceiling proxy, not a true upper bound.
@@ -424,8 +457,20 @@ turning "we *plan* to be fast" into a reproducible, parity-backed loop. That PPO
 also quantifies the **oracle headroom**: it reaches only 21–28% of the scripted ceiling
 (5-run robust) while generalizing — the benchmark is **hard *and* learnable**. We are
 explicit about what is proven (instance generalization, load-bearing inference, a fast
-parity-proven engine) and what remains (a GPU throughput measurement; many more families and
+parity-proven engine) and what remains (a full-episode GPU figure; many more families and
 a learned policy on a held-out family for a genre claim; deeper absolute difficulty).
+
+---
+
+## Acknowledgments and AI disclosure
+
+This is an **in-repo technical report**, not a peer-reviewed publication. The environment,
+experiments, and this report were built by **Claude (Anthropic) operating as a
+human-directed coding agent**, under the direction and review gates of the project
+maintainer, who takes responsibility for the project; every commit in the repository
+carries an explicit AI co-authorship trailer. Measurements follow pre-registered decision
+rules frozen before data, and corrections are published in `docs/CHANGELOG.md`. Cite via
+the repository's `CITATION.cff`.
 
 ---
 

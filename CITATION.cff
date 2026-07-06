@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use CritterGym in your research, please cite it as below."
+title: "CritterGym: A Procedurally-Generated Creature-Collection Benchmark for Measuring Long-Horizon Agency and Generalization"
+type: software
+authors:
+  - family-names: "Park"
+    given-names: "Myungsoo"
+repository-code: "https://github.com/anolysius/creature-rl-env"
+url: "https://anolysius.github.io/creature-rl-env/"
+license: MIT
+keywords:
+  - reinforcement-learning
+  - benchmark
+  - procedural-generation
+  - generalization
+  - evaluation
+  - rlvr
+abstract: >-
+  A procedurally-generated creature-collection RL environment for benchmarking
+  long-horizon agency, strategic hidden-rule inference, and generalization,
+  with verifiable (RLVR) rewards, a train/test seed split, a parity-proven JAX
+  port, and a contamination-proof regenerable sealed evaluation track. Built by
+  a human-directed AI coding agent (Claude, Anthropic) with pre-registered
+  measurement rules; see the in-repo technical report at docs/paper/.

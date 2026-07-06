@@ -49,13 +49,13 @@
 - [x] EC4: PPO **train-vs-test 갭** 측정·리포트 (Procgen 관례) *(`generalization-harness` — numpy-only `critter_gym.generalization`, `[rl]` 격리 PPO 소비자)*
 - 구성 task: `procgen-region` ✅, `procgen-typechart` ✅, `generalization-harness` ✅
 
-### M3 — 벤치마크 신뢰성 + 런치 🔵 active (EC1·EC2·EC3·EC6 ✅ / EC4·EC5 남음)
+### M3 — 벤치마크 신뢰성 + 런치 🔵 active (EC1–EC4·EC6 ✅ / EC5 남음 — 사람 게이트)
 - [x] EC1: 베이스라인 4종(random/scripted/PPO/recurrent) 점수표 (train+test 분리) *(`baseline-suite` — numpy-only `critter_gym.scoreboard`; PPO/recurrent 는 `[rl]` 격리)*
 - [x] EC2: 리더보드 포맷 + 재현 가능 configs (seeded, pinned) *(`leaderboard` — `critter_gym.leaderboard` `BenchmarkSpec`+`Leaderboard.to_json`/`to_markdown`, held-out 랭크)*
   - ✅ resolved (`leaderboard` task): `to_dict` 키 `train_mean`/`test_mean` → `heldin_mean`/`heldout_mean` 개명 완료 (held-in/held-out *eval* 평균임을 정직히 표현; 단일 위임).
 - [x] EC3: 측정 viz (학습곡선·일반화 갭·베이스라인 spread·시드 분포) *(`metrics-viz` — `critter_gym.viz`, matplotlib `[viz]` 격리, 연구자용 메트릭 플롯)*
-- [ ] EC4: arXiv writeup 초안
-- [ ] EC5: OSS 공개 (MIT) + Prime Intellect Environments Hub 등록
+- [x] EC4: **in-repo technical report** *(재정의 2026-07-06 — 원문 "arXiv writeup 초안". arXiv 제출은 **사용자 결정으로 무기한 보류**: 인간 저자 전책임 요구를 현시점에 지지 않기로 함. 대체: `docs/paper/critter-gym.md` 를 tech report 로 확정[아레나 실측·M4-EC3 GPU 실측 반영, AI-공개 문구 포함] + `CITATION.cff` 로 표준 인용 경로 확보. arXiv 는 준비되면 재개 가능)*
+- [ ] EC5: OSS 공개 (MIT) + Prime Intellect Environments Hub 등록 *(진행 중 — Phase A-1 CI·A-2 사실검증·A-3 tech report 완료; 남은 것: 사람 게이트 [repo Public + Pages 토글] → Hub 등록)*
 - [x] EC6: **킬러 데모** — "같은 에이전트 → unseen held-out 시드(새 맵+새 타입표) → 보스 격파" GIF *(2026-06-22 결재)*
   - 토대 (`world-render`): render API. 수단 (`killer-demo`): 녹화 파이프라인 `critter_gym.demo` + `scripts/killer_demo.py`.
   - **충족 증거** (PPO 100k 학습, `scripts/killer_demo.py` 실행): held-out seed 1000000(새 맵+새 타입표) 보스격파 GIF → [`docs/assets/killer_demo.gif`](../assets/killer_demo.gif). 단일 일화 아님 — **held-in 8/20(40%) vs held-out 9/20(45%) 보스격파율, 일반화 갭 ≈ 0**(held-out ≥ held-in, 노이즈 범위). 헤드라인 = *갭 0* = 암기 아닌 진짜 일반화(포켓몬 레드가 구조적으로 못 보이는 것). 절대성능 45%는 더 긴 학습으로 향상 여지(데모 주장=일반화는 입증).
