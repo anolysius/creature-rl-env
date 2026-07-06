@@ -229,3 +229,36 @@ def test_runner_exposes_llm_flag_without_calling_llm():
         capture_output=True, text=True, check=True,
     )
     assert "--llm" in out.stdout and "--provider" in out.stdout
+
+
+def test_score_submission_on_world_callback():
+    # AC2 (cli-complete-retry): on_world fires once per world with (idx0, seed, clears);
+    # default None stays byte-identical (all earlier tests run without it).
+    from critter_gym.community import score_submission_on_season, season_seeds
+
+    seen: list[tuple[int, int, int]] = []
+    score_submission_on_season(
+        lambda obs: 5, season=1, n_worlds=3,
+        on_world=lambda i, seed, clears: seen.append((i, seed, clears)),
+    )
+    expected_seeds = list(season_seeds(1, 3))
+    assert [s[0] for s in seen] == [0, 1, 2]
+    assert [s[1] for s in seen] == expected_seeds
+    assert all(isinstance(s[2], int) and 0 <= s[2] <= 3 for s in seen)
+
+
+def test_llm_progress_line_format(capsys):
+    # AC4 (cli-complete-retry): the --llm per-world progress line format, exercised via
+    # the same callback wiring the script installs (no LLM involved).
+    from critter_gym.community import score_submission_on_season
+
+    n = 2
+
+    def _progress(i: int, seed: int, clears: int) -> None:
+        print(f"  [{i + 1}/{n}] seed={seed} clears={clears}", flush=True)
+
+    score_submission_on_season(lambda obs: 5, season=1, n_worlds=n, on_world=_progress)
+    out = capsys.readouterr().out.splitlines()
+    import re
+    assert len(out) == n
+    assert all(re.fullmatch(r"  \[\d/2\] seed=\d+ clears=\d", line) for line in out)

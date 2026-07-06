@@ -450,6 +450,7 @@ def anthropic_complete(
 
 def claude_cli_complete(
     binary: str = "claude", *, cwd: str | None = None, timeout: float = 120.0,
+    retries: int = 2,
 ) -> Callable[[str], str]:
     """Build a ``complete(prompt) -> reply`` backed by the local **Claude Code** CLI (print mode).
 
@@ -461,6 +462,13 @@ def claude_cli_complete(
     runs small (a probe), not a large batch. It is also **slow** (~seconds/call: a full agent
     process starts per call), so prefer the API for big runs. Raises ``FileNotFoundError`` if the
     `claude` binary isn't on PATH.
+
+    ``retries``: a long run must survive a transient CLI stall — one hung call once killed a
+    ~1600-call measurement wholesale. On ``TimeoutExpired`` the SAME prompt is re-sent to a
+    fresh subprocess up to ``retries`` more times (default 2 → at most 3 attempts total); if
+    every attempt times out the exception is raised. Never a silent fallback: a retry re-asks
+    the identical question (each CLI print-mode call is an independent process — no session
+    state), it never substitutes a default action, so the measurement is not biased.
     """
     import shutil
     import subprocess
@@ -475,9 +483,16 @@ def claude_cli_complete(
     work = cwd or tempfile.mkdtemp()
 
     def complete(prompt: str) -> str:
-        result = subprocess.run(
-            [resolved, "-p", prompt], cwd=work, capture_output=True, text=True, timeout=timeout,
-        )
-        return result.stdout.strip()
+        for attempt in range(retries + 1):
+            try:
+                result = subprocess.run(
+                    [resolved, "-p", prompt], cwd=work, capture_output=True, text=True,
+                    timeout=timeout,
+                )
+                return result.stdout.strip()
+            except subprocess.TimeoutExpired:
+                if attempt >= retries:
+                    raise
+        raise AssertionError("unreachable")  # loop always returns or raises
 
     return complete

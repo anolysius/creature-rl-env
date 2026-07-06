@@ -95,7 +95,13 @@ def _run_llm_entry(a) -> int:
           f"{a.n_worlds} x {spec['max_steps']}). Ctrl-C now if that spend is not approved.")
 
     agent = _build_llm_agent(a)
-    mean = score_submission_on_season(agent, season=a.season, n_worlds=a.n_worlds)
+
+    def _progress(i: int, seed: int, clears: int) -> None:
+        print(f"  [{i + 1}/{a.n_worlds}] seed={seed} clears={clears}", flush=True)
+
+    mean = score_submission_on_season(
+        agent, season=a.season, n_worlds=a.n_worlds, on_world=_progress
+    )
 
     model_name = a.model_name or (
         "claude-cli (subscription default model)" if a.provider == "claude-cli" else a.model
