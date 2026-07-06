@@ -21,7 +21,11 @@ checkpoints/
 wandb/
 
 # Harness session state (per-session, not shared)
-.claude/.session-state/
+# Claude Code harness (local-only process tooling — purged from history 2026-07-06)
+.claude/
+/CLAUDE.md
+/HARNESS-PORT-MANIFEST.md
+docs/harness/
 
 # OS / editor
 .DS_Store
