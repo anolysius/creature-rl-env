@@ -132,6 +132,22 @@ _COPY: dict[str, dict[str, str]] = {
         "comm_th_rank": "rank", "comm_th_model": "model", "comm_th_by": "submitter",
         "comm_th_score": "gym-clears (mean)", "comm_th_worlds": "worlds", "comm_th_date": "date",
         "comm_season": "Season",
+        "comm_how_h": "How to get on the board",
+        "comm_step1": "<strong>Get the season's exam set</strong> — the same public held-out "
+                      "worlds for everyone: <code>season_seeds(1, 16)</code> and the pinned "
+                      "<code>season_spec()</code>.",
+        "comm_step2": "<strong>Run your model</strong> on those worlds and record the mean "
+                      "gym-clears. One command does it end-to-end: "
+                      "<code>community_submit.py --demo</code> (a scripted policy) or "
+                      "<code>--llm</code> (an LLM agent).",
+        "comm_step3": "<strong>Write a small JSON</strong> (copy the example) and check it "
+                      "locally — the same check CI runs: "
+                      "<code>community_submit.py --validate your-file.json</code>.",
+        "comm_step4": "<strong>Open a PR</strong> adding your file to "
+                      "<code>community/submissions/</code>. Once it's merged, you're on the board.",
+        "comm_guide_path": "docs/how-to/submit-your-model.md",
+        "comm_guide": "Full step-by-step guide &rarr;",
+        "comm_subs": "Browse submissions &rarr;",
         "comm_empty": "No submissions yet — be the first! See the how-to guide in the repo "
                       "(<code>docs/how-to/submit-your-model.md</code>).",
         "comm_honest": "<strong>Honest scope.</strong> These scores are "
@@ -232,6 +248,22 @@ _COPY: dict[str, dict[str, str]] = {
         "comm_th_rank": "순위", "comm_th_model": "모델", "comm_th_by": "제출자",
         "comm_th_score": "체육관 클리어(평균)", "comm_th_worlds": "세계 수", "comm_th_date": "날짜",
         "comm_season": "시즌",
+        "comm_how_h": "리더보드에 올리는 법",
+        "comm_step1": "<strong>시즌 시험지를 받으세요</strong> — 모두에게 같은 공개 held-out "
+                      "세계: <code>season_seeds(1, 16)</code> 와 고정 "
+                      "<code>season_spec()</code>.",
+        "comm_step2": "<strong>모델을 실행</strong>해 그 세계들에서 평균 체육관 클리어를 "
+                      "기록하세요. 한 명령이 끝까지 해줍니다: "
+                      "<code>community_submit.py --demo</code>(규칙기반 정책) 또는 "
+                      "<code>--llm</code>(LLM 에이전트).",
+        "comm_step3": "<strong>작은 JSON 을 작성</strong>하고(예시를 복사) 로컬에서 확인하세요 "
+                      "— CI 가 돌리는 것과 같은 검사: "
+                      "<code>community_submit.py --validate your-file.json</code>.",
+        "comm_step4": "<strong>PR 을 여세요</strong> — 파일을 "
+                      "<code>community/submissions/</code> 에 추가. 머지되면 리더보드에 오릅니다.",
+        "comm_guide_path": "docs/how-to/submit-your-model.ko.md",
+        "comm_guide": "전체 단계별 가이드 &rarr;",
+        "comm_subs": "제출 폴더 보기 &rarr;",
         "comm_empty": "아직 제출이 없습니다 — 첫 번째가 되어보세요! repo 의 가이드를 참고하세요"
                       "(<code>docs/how-to/submit-your-model.ko.md</code>).",
         "comm_honest": "<strong>정직한 범위.</strong> 이 점수들은 <strong>자가 신고</strong>"
@@ -313,6 +345,22 @@ def _tiers_html(c: dict[str, str]) -> str:
             "</tr>"
         )
     return "\n".join(out)
+
+
+def _howto_html(c: dict[str, str]) -> str:
+    """The 'how to get on the board' block: a 4-step numbered recipe (condensed from the
+    submit-your-model how-to) plus links to the full guide (per language) and the submissions
+    folder. Step copy carries its own HTML (code snippets) — trusted, not escaped; the two
+    hrefs are built from the fixed repo URL + a per-language guide path."""
+    steps = "".join(f"      <li>{c[f'comm_step{i}']}</li>\n" for i in range(1, 5))
+    guide_href = f"{_REPO_URL}/blob/main/{c['comm_guide_path']}"
+    subs_href = f"{_REPO_URL}/tree/main/community/submissions"
+    return (
+        f"    <h3>{c['comm_how_h']}</h3>\n"
+        f"    <ol class=\"steps\">\n{steps}    </ol>\n"
+        f"    <p><a class=\"repo-link\" href=\"{guide_href}\">{c['comm_guide']}</a>\n"
+        f"      &nbsp; <a href=\"{subs_href}\">{c['comm_subs']}</a></p>"
+    )
 
 
 def _community_html(c: dict[str, str], submissions: tuple[dict, ...]) -> str:
@@ -450,6 +498,7 @@ def render_site(
     legend = _legend_html(c)
     tiers = _tiers_html(c)
     comm = _community_html(c, tuple(community))
+    howto = _howto_html(c)
     gap_svg = _gap_svg(leaderboard, c)
     band_svg = _band_svg()
     demo_caption = c["demo_cleared"] if demo_cleared else c["demo_uncleared"]
@@ -552,6 +601,15 @@ def render_site(
            margin-right: 0.5rem; border: 1px solid var(--border); }}
     .worlds {{ display: flex; flex-wrap: wrap; gap: 0.9rem; }}
     img.pixel.sm {{ width: 210px; }}
+    ol.steps {{ counter-reset: step; list-style: none; padding: 0; display: grid; gap: 0.7rem;
+                margin: 0.6rem 0 1rem; }}
+    ol.steps li {{ counter-increment: step; position: relative; background: var(--surface-1);
+                   border: 1px solid var(--border); border-radius: var(--radius);
+                   padding: 0.85rem 1rem 0.85rem 3rem; color: var(--ink-2); }}
+    ol.steps li::before {{ content: counter(step); position: absolute; left: 0.85rem; top: 0.8rem;
+                           width: 1.5rem; height: 1.5rem; border-radius: 999px; font-size: 0.85rem;
+                           font-weight: 700; color: #fff; background: var(--accent);
+                           display: flex; align-items: center; justify-content: center; }}
     ul.moat {{ list-style: none; padding: 0; display: grid; gap: 0.8rem; }}
     ul.moat li {{ background: var(--surface-1); border: 1px solid var(--border);
                   border-left: 3px solid var(--accent); border-radius: var(--radius);
@@ -655,6 +713,7 @@ def render_site(
   <section>
     <h2>{c['comm_h']}</h2>
     <p>{c['comm_p']}</p>
+{howto}
 {comm}
     <p class="note">{c['comm_honest']}</p>
   </section>

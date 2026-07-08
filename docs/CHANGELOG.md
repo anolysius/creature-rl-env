@@ -3,6 +3,7 @@
 All notable task-level changes are appended here by `/task-end` (one line per task).
 
 ## site (public launch polish)
+- **2026-07-08** — [`site-submit-howto`](_archive/2026-Q2/site-submit-howto/) (standard, **커뮤니티 섹션에 '리더보드 올리는 법' 단계별 + 가이드 링크**): 방문자가 사이트만 보고 제출 흐름을 이해하도록 — 커뮤니티 섹션에 **4스텝 how-to 카드**(시험지 받기 `season_seeds`→모델 실행 `--demo/--llm`→JSON+`--validate`→PR, 번호 카운터+코드 스니펫) + **가이드 링크**(en→submit-your-model.md/ko→.ko.md GitHub blob + community/submissions tree, 라이브 200 확인). en/ko 패리티 유지, 수치·정직 라벨 무변경. 2 신규 테스트, 706→**708**, ruff clean. 브라우저 en·ko 실측+링크 클릭. L3 2/2 APPROVE.
 - **2026-07-08** — [`site-redesign`](_archive/2026-Q2/site-redesign/) (standard, **공개 사이트 디자인 시스템 개편 + en/ko 싱크 + GIF 무한반복**): 공개된 런치 사이트 3개선 — (1) **디자인 시스템**: CSS 토큰(--surface/--ink/--series)+라이트/다크 테마(prefers-color-scheme+수동 토글 vanilla JS)+컴포넌트(카드·uppercase 테이블·moat 카드·pill). (2) **인라인 SVG 차트**: matplotlib PNG(gap/band) 삭제→인라인 SVG 2종(gap 2색 그룹막대·band 단일 accent), 값=leaderboard.entries·inference_baseline **실측**(하드코딩 0), 테마 반응·hover, dataviz 팔레트 validator 통과. (3) **en/ko 싱크**: 키 집합 동일(테스트 강제)+title 언어별화(ko 정보량=en). (4) **GIF 무한반복**: save_gif(loop=0). **브라우저 4조합(en·ko×라이트·다크) 실측**(라벨 클리핑 1건 수정). 결정론·수치 SSOT 유지. 7 신규 테스트, 699→**706**, ruff clean. L3 2/2 APPROVE.
 
 ## monetization-surface (M5 — 수익화 표면 prototype)
