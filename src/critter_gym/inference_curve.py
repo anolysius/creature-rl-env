@@ -69,3 +69,66 @@ def inference_difficulty_curve(
     kw = dict(_CURVE_SEALED if sealed_kwargs is None else sealed_kwargs)
     kw.pop("num_types", None)  # num_types is the swept axis, never fixed
     return tuple(_point(n, kw) for n in num_types_grid)
+
+
+# The diversity-dial config: a FIXED gym budget + a large type pool, so sweeping ``boss_pool_size``
+# varies per-episode boss-type *diversity* (and thus revisits) cleanly. num_types is large enough
+# to draw a diverse pool; num_gyms is held fixed so more diversity means fewer revisits.
+_DIVERSITY_SEALED: dict[str, Any] = dict(
+    master_seed=20260708, n_worlds=8, grid_size=8, num_gyms=8, num_types=12, max_steps=140,
+    boss_hp=140, boss_atk=6, boss_def=18,
+)
+
+
+class DiversityPoint(NamedTuple):
+    """One (``boss_pool_size``) point on the type-diversity dial (all scripted, deterministic)."""
+
+    pool_size: int
+    mean_distinct_types: float  # measured mean distinct boss-types per world (the real x-axis)
+    oracle_se: float
+    infer_se: float
+    type_blind_se: float
+    probe_se: float
+    infer_score: float
+    oracle_gyms: float
+    winnable: bool
+
+
+def _mean_distinct_types(pool_size: int, sealed: SealedEvalSet) -> float:
+    """Mean distinct boss-types per world on the sealed block — the diversity actually realized."""
+    from critter_gym.region import generate_region
+    n = 0.0
+    for seed in sealed._eval_seeds():
+        region = generate_region(
+            seed, sealed.grid_size, 5, sealed.num_gyms, vary=True, num_types=sealed.num_types,
+            min_gyms=sealed.num_gyms, boss_pool_size=pool_size)
+        n += len({t for (_, t) in region.gyms})
+    return n / sealed.n_worlds
+
+
+def diversity_curve(
+    pool_grid: tuple[int, ...], *, sealed_kwargs: dict[str, Any] | None = None,
+) -> tuple[DiversityPoint, ...]:
+    """The scripted inference-difficulty curve over ``boss_pool_size`` (per-episode type diversity).
+
+    At a fixed gym budget, a bigger pool means more distinct boss types recur (fewer revisits), so a
+    first-sight inferrer should exploit the chart less. Each point records the 4-arm band, the infer
+    arm's normalized inference score, and the *measured* mean distinct-types per world (the real
+    x-axis — confirms the knob raised diversity). Deterministic."""
+    kw = dict(_DIVERSITY_SEALED if sealed_kwargs is None else sealed_kwargs)
+    kw.pop("boss_pool_size", None)  # boss_pool_size is the swept axis
+    out = []
+    for pool in pool_grid:
+        sealed = SealedEvalSet(boss_pool_size=pool, **kw)
+        band = inference_baseline(sealed)
+        se = {a: band.arms[a].se_rate for a in _ARMS}
+        out.append(DiversityPoint(
+            pool_size=pool,
+            mean_distinct_types=_mean_distinct_types(pool, sealed),
+            oracle_se=se["oracle"], infer_se=se["infer"],
+            type_blind_se=se["type_blind"], probe_se=se["probe"],
+            infer_score=se_inference_score(se["infer"], se["oracle"], se["type_blind"]),
+            oracle_gyms=band.oracle_gyms,
+            winnable=band.oracle_gyms >= 0.5 * sealed.num_gyms,
+        ))
+    return tuple(out)
