@@ -2,18 +2,19 @@
 
 Renders `leaderboard.py`'s ranked results into static HTML pages — English (``index.html``)
 and Korean (``index.ko.html``) — each with a ranked baseline table, a **gameplay animation**
-(a scripted baseline agent playing an unseen held-out world), a **generalization-gap plot**,
-pure-CSS animations, an explanation of the moat, and an honest caption. Written to ``site/`` so
-it can be hosted as-is on GitHub Pages. No npm, no framework, no build step, no network at serve
-time (stdlib ``html``/``json``; the assets are pre-generated).
+(a scripted baseline agent playing an unseen held-out world), **inline-SVG** generalization-gap
+and inference-band charts (theme-aware, from the measured numbers), a design-token light/dark
+theme, an explanation of the moat, and an honest caption. Written to ``site/`` so it can be
+hosted as-is on GitHub Pages. No npm, no framework, no build step, no network at serve time
+(stdlib ``html``/``json``; the charts are inline SVG, only the raster clips are pre-generated).
 
     python scripts/build_site.py            # score free baselines, build assets, write both pages
-    python scripts/build_site.py --no-assets   # skip (re)generating gameplay.gif / gap.png
+    python scripts/build_site.py --no-assets   # skip (re)generating gameplay.gif / thumbnails
     python -m http.server -d site           # local preview at http://localhost:8000
 
-Asset generation needs the ``[viz]`` extras (``imageio`` for the GIF, ``matplotlib`` for the
-plot); they are imported lazily and, if missing, asset generation is skipped and any committed
-assets are reused — the build still succeeds.
+The raster assets (``gameplay.gif`` + world thumbnails) need the ``[render]`` extra (``imageio``);
+it is imported lazily and, if missing, that asset is skipped and any committed file is reused —
+the build still succeeds. The charts are pure inline SVG and need no extras.
 
 Honest scope: this **builds** the pages and lets you **preview them locally**. Publishing them
 (enabling GitHub Pages / making the site public) is a **human gate** — a public-facing deploy.
@@ -25,6 +26,7 @@ over-claim.
 from __future__ import annotations
 
 import argparse
+import functools
 import html
 import json
 import shutil
@@ -39,14 +41,15 @@ _GIF_FALLBACK = _ROOT / "docs" / "assets" / "killer_demo.gif"
 _SITE_DIR = _ROOT / "site"
 _REPO_URL = "https://github.com/anolysius/creature-rl-env"
 _GAMEPLAY_GIF = "gameplay.gif"
-_GAP_PNG = "gap.png"
-_BAND_PNG = "band.png"
 _WORLD_PNG = "world_{}.png"
 
 # Bilingual copy (en / ko). Same structure both languages so render_site is language-agnostic.
 _COPY: dict[str, dict[str, str]] = {
     "en": {
         "lang_name": "English",
+        "title": "CritterGym — a contamination-proof RL benchmark",
+        "theme_label": "Toggle light / dark theme",
+        "gap_in": "held-in", "gap_out": "held-out",
         "other_href": "index.ko.html",
         "other_label": "한국어",
         "subtitle": "A procedurally-generated creature-collection RL environment for measuring "
@@ -147,6 +150,9 @@ _COPY: dict[str, dict[str, str]] = {
     },
     "ko": {
         "lang_name": "한국어",
+        "title": "CritterGym — 오염 불가능(contamination-proof) RL 벤치마크",
+        "theme_label": "라이트 / 다크 테마 전환",
+        "gap_in": "held-in", "gap_out": "held-out",
         "other_href": "index.html",
         "other_label": "English",
         "subtitle": "장기 호라이즌 행위성과 맥락 내 규칙 추론을 측정하는 절차생성 "
@@ -345,6 +351,86 @@ def _community_html(c: dict[str, str], submissions: tuple[dict, ...]) -> str:
     return "\n".join(out)
 
 
+# The inference-gated demonstrator sealed config (paper §5 / inference-baseline.md).
+_DEMO_SEALED = dict(master_seed=20260627, n_worlds=8, num_types=3, grid_size=5,
+                    boss_hp=140, boss_atk=6, boss_def=18, max_steps=40)
+_BAND_ARMS = ("oracle", "infer", "type_blind", "probe")
+
+
+@functools.lru_cache(maxsize=1)
+def _band_rates() -> tuple[tuple[str, float], ...]:
+    """The scripted inference band (SE-rate per arm) on the demonstrator sealed set — numpy-only,
+    deterministic, cached. Falls back to an empty tuple if the eval can't run (kept graceful)."""
+    try:
+        from critter_gym.eval_harness import SealedEvalSet, inference_baseline
+        band = inference_baseline(SealedEvalSet(**_DEMO_SEALED))
+        return tuple((a, float(band.arms[a].se_rate)) for a in _BAND_ARMS)
+    except Exception:  # noqa: BLE001 — chart degrades gracefully if the eval can't run
+        return ()
+
+
+def _bar_svg(rows: tuple[tuple[str, float, str, str], ...], *, title: str) -> str:
+    """A horizontal bar chart as inline, theme-aware SVG (fills reference CSS vars, text uses ink
+    tokens). ``rows`` = (label, value_0to1, fill_css_var, value_label). Direct value labels satisfy
+    the low-contrast fill (dataviz: labels are the secondary encoding); native <title> = hover."""
+    n = len(rows)
+    if n == 0:
+        return ""
+    row_h, gap, pad_l, pad_r, top = 34, 10, 154, 52, 8
+    bar_w = 680 - pad_l - pad_r
+    height = top + n * row_h + (n - 1) * gap + 8
+    out = [f'<svg class="chart" viewBox="0 0 680 {height}" role="img" '
+           f'aria-label="{html.escape(title)}" preserveAspectRatio="xMinYMin meet">']
+    for i, (label, val, fill, vlabel) in enumerate(rows):
+        y = top + i * (row_h + gap)
+        w = max(2.0, min(1.0, val) * bar_w)
+        lab = html.escape(label)
+        out.append(f'  <title>{lab}: {html.escape(vlabel)}</title>')
+        out.append(f'  <text x="{pad_l - 10}" y="{y + row_h * 0.62}" '
+                   f'class="c-lab" text-anchor="end">{lab}</text>')
+        out.append(f'  <rect x="{pad_l}" y="{y + 6}" width="{bar_w}" height="{row_h - 12}" '
+                   f'rx="5" class="c-track"/>')
+        out.append(f'  <rect x="{pad_l}" y="{y + 6}" width="{w:.1f}" height="{row_h - 12}" '
+                   f'rx="5" fill="var({fill})"><title>{lab}: {html.escape(vlabel)}</title></rect>')
+        out.append(f'  <text x="{pad_l + w + 8:.1f}" y="{y + row_h * 0.62}" '
+                   f'class="c-val">{html.escape(vlabel)}</text>')
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def _band_svg() -> str:
+    """SE-rate inference band: one accent bar per scripted arm (ceiling→floor), % direct labels."""
+    rates = _band_rates()
+    if not rates:
+        return ""
+    rows = tuple((arm, rate, "--series-1", f"{rate:.0%}") for arm, rate in rates)
+    return _bar_svg(rows, title="Super-effective-move rate by scripted arm")
+
+
+def _gap_svg(leaderboard: Leaderboard, c: dict[str, str]) -> str:
+    """Generalization-gap chart: per baseline, a held-in and a held-out bar (2-series categorical,
+    blue/aqua). Close bars = a small gap = real generalization. Values normalized to num_gyms."""
+    entries = leaderboard.entries
+    if not entries:
+        return ""
+    ceiling = max(1.0, float(leaderboard.spec.num_gyms))
+    rows = []
+    for e in entries:
+        rows.append((f"{e.name} · {c['gap_in']}", e.heldin_mean / ceiling,
+                     "--series-1", f"{e.heldin_mean:.2f}"))
+        rows.append((f"{e.name} · {c['gap_out']}", e.heldout_mean / ceiling,
+                     "--series-2", f"{e.heldout_mean:.2f}"))
+    svg = _bar_svg(tuple(rows), title="Held-in vs held-out mean per baseline")
+    sw1, sw2 = '<i class="sw" style="background:var(--series-1)"></i>', \
+        '<i class="sw" style="background:var(--series-2)"></i>'
+    legend = (
+        '<div class="c-legend">'
+        f'<span>{sw1}{html.escape(c["gap_in"])}</span>'
+        f'<span>{sw2}{html.escape(c["gap_out"])}</span>'
+        "</div>")
+    return svg + "\n" + legend
+
+
 def render_site(
     leaderboard: Leaderboard, *, generated_note: str, lang: str = "en", demo_cleared: bool = True,
     community: tuple = (),
@@ -352,7 +438,8 @@ def render_site(
     """Render a ``Leaderboard`` into a single static HTML page in ``lang`` (``en``/``ko``).
 
     Deterministic and framework-free (pure CSS animations). Carries the ranked table, the
-    gameplay animation (``gameplay.gif``), the generalization-gap plot (``gap.png``), the moat
+    gameplay animation (``gameplay.gif``), inline-SVG generalization-gap + inference-band
+    charts, the moat
     explanation, a language toggle, a repo link, and an honest caption. ``demo_cleared`` picks
     the honest gameplay caption (only claims the boss was defeated when it actually was). All
     interpolated values are ``html.escape``-d."""
@@ -363,58 +450,130 @@ def render_site(
     legend = _legend_html(c)
     tiers = _tiers_html(c)
     comm = _community_html(c, tuple(community))
+    gap_svg = _gap_svg(leaderboard, c)
+    band_svg = _band_svg()
     demo_caption = c["demo_cleared"] if demo_cleared else c["demo_uncleared"]
     return f"""<!DOCTYPE html>
 <html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CritterGym — a contamination-proof RL benchmark</title>
+  <title>{html.escape(c['title'])}</title>
   <style>
-    :root {{ --accent: #5b7cfa; }}
+    :root {{
+      --surface-0: #ffffff; --surface-1: #fcfcfb; --surface-2: #f3f4f6;
+      --border: #e5e6ea; --ink-1: #0b0b0b; --ink-2: #52514e; --ink-3: #8a8a80;
+      --accent: #2a78d6; --series-1: #2a78d6; --series-2: #1baf7a; --track: #eceef1;
+      --radius: 12px; --shadow: 0 8px 30px rgba(20,30,60,0.10); --maxw: 880px;
+      --sp: 1rem;
+    }}
+    /* Dark theme: same tokens, dark steps (validated against the dark surface). Auto by
+       system preference unless the user forced light; always on when data-theme=dark. */
+    @media (prefers-color-scheme: dark) {{
+      :root:not([data-theme="light"]) {{
+        --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+        --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+        --accent: #6da7ec; --series-1: #3987e5; --series-2: #199e70; --track: #2b2b28;
+        --shadow: 0 8px 30px rgba(0,0,0,0.45);
+      }}
+    }}
+    :root[data-theme="dark"] {{
+      --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+      --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+      --accent: #6da7ec; --series-1: #3987e5; --series-2: #199e70; --track: #2b2b28;
+      --shadow: 0 8px 30px rgba(0,0,0,0.45);
+    }}
     * {{ box-sizing: border-box; }}
-    body {{ font-family: system-ui, -apple-system, sans-serif; max-width: 860px;
-            margin: 0 auto; padding: 0 1rem 3rem; line-height: 1.55; color: #1a1a1a; }}
+    html {{ scroll-behavior: smooth; }}
+    body {{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: var(--maxw);
+            margin: 0 auto; padding: 0 1rem 4rem; line-height: 1.6; color: var(--ink-1);
+            background: var(--surface-0); -webkit-font-smoothing: antialiased;
+            transition: background 0.3s ease, color 0.3s ease; }}
     @keyframes fadeInUp {{ from {{ opacity: 0; transform: translateY(16px); }}
                           to {{ opacity: 1; transform: translateY(0); }} }}
     @keyframes gradientShift {{ 0% {{ background-position: 0% 50%; }}
                                50% {{ background-position: 100% 50%; }}
                                100% {{ background-position: 0% 50%; }} }}
-    .hero {{ margin: 0 -1rem 1.5rem; padding: 2.6rem 1.5rem 2rem; color: #fff;
-             background: linear-gradient(120deg, #5b7cfa, #8b5cf6, #22c55e);
-             background-size: 200% 200%; animation: gradientShift 12s ease infinite; }}
-    .hero h1 {{ margin: 0; font-size: 2.4rem; letter-spacing: -0.02em; }}
-    .hero p {{ margin: 0.4rem 0 0; opacity: 0.95; max-width: 46rem; }}
-    .langbar {{ text-align: right; padding: 0.6rem 0; font-size: 0.9rem; }}
-    section {{ animation: fadeInUp 0.7s ease both; }}
-    section:nth-of-type(2) {{ animation-delay: 0.08s; }}
-    section:nth-of-type(3) {{ animation-delay: 0.16s; }}
-    h2 {{ margin-top: 2rem; }}
-    table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }}
-    th, td {{ border: 1px solid #e2e2e2; padding: 0.45rem 0.7rem; text-align: right; }}
+    @media (prefers-reduced-motion: reduce) {{ * {{ animation: none !important; }} }}
+    .topbar {{ display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem;
+               padding: 0.7rem 0; font-size: 0.9rem; }}
+    .topbar a {{ text-decoration: none; }}
+    .theme-btn {{ font: inherit; cursor: pointer; border: 1px solid var(--border);
+                  background: var(--surface-1); color: var(--ink-2); border-radius: 999px;
+                  width: 2rem; height: 2rem; line-height: 1; font-size: 1rem;
+                  transition: background 0.2s ease, transform 0.2s ease; }}
+    .theme-btn:hover {{ background: var(--surface-2); transform: rotate(20deg); }}
+    .hero {{ margin: 0 -1rem 2rem; padding: 3rem 1.6rem 2.4rem; color: #fff; border-radius: 0;
+             background: linear-gradient(120deg, #2a78d6, #6d5bd6, #1baf7a);
+             background-size: 200% 200%; animation: gradientShift 14s ease infinite; }}
+    .hero h1 {{ margin: 0; font-size: clamp(2rem, 6vw, 2.8rem); letter-spacing: -0.02em;
+                font-weight: 800; }}
+    .hero p {{ margin: 0.5rem 0 0; opacity: 0.96; max-width: 46rem; font-size: 1.05rem; }}
+    section {{ animation: fadeInUp 0.7s ease both; margin-top: 2.4rem; }}
+    section:nth-of-type(2) {{ animation-delay: 0.06s; }}
+    section:nth-of-type(3) {{ animation-delay: 0.12s; }}
+    h2 {{ font-size: 1.5rem; letter-spacing: -0.01em; margin: 0 0 0.4rem;
+          padding-bottom: 0.4rem; border-bottom: 2px solid var(--border); }}
+    h3 {{ font-size: 1.05rem; margin: 1.4rem 0 0.5rem; color: var(--ink-2); }}
+    p {{ margin: 0.5rem 0 1rem; color: var(--ink-2); }}
+    p strong, li strong {{ color: var(--ink-1); }}
+    .card {{ background: var(--surface-1); border: 1px solid var(--border);
+             border-radius: var(--radius); padding: 1.2rem 1.3rem; box-shadow: var(--shadow); }}
+    .table-wrap {{ overflow-x: auto; border-radius: var(--radius); }}
+    table {{ border-collapse: collapse; width: 100%; margin: 0.6rem 0 0.4rem;
+             font-variant-numeric: tabular-nums; }}
+    th, td {{ padding: 0.55rem 0.8rem; text-align: right;
+              border-bottom: 1px solid var(--border); }}
     th:nth-child(2), td:nth-child(2) {{ text-align: left; }}
-    thead {{ background: #f4f5ff; }}
-    .table-wrap {{ overflow-x: auto; }}
-    .note-cell {{ text-align: left; font-size: 0.86rem; min-width: 22rem; }}
+    thead th {{ background: var(--surface-2); color: var(--ink-2); font-size: 0.82rem;
+                text-transform: uppercase; letter-spacing: 0.03em;
+                border-bottom: 2px solid var(--border); }}
     tbody tr {{ transition: background 0.15s ease; }}
-    tbody tr:hover {{ background: #f4f5ff; }}
-    img.asset {{ max-width: 100%; border: 1px solid #eee; border-radius: 6px; }}
-    img.pixel {{ image-rendering: pixelated; width: 320px; max-width: 100%;
-                 box-shadow: 0 6px 24px rgba(91,124,250,0.25); border-radius: 8px; }}
+    tbody tr:hover {{ background: var(--surface-2); }}
+    tbody tr:first-child td {{ font-weight: 600; }}
+    .note-cell {{ text-align: left; font-size: 0.86rem; min-width: 22rem; color: var(--ink-2); }}
+    .chart {{ width: 100%; max-width: 640px; height: auto;
+              margin: 0.8rem 0 0.3rem; display: block; }}
+    .c-track {{ fill: var(--track); }}
+    .c-lab {{ fill: var(--ink-2); font-size: 13px; }}
+    .c-val {{ fill: var(--ink-1); font-size: 13px; font-weight: 600; }}
+    .c-legend {{ display: flex; gap: 1.3rem; font-size: 0.85rem; color: var(--ink-2);
+                 margin: 0.1rem 0 0.6rem; }}
+    .c-legend span {{ display: flex; align-items: center; gap: 0.45rem; }}
+    .c-legend .sw {{ width: 0.85rem; height: 0.85rem; border-radius: 3px;
+                     margin: 0; border: none; }}
+    img.pixel {{ image-rendering: pixelated; width: 340px; max-width: 100%;
+                 box-shadow: var(--shadow); border-radius: var(--radius);
+                 border: 1px solid var(--border); }}
     ul.legend {{ list-style: none; padding: 0; display: flex; flex-wrap: wrap;
-                 gap: 0.4rem 1.2rem; }}
-    ul.legend li {{ display: flex; align-items: center; }}
-    .sw {{ display: inline-block; width: 1rem; height: 1rem; border-radius: 3px;
-           margin-right: 0.45rem; border: 1px solid rgba(0,0,0,0.15); }}
-    .worlds {{ display: flex; flex-wrap: wrap; gap: 0.8rem; }}
-    img.pixel.sm {{ width: 200px; }}
+                 gap: 0.5rem 1.4rem; }}
+    ul.legend li {{ display: flex; align-items: center; color: var(--ink-2); font-size: 0.92rem; }}
+    .sw {{ display: inline-block; width: 1rem; height: 1rem; border-radius: 4px;
+           margin-right: 0.5rem; border: 1px solid var(--border); }}
+    .worlds {{ display: flex; flex-wrap: wrap; gap: 0.9rem; }}
+    img.pixel.sm {{ width: 210px; }}
+    ul.moat {{ list-style: none; padding: 0; display: grid; gap: 0.8rem; }}
+    ul.moat li {{ background: var(--surface-1); border: 1px solid var(--border);
+                  border-left: 3px solid var(--accent); border-radius: var(--radius);
+                  padding: 0.9rem 1.1rem; color: var(--ink-2); }}
     a {{ color: var(--accent); }}
-    .note {{ color: #666; font-size: 0.9rem; }}
-    code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }}
+    .repo-link {{ display: inline-block; margin-top: 0.6rem; font-weight: 600;
+                  padding: 0.55rem 1.1rem; border-radius: 999px; text-decoration: none;
+                  background: var(--accent); color: #fff; transition: transform 0.2s ease; }}
+    .repo-link:hover {{ transform: translateY(-2px); }}
+    .note {{ color: var(--ink-3); font-size: 0.9rem; }}
+    code {{ background: var(--surface-2); padding: 0.12rem 0.35rem; border-radius: 4px;
+            font-size: 0.88em; }}
+    hr {{ border: none; border-top: 1px solid var(--border); margin: 2.5rem 0 1.2rem; }}
   </style>
 </head>
 <body>
-  <div class="langbar"><a href="{c['other_href']}">{c['other_label']} &rarr;</a></div>
+  <div class="topbar">
+    <a href="{c['other_href']}">{c['other_label']} &rarr;</a>
+    <button class="theme-btn" type="button" onclick="__toggleTheme()"
+            aria-label="{html.escape(c['theme_label'])}"
+            title="{html.escape(c['theme_label'])}">&#9680;</button>
+  </div>
   <div class="hero">
     <h1>CritterGym</h1>
     <p>{c['subtitle']}</p>
@@ -423,6 +582,7 @@ def render_site(
   <section>
     <h2>{c['board_h']}</h2>
     <p>{c['board_p']}</p>
+    <div class="table-wrap card">
     <table>
       <thead><tr><th>{c['th_rank']}</th><th>{c['th_base']}</th><th>{c['th_in']}</th>
       <th>{c['th_out']}</th><th>{c['th_gap']}</th></tr></thead>
@@ -430,13 +590,16 @@ def render_site(
 {rows}
       </tbody>
     </table>
+    </div>
     <p class="note">{c['spec_label']} <code>{spec}</code></p>
   </section>
 
   <section>
     <h2>{c['gap_h']}</h2>
     <p>{c['gap_p']}</p>
-    <img class="asset" src="{_GAP_PNG}" alt="{c['gap_alt']}">
+    <div class="card">
+{gap_svg}
+    </div>
   </section>
 
   <section>
@@ -452,7 +615,9 @@ def render_site(
   <section>
     <h2>{c['band_h']}</h2>
     <p>{c['band_p']}</p>
-    <img class="asset" src="{_BAND_PNG}" alt="{c['band_alt']}">
+    <div class="card">
+{band_svg}
+    </div>
     <p class="note">{c['band_note']}</p>
   </section>
 
@@ -468,14 +633,14 @@ def render_site(
 
   <section>
     <h2>{c['moat_h']}</h2>
-    <ul><li>{c['moat_1']}</li><li>{c['moat_2']}</li><li>{c['moat_3']}</li></ul>
-    <p><a href="{_REPO_URL}">{c['repo']}</a></p>
+    <ul class="moat"><li>{c['moat_1']}</li><li>{c['moat_2']}</li><li>{c['moat_3']}</li></ul>
+    <p><a class="repo-link" href="{_REPO_URL}">{c['repo']}</a></p>
   </section>
 
   <section>
     <h2>{c['tiers_h']}</h2>
     <p>{c['tiers_p']}</p>
-    <div class="table-wrap">
+    <div class="table-wrap card">
     <table>
       <thead><tr><th>{c['tiers_th_tier']}</th><th>{c['tiers_th_world']}</th>
       <th>{c['tiers_th_harder']}</th><th>{c['tiers_th_note']}</th></tr></thead>
@@ -496,6 +661,20 @@ def render_site(
 
   <hr>
   <p class="note">{c['honest']} Generated: {note}.</p>
+  <script>
+  (function() {{
+    var root = document.documentElement, key = "crittergym-theme";
+    try {{ var s = localStorage.getItem(key); if (s) root.setAttribute("data-theme", s); }}
+    catch (e) {{}}
+    window.__toggleTheme = function() {{
+      var cur = root.getAttribute("data-theme")
+        || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var next = cur === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try {{ localStorage.setItem(key, next); }} catch (e) {{}}
+    }};
+  }})();
+  </script>
 </body>
 </html>
 """
@@ -524,13 +703,13 @@ def _leaderboard_from_json(path: Path) -> Leaderboard:
 def build_assets(out: Path, spec: BenchmarkSpec) -> tuple[Leaderboard, bool]:
     """Score the free baselines once and (best-effort) generate the site's visual assets.
 
-    Uses a single :func:`score_baselines` pass for both the ranked leaderboard and the
-    generalization-gap plot (``gap.png``, via matplotlib). Records a gameplay GIF
-    (``gameplay.gif``) of the scripted agent on the first held-out seed it actually *clears*
-    (so the "defeats the boss" caption is true; falls back to an uncleared clip + honest caption
-    otherwise). Asset encoders (imageio/matplotlib, the ``[viz]`` extras) are imported lazily; if
-    missing, that asset is skipped and any committed file is reused. Returns the leaderboard and
-    whether the gameplay clip cleared the boss."""
+    Uses a single :func:`score_baselines` pass for the ranked leaderboard (the generalization-gap
+    and inference-band charts are now inline SVG rendered from these numbers — no matplotlib).
+    Records a gameplay GIF (``gameplay.gif``) of the scripted agent on the first held-out seed it
+    actually *clears* (so the "defeats the boss" caption is true; falls back to an uncleared clip +
+    honest caption otherwise). Raster encoders (imageio, the ``[render]`` extra) are imported
+    lazily; if missing, that asset is skipped and any committed file is reused. Returns the
+    leaderboard and whether the gameplay clip cleared the boss."""
     from critter_gym.leaderboard import Leaderboard as _LB
     from critter_gym.scoreboard import score_baselines
 
@@ -539,14 +718,6 @@ def build_assets(out: Path, spec: BenchmarkSpec) -> tuple[Leaderboard, bool]:
     heldout = spec.heldout_eval_seeds()
     table = score_baselines(env_factory, _free_policies(spec), heldin, heldout)
     board = _LB.from_score_table(spec, table)
-
-    # generalization-gap plot (matplotlib, lazy)
-    try:
-        from critter_gym.viz import plot_generalization_gap
-        fig = plot_generalization_gap(table)
-        fig.savefig(out / _GAP_PNG, dpi=100, bbox_inches="tight")
-    except Exception as exc:  # noqa: BLE001 — optional [viz]; keep committed asset
-        print(f"note: skipped {_GAP_PNG} ({type(exc).__name__}: {exc}); reusing committed asset.")
 
     # gameplay GIF (imageio via demo.save_demo, lazy) — prefer a held-out seed it clears
     cleared = False
@@ -575,40 +746,8 @@ def build_assets(out: Path, spec: BenchmarkSpec) -> tuple[Leaderboard, bool]:
         if not (out / _GAMEPLAY_GIF).exists() and _GIF_FALLBACK.exists():
             shutil.copy2(_GIF_FALLBACK, out / _GAMEPLAY_GIF)
 
-    _build_band_png(out)
     _build_world_thumbnails(out)
     return board, cleared
-
-
-# The inference-gated demonstrator sealed config (paper §5 / inference-baseline.md).
-_DEMO_SEALED = dict(master_seed=20260627, n_worlds=8, num_types=3, grid_size=5,
-                    boss_hp=140, boss_atk=6, boss_def=18, max_steps=40)
-_BAND_ARMS = ("oracle", "infer", "type_blind", "probe")
-
-
-def _build_band_png(out: Path) -> None:
-    """SE-rate inference band (the moat KPI): a bar of each scripted arm's super-effective-move
-    rate on the demonstrator sealed set — the free, reproducible band (no paid LLM number)."""
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        from critter_gym.eval_harness import SealedEvalSet, inference_baseline
-        band = inference_baseline(SealedEvalSet(**_DEMO_SEALED))
-        rates = [band.arms[a].se_rate for a in _BAND_ARMS]
-        colors = ["#22c55e", "#5b7cfa", "#e0a020", "#c0392b"]
-        fig, ax = plt.subplots(figsize=(6, 3.4))
-        ax.bar(_BAND_ARMS, [r * 100 for r in rates], color=colors)
-        ax.set_ylabel("super-effective-move rate (%)")
-        ax.set_ylim(0, 100)
-        ax.set_title("Inference band (scripted): who exploits the hidden chart?")
-        for i, r in enumerate(rates):
-            ax.text(i, r * 100 + 2, f"{r:.0%}", ha="center", fontsize=9)
-        fig.savefig(out / _BAND_PNG, dpi=100, bbox_inches="tight")
-        plt.close(fig)
-    except Exception as exc:  # noqa: BLE001 — optional [viz]; keep committed asset
-        print(f"note: skipped {_BAND_PNG} ({type(exc).__name__}); reusing committed asset.")
 
 
 def _build_world_thumbnails(out: Path) -> None:
@@ -635,7 +774,7 @@ def main() -> None:
     p.add_argument("--from-json", type=Path, default=None,
                    help="render a pre-scored Leaderboard.to_json() file (skips scoring/assets)")
     p.add_argument("--no-assets", action="store_true",
-                   help="skip (re)generating gameplay.gif / gap.png")
+                   help="skip (re)generating the gameplay.gif / world thumbnails")
     p.add_argument("--out", type=Path, default=_SITE_DIR, help="output site directory")
     p.add_argument("--note", default="scripted/free baselines", help="a short 'generated' note")
     a = p.parse_args()
@@ -653,7 +792,7 @@ def main() -> None:
             spec, score_baselines(spec.env_factory(), _free_policies(spec),
                                   spec.heldin_eval_seeds(), spec.heldout_eval_seeds()))
     else:
-        print("Scoring the free baselines and generating assets (gameplay.gif, gap.png)...")
+        print("Scoring the free baselines and generating assets (gameplay.gif, thumbnails)...")
         board, demo_cleared = build_assets(out, BenchmarkSpec())
 
     # Community submissions (validated + ranked); rejected files are reported, not silently
