@@ -79,6 +79,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         commit_battles: bool = False,
         min_gyms: int | None = None,
         boss_secondary: bool = False,
+        boss_pool_size: int | None = None,
         strict_battle: bool = False,
         render_mode: str | None = None,
     ) -> None:
@@ -110,6 +111,10 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         self.boss_def = boss_def
         # Opt-in: give each gym boss a HIDDEN secondary type (deeper inference). Off = byte-id.
         self.boss_secondary = boss_secondary
+        # Opt-in: per-episode boss-type diversity (recurrence pool size). None = historical
+        # formula (byte-identical); a value fixes how many distinct boss types recur per world
+        # (diversity-dial). Threaded to generate_region in reset.
+        self.boss_pool_size = boss_pool_size
         # Opt-in strict battle: resisted (< NEUTRAL) attacks deal 0 — no attrition wins
         # on resisted matchups (see battle.Battle). Off = byte-identical economy.
         self.strict_battle = strict_battle
@@ -186,6 +191,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             super_mult=self.super_mult,
             min_gyms=self.min_gyms,
             boss_secondary=self.boss_secondary,
+            boss_pool_size=self.boss_pool_size,
         )
 
         self._creatures = set(region.creatures)
