@@ -5,50 +5,120 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CritterGym — a contamination-proof RL benchmark</title>
   <style>
-    :root { --accent: #5b7cfa; }
+    :root {
+      --surface-0: #ffffff; --surface-1: #fcfcfb; --surface-2: #f3f4f6;
+      --border: #e5e6ea; --ink-1: #0b0b0b; --ink-2: #52514e; --ink-3: #8a8a80;
+      --accent: #2a78d6; --series-1: #2a78d6; --series-2: #1baf7a; --track: #eceef1;
+      --radius: 12px; --shadow: 0 8px 30px rgba(20,30,60,0.10); --maxw: 880px;
+      --sp: 1rem;
+    }
+    /* Dark theme: same tokens, dark steps (validated against the dark surface). Auto by
+       system preference unless the user forced light; always on when data-theme=dark. */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+        --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+        --accent: #6da7ec; --series-1: #3987e5; --series-2: #199e70; --track: #2b2b28;
+        --shadow: 0 8px 30px rgba(0,0,0,0.45);
+      }
+    }
+    :root[data-theme="dark"] {
+      --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+      --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+      --accent: #6da7ec; --series-1: #3987e5; --series-2: #199e70; --track: #2b2b28;
+      --shadow: 0 8px 30px rgba(0,0,0,0.45);
+    }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; max-width: 860px;
-            margin: 0 auto; padding: 0 1rem 3rem; line-height: 1.55; color: #1a1a1a; }
+    html { scroll-behavior: smooth; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: var(--maxw);
+            margin: 0 auto; padding: 0 1rem 4rem; line-height: 1.6; color: var(--ink-1);
+            background: var(--surface-0); -webkit-font-smoothing: antialiased;
+            transition: background 0.3s ease, color 0.3s ease; }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(16px); }
                           to { opacity: 1; transform: translateY(0); } }
     @keyframes gradientShift { 0% { background-position: 0% 50%; }
                                50% { background-position: 100% 50%; }
                                100% { background-position: 0% 50%; } }
-    .hero { margin: 0 -1rem 1.5rem; padding: 2.6rem 1.5rem 2rem; color: #fff;
-             background: linear-gradient(120deg, #5b7cfa, #8b5cf6, #22c55e);
-             background-size: 200% 200%; animation: gradientShift 12s ease infinite; }
-    .hero h1 { margin: 0; font-size: 2.4rem; letter-spacing: -0.02em; }
-    .hero p { margin: 0.4rem 0 0; opacity: 0.95; max-width: 46rem; }
-    .langbar { text-align: right; padding: 0.6rem 0; font-size: 0.9rem; }
-    section { animation: fadeInUp 0.7s ease both; }
-    section:nth-of-type(2) { animation-delay: 0.08s; }
-    section:nth-of-type(3) { animation-delay: 0.16s; }
-    h2 { margin-top: 2rem; }
-    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-    th, td { border: 1px solid #e2e2e2; padding: 0.45rem 0.7rem; text-align: right; }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+    .topbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem;
+               padding: 0.7rem 0; font-size: 0.9rem; }
+    .topbar a { text-decoration: none; }
+    .theme-btn { font: inherit; cursor: pointer; border: 1px solid var(--border);
+                  background: var(--surface-1); color: var(--ink-2); border-radius: 999px;
+                  width: 2rem; height: 2rem; line-height: 1; font-size: 1rem;
+                  transition: background 0.2s ease, transform 0.2s ease; }
+    .theme-btn:hover { background: var(--surface-2); transform: rotate(20deg); }
+    .hero { margin: 0 -1rem 2rem; padding: 3rem 1.6rem 2.4rem; color: #fff; border-radius: 0;
+             background: linear-gradient(120deg, #2a78d6, #6d5bd6, #1baf7a);
+             background-size: 200% 200%; animation: gradientShift 14s ease infinite; }
+    .hero h1 { margin: 0; font-size: clamp(2rem, 6vw, 2.8rem); letter-spacing: -0.02em;
+                font-weight: 800; }
+    .hero p { margin: 0.5rem 0 0; opacity: 0.96; max-width: 46rem; font-size: 1.05rem; }
+    section { animation: fadeInUp 0.7s ease both; margin-top: 2.4rem; }
+    section:nth-of-type(2) { animation-delay: 0.06s; }
+    section:nth-of-type(3) { animation-delay: 0.12s; }
+    h2 { font-size: 1.5rem; letter-spacing: -0.01em; margin: 0 0 0.4rem;
+          padding-bottom: 0.4rem; border-bottom: 2px solid var(--border); }
+    h3 { font-size: 1.05rem; margin: 1.4rem 0 0.5rem; color: var(--ink-2); }
+    p { margin: 0.5rem 0 1rem; color: var(--ink-2); }
+    p strong, li strong { color: var(--ink-1); }
+    .card { background: var(--surface-1); border: 1px solid var(--border);
+             border-radius: var(--radius); padding: 1.2rem 1.3rem; box-shadow: var(--shadow); }
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); }
+    table { border-collapse: collapse; width: 100%; margin: 0.6rem 0 0.4rem;
+             font-variant-numeric: tabular-nums; }
+    th, td { padding: 0.55rem 0.8rem; text-align: right;
+              border-bottom: 1px solid var(--border); }
     th:nth-child(2), td:nth-child(2) { text-align: left; }
-    thead { background: #f4f5ff; }
-    .table-wrap { overflow-x: auto; }
-    .note-cell { text-align: left; font-size: 0.86rem; min-width: 22rem; }
+    thead th { background: var(--surface-2); color: var(--ink-2); font-size: 0.82rem;
+                text-transform: uppercase; letter-spacing: 0.03em;
+                border-bottom: 2px solid var(--border); }
     tbody tr { transition: background 0.15s ease; }
-    tbody tr:hover { background: #f4f5ff; }
-    img.asset { max-width: 100%; border: 1px solid #eee; border-radius: 6px; }
-    img.pixel { image-rendering: pixelated; width: 320px; max-width: 100%;
-                 box-shadow: 0 6px 24px rgba(91,124,250,0.25); border-radius: 8px; }
+    tbody tr:hover { background: var(--surface-2); }
+    tbody tr:first-child td { font-weight: 600; }
+    .note-cell { text-align: left; font-size: 0.86rem; min-width: 22rem; color: var(--ink-2); }
+    .chart { width: 100%; max-width: 640px; height: auto;
+              margin: 0.8rem 0 0.3rem; display: block; }
+    .c-track { fill: var(--track); }
+    .c-lab { fill: var(--ink-2); font-size: 13px; }
+    .c-val { fill: var(--ink-1); font-size: 13px; font-weight: 600; }
+    .c-legend { display: flex; gap: 1.3rem; font-size: 0.85rem; color: var(--ink-2);
+                 margin: 0.1rem 0 0.6rem; }
+    .c-legend span { display: flex; align-items: center; gap: 0.45rem; }
+    .c-legend .sw { width: 0.85rem; height: 0.85rem; border-radius: 3px;
+                     margin: 0; border: none; }
+    img.pixel { image-rendering: pixelated; width: 340px; max-width: 100%;
+                 box-shadow: var(--shadow); border-radius: var(--radius);
+                 border: 1px solid var(--border); }
     ul.legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap;
-                 gap: 0.4rem 1.2rem; }
-    ul.legend li { display: flex; align-items: center; }
-    .sw { display: inline-block; width: 1rem; height: 1rem; border-radius: 3px;
-           margin-right: 0.45rem; border: 1px solid rgba(0,0,0,0.15); }
-    .worlds { display: flex; flex-wrap: wrap; gap: 0.8rem; }
-    img.pixel.sm { width: 200px; }
+                 gap: 0.5rem 1.4rem; }
+    ul.legend li { display: flex; align-items: center; color: var(--ink-2); font-size: 0.92rem; }
+    .sw { display: inline-block; width: 1rem; height: 1rem; border-radius: 4px;
+           margin-right: 0.5rem; border: 1px solid var(--border); }
+    .worlds { display: flex; flex-wrap: wrap; gap: 0.9rem; }
+    img.pixel.sm { width: 210px; }
+    ul.moat { list-style: none; padding: 0; display: grid; gap: 0.8rem; }
+    ul.moat li { background: var(--surface-1); border: 1px solid var(--border);
+                  border-left: 3px solid var(--accent); border-radius: var(--radius);
+                  padding: 0.9rem 1.1rem; color: var(--ink-2); }
     a { color: var(--accent); }
-    .note { color: #666; font-size: 0.9rem; }
-    code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    .repo-link { display: inline-block; margin-top: 0.6rem; font-weight: 600;
+                  padding: 0.55rem 1.1rem; border-radius: 999px; text-decoration: none;
+                  background: var(--accent); color: #fff; transition: transform 0.2s ease; }
+    .repo-link:hover { transform: translateY(-2px); }
+    .note { color: var(--ink-3); font-size: 0.9rem; }
+    code { background: var(--surface-2); padding: 0.12rem 0.35rem; border-radius: 4px;
+            font-size: 0.88em; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0 1.2rem; }
   </style>
 </head>
 <body>
-  <div class="langbar"><a href="index.ko.html">한국어 &rarr;</a></div>
+  <div class="topbar">
+    <a href="index.ko.html">한국어 &rarr;</a>
+    <button class="theme-btn" type="button" onclick="__toggleTheme()"
+            aria-label="Toggle light / dark theme"
+            title="Toggle light / dark theme">&#9680;</button>
+  </div>
   <div class="hero">
     <h1>CritterGym</h1>
     <p>A procedurally-generated creature-collection RL environment for measuring long-horizon agency and in-context rule inference.</p>
@@ -57,6 +127,7 @@
   <section>
     <h2>Leaderboard — ranked by held-out generalization</h2>
     <p>Each baseline is scored on <strong>held-out</strong> seeds (unseen maps <em>and</em> a new hidden type-chart) it never trained on. The rank is by held-out mean — the benchmark rewards generalization to worlds never seen.</p>
+    <div class="table-wrap card">
     <table>
       <thead><tr><th>rank</th><th>baseline</th><th>held-in</th>
       <th>held-out</th><th>gap</th></tr></thead>
@@ -65,13 +136,38 @@
       <tr><td>2</td><td>random</td><td>2.200</td><td>1.960</td><td>0.240</td></tr>
       </tbody>
     </table>
+    </div>
     <p class="note">Pinned spec (reproducible): <code>{&quot;grid_size&quot;: 10, &quot;max_steps&quot;: 200, &quot;n_heldin&quot;: 100, &quot;n_heldout&quot;: 100, &quot;num_creatures&quot;: 5, &quot;num_gyms&quot;: 3, &quot;patch_radius&quot;: 2}</code></p>
   </section>
 
   <section>
     <h2>How well does it generalize?</h2>
     <p>Held-in vs held-out mean per baseline — a small gap means the score is real generalization, not memorization of seen worlds.</p>
-    <img class="asset" src="gap.png" alt="Generalization-gap plot: held-in vs held-out mean per baseline">
+    <div class="card">
+<svg class="chart" viewBox="0 0 680 182" role="img" aria-label="Held-in vs held-out mean per baseline" preserveAspectRatio="xMinYMin meet">
+  <title>scripted · held-in: 3.48</title>
+  <text x="144" y="29.08" class="c-lab" text-anchor="end">scripted · held-in</text>
+  <rect x="154" y="14" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="14" width="474.0" height="22" rx="5" fill="var(--series-1)"><title>scripted · held-in: 3.48</title></rect>
+  <text x="636.0" y="29.08" class="c-val">3.48</text>
+  <title>scripted · held-out: 3.74</title>
+  <text x="144" y="73.08" class="c-lab" text-anchor="end">scripted · held-out</text>
+  <rect x="154" y="58" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="58" width="474.0" height="22" rx="5" fill="var(--series-2)"><title>scripted · held-out: 3.74</title></rect>
+  <text x="636.0" y="73.08" class="c-val">3.74</text>
+  <title>random · held-in: 2.20</title>
+  <text x="144" y="117.08" class="c-lab" text-anchor="end">random · held-in</text>
+  <rect x="154" y="102" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="102" width="347.6" height="22" rx="5" fill="var(--series-1)"><title>random · held-in: 2.20</title></rect>
+  <text x="509.6" y="117.08" class="c-val">2.20</text>
+  <title>random · held-out: 1.96</title>
+  <text x="144" y="161.07999999999998" class="c-lab" text-anchor="end">random · held-out</text>
+  <rect x="154" y="146" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="146" width="309.7" height="22" rx="5" fill="var(--series-2)"><title>random · held-out: 1.96</title></rect>
+  <text x="471.7" y="161.07999999999998" class="c-val">1.96</text>
+</svg>
+<div class="c-legend"><span><i class="sw" style="background:var(--series-1)"></i>held-in</span><span><i class="sw" style="background:var(--series-2)"></i>held-out</span></div>
+    </div>
   </section>
 
   <section>
@@ -91,7 +187,30 @@
   <section>
     <h2>Can it infer the hidden rules? (the moat KPI)</h2>
     <p>On an inference-gated sealed config, we measure how often each arm plays a <em>super-effective</em> move — i.e. exploits the hidden type-chart. A chart-<strong>knowing</strong> expert (oracle) reads ~100%; a scripted <strong>inferrer</strong> reads high; a chart-<strong>blind</strong> baseline reads near zero. The clean separation is what makes the eval measure in-context inference — un-memorizable, un-gameable.</p>
-    <img class="asset" src="band.png" alt="Super-effective-move rate by arm: oracle / infer / type_blind / probe">
+    <div class="card">
+<svg class="chart" viewBox="0 0 680 182" role="img" aria-label="Super-effective-move rate by scripted arm" preserveAspectRatio="xMinYMin meet">
+  <title>oracle: 100%</title>
+  <text x="144" y="29.08" class="c-lab" text-anchor="end">oracle</text>
+  <rect x="154" y="14" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="14" width="474.0" height="22" rx="5" fill="var(--series-1)"><title>oracle: 100%</title></rect>
+  <text x="636.0" y="29.08" class="c-val">100%</text>
+  <title>infer: 90%</title>
+  <text x="144" y="73.08" class="c-lab" text-anchor="end">infer</text>
+  <rect x="154" y="58" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="58" width="425.9" height="22" rx="5" fill="var(--series-1)"><title>infer: 90%</title></rect>
+  <text x="587.9" y="73.08" class="c-val">90%</text>
+  <title>type_blind: 27%</title>
+  <text x="144" y="117.08" class="c-lab" text-anchor="end">type_blind</text>
+  <rect x="154" y="102" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="102" width="126.1" height="22" rx="5" fill="var(--series-1)"><title>type_blind: 27%</title></rect>
+  <text x="288.1" y="117.08" class="c-val">27%</text>
+  <title>probe: 0%</title>
+  <text x="144" y="161.07999999999998" class="c-lab" text-anchor="end">probe</text>
+  <rect x="154" y="146" width="474" height="22" rx="5" class="c-track"/>
+  <rect x="154" y="146" width="2.0" height="22" rx="5" fill="var(--series-1)"><title>probe: 0%</title></rect>
+  <text x="164.0" y="161.07999999999998" class="c-val">0%</text>
+</svg>
+    </div>
     <p class="note">This is the free <em>scripted</em> band (reproducible). A frontier LLM was probed separately (a paid, evaluator-local run) and read low — near the chart-blind floor, inconclusive; that number is not shown on this reproducible chart.</p>
   </section>
 
@@ -107,14 +226,14 @@
 
   <section>
     <h2>Why this eval is a moat</h2>
-    <ul><li><strong>Contamination-proof.</strong> Evaluation worlds are regenerated per run from a secret seed in a held-out region; a submitter's declared training seeds are checked against the eval block, so &ldquo;could not have trained on it&rdquo; is <em>verifiable</em>. A fixed benchmark eventually leaks; this one <strong>cannot be memorized</strong>.</li><li><strong>RLVR scoring.</strong> Scores come only from <strong>verifiable</strong> subgoals (gym-clears, catches, evolutions) — boolean, un-gameable, no hand-tuned reward shaping.</li><li><strong>Un-gameable inference.</strong> The hidden type-chart is never in the observation, so a submission can only score by <em>inferring the rules in context</em> on a never-seen world — it cannot be looked up or memorized.</li></ul>
-    <p><a href="https://github.com/anolysius/creature-rl-env">Source &amp; paper on GitHub &rarr;</a></p>
+    <ul class="moat"><li><strong>Contamination-proof.</strong> Evaluation worlds are regenerated per run from a secret seed in a held-out region; a submitter's declared training seeds are checked against the eval block, so &ldquo;could not have trained on it&rdquo; is <em>verifiable</em>. A fixed benchmark eventually leaks; this one <strong>cannot be memorized</strong>.</li><li><strong>RLVR scoring.</strong> Scores come only from <strong>verifiable</strong> subgoals (gym-clears, catches, evolutions) — boolean, un-gameable, no hand-tuned reward shaping.</li><li><strong>Un-gameable inference.</strong> The hidden type-chart is never in the observation, so a submission can only score by <em>inferring the rules in context</em> on a never-seen world — it cannot be looked up or memorized.</li></ul>
+    <p><a class="repo-link" href="https://github.com/anolysius/creature-rl-env">Source &amp; paper on GitHub &rarr;</a></p>
   </section>
 
   <section>
     <h2>Difficulty tiers</h2>
     <p>Curated difficulty grades from the tier API (<code>critter_gym.env_tier</code> — the notes below are rendered <strong>verbatim from the code</strong>, so this page can never claim more than the code does). In the <strong>prototype</strong> buyer flow (a demonstrated artifact, not a live service), a buyer picks a tier, gets a <strong>signed, secret-free manifest</strong> for its sealed eval, submits, and receives a signed contamination-proof <strong>certificate</strong> bound to that tier.</p>
-    <div class="table-wrap">
+    <div class="table-wrap card">
     <table>
       <thead><tr><th>tier</th><th>world</th>
       <th>harder knobs</th><th>difficulty (measured facts, verbatim from code)</th></tr></thead>
@@ -144,5 +263,19 @@
 
   <hr>
   <p class="note"><strong>Honest scope.</strong> This is a <strong>prototype</strong> launch page, not a hosted product. Sealing here is <strong>in-process</strong> (a hosted eval-as-a-service needs server-side secret seeds + a submission sandbox). The gameplay clip is a <em>scripted</em> baseline (not a trained or LLM agent); leaderboard numbers are the free baselines via <code>scripts/build_site.py</code>. Publishing this page is a human decision. Generated: scripted/free baselines.</p>
+  <script>
+  (function() {
+    var root = document.documentElement, key = "crittergym-theme";
+    try { var s = localStorage.getItem(key); if (s) root.setAttribute("data-theme", s); }
+    catch (e) {}
+    window.__toggleTheme = function() {
+      var cur = root.getAttribute("data-theme")
+        || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var next = cur === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(key, next); } catch (e) {}
+    };
+  })();
+  </script>
 </body>
 </html>

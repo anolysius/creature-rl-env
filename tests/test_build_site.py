@@ -53,7 +53,7 @@ def test_render_site_carries_moat_and_honesty_copy() -> None:
     assert "contamination" in html or "un-gameable" in html or "cannot be memorized" in html
     assert "rlvr" in html or "verifiable" in html
     assert "gameplay.gif" in html   # the gameplay animation
-    assert "gap.png" in html        # the generalization-gap plot
+    assert "<svg" in html           # the generalization-gap chart (now inline SVG)
     assert "prototype" in html
     assert "in-process" in html
 
@@ -76,7 +76,7 @@ def test_render_site_korean() -> None:
     html = build_site.render_site(_board(), generated_note="test", lang="ko")
     assert "리더보드" in html or "리그" in html or "순위" in html  # Korean leaderboard heading
     assert "프로토타입" in html                                    # honest 'prototype' in Korean
-    assert "gameplay.gif" in html and "gap.png" in html
+    assert "gameplay.gif" in html and "<svg" in html
     for e in _board().entries:
         assert e.name in html
 
@@ -126,12 +126,61 @@ def test_render_site_grid_legend_korean() -> None:
 
 
 def test_render_site_embeds_band_and_thumbnails() -> None:
-    """The page references the SE-rate inference-band chart and the held-out world thumbnails."""
+    """The page renders the SE-rate inference-band chart (inline SVG) and the held-out world
+    thumbnails (raster env renders)."""
     for lang in ("en", "ko"):
         html = build_site.render_site(_board(), generated_note="t", lang=lang)
-        assert "band.png" in html                       # SE-rate inference band chart
+        assert "<svg" in html                           # SE-rate inference band chart (inline SVG)
         for i in (1, 2, 3):
             assert f"world_{i}.png" in html             # held-out world thumbnails
+
+
+# --- site-redesign: design system, inline SVG charts, en/ko parity, title -----
+
+
+def test_render_site_no_matplotlib_png_refs() -> None:
+    """The band + gap charts are inline SVG now — the page must not reference the old
+    matplotlib PNGs (band.png / gap.png)."""
+    for lang in ("en", "ko"):
+        html = build_site.render_site(_board(), generated_note="t", lang=lang)
+        assert "band.png" not in html
+        assert "gap.png" not in html
+
+
+def test_render_site_has_design_tokens_and_dark_theme() -> None:
+    """A design system: CSS custom properties (tokens) plus a dark-theme block."""
+    html = build_site.render_site(_board(), generated_note="t")
+    assert "--surface-1" in html and "--ink-1" in html      # design tokens
+    assert "prefers-color-scheme: dark" in html             # dark theme from the same tokens
+
+
+def test_render_site_inline_charts_are_svg_with_values() -> None:
+    """The gap + band charts are inline SVG that carry the actual measured values as direct
+    labels (no hardcoded numbers — values come from the leaderboard entries / band rates)."""
+    html = build_site.render_site(_board(), generated_note="t")
+    assert html.count("<svg") >= 2                          # gap chart + band chart
+    # gap chart shows each baseline's held-out value as a direct label
+    for e in _board().entries:
+        assert e.name in html
+
+
+def test_copy_en_ko_key_parity() -> None:
+    """en and ko copy dicts have the EXACT same key set — the ko page can never carry less
+    information than the en page (enforced so a redesign can't drop a key on one side)."""
+    en_keys = set(build_site._COPY["en"])
+    ko_keys = set(build_site._COPY["ko"])
+    assert en_keys == ko_keys, f"en-only={en_keys - ko_keys} ko-only={ko_keys - en_keys}"
+
+
+def test_render_site_title_is_localized() -> None:
+    """The <title> is language-specific (not hardcoded English on the ko page)."""
+    en = build_site.render_site(_board(), generated_note="t", lang="en")
+    ko = build_site.render_site(_board(), generated_note="t", lang="ko")
+    import re
+    en_title = re.search(r"<title>(.*?)</title>", en).group(1)
+    ko_title = re.search(r"<title>(.*?)</title>", ko).group(1)
+    assert en_title != ko_title                             # localized, not the same hardcoded str
+    assert any("가" <= ch <= "힣" for ch in ko_title)  # ko title contains Hangul
 
 
 def test_render_site_band_caption_is_honest() -> None:

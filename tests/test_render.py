@@ -124,3 +124,31 @@ def test_save_gif_writes_nonempty_file(tmp_path) -> None:
 
     assert path == out
     assert os.path.getsize(out) > 0
+
+
+# -- site-redesign: GIF loops forever by default -------------------------------
+
+
+def test_save_gif_passes_infinite_loop(monkeypatch, tmp_path) -> None:
+    """save_gif requests an infinite loop (GIF loop=0) so the gameplay clip never stops."""
+    imageio = pytest.importorskip("imageio.v2")
+    captured = {}
+
+    def _fake_mimsave(path, frames, **kwargs):  # noqa: ANN001
+        captured.update(kwargs)
+
+    monkeypatch.setattr(imageio, "mimsave", _fake_mimsave)
+    rendermod.save_gif([_frame(agent_pos=(0, 0))], str(tmp_path / "x.gif"), fps=4)
+    assert captured.get("loop") == 0  # 0 = loop forever in the GIF spec
+
+
+def test_saved_gif_has_infinite_loop_marker(tmp_path) -> None:
+    """The encoded GIF carries the NETSCAPE loop extension with count 0 (infinite)."""
+    pytest.importorskip("imageio")
+    frames = [_frame(agent_pos=(i, 0)) for i in range(3)]
+    out = str(tmp_path / "loop.gif")
+    rendermod.save_gif(frames, out, fps=4)
+    with open(out, "rb") as f:
+        data = f.read()
+    # NETSCAPE2.0 application extension present => a loop count is encoded.
+    assert b"NETSCAPE2.0" in data

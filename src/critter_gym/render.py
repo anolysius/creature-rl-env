@@ -69,14 +69,15 @@ def draw_frame(
     return frame
 
 
-def save_gif(frames: Sequence[np.ndarray], path: str, fps: int = 5) -> str:
+def save_gif(frames: Sequence[np.ndarray], path: str, fps: int = 5, *, loop: int = 0) -> str:
     """Encode a frame sequence to an animated GIF at ``path``; return ``path``.
 
-    imageio is imported lazily so this module stays importable (and the core stays
-    numpy-only) without the ``[render]`` extra; calling this without it raises
-    ``ImportError``.
+    ``loop=0`` (default) makes the GIF loop forever (the gameplay clip should never
+    stop); a positive count plays that many times. imageio is imported lazily so this
+    module stays importable (and the core stays numpy-only) without the ``[render]``
+    extra; calling this without it raises ``ImportError``.
     """
     import imageio.v2 as imageio
 
-    imageio.mimsave(path, list(frames), format="GIF", duration=1.0 / fps)
+    imageio.mimsave(path, list(frames), format="GIF", duration=1.0 / fps, loop=loop)
     return path
