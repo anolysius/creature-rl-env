@@ -81,6 +81,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         boss_secondary: bool = False,
         boss_pool_size: int | None = None,
         strict_battle: bool = False,
+        super_effective_only: bool = False,
         render_mode: str | None = None,
     ) -> None:
         super().__init__()
@@ -118,6 +119,10 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
         # Opt-in strict battle: resisted (< NEUTRAL) attacks deal 0 — no attrition wins
         # on resisted matchups (see battle.Battle). Off = byte-identical economy.
         self.strict_battle = strict_battle
+        # Opt-in super-effective-only: strict superset of strict_battle — only strictly
+        # super-effective (eff > NEUTRAL) hits deal damage, closing NEUTRAL grinding too
+        # (see battle.Battle). Off = byte-identical economy.
+        self.super_effective_only = super_effective_only
         # team-commit boss fights: one committed champion, no switching / no
         # force-switch cycling (DESIGN §3.1.1). Default False = M1 economy.
         self.commit_battles = commit_battles
@@ -268,6 +273,7 @@ class CritterEnv(Env[dict[str, np.ndarray], int]):
             chart=self._region_chart,
             commit_mode=self.commit_battles,
             strict_battle=self.strict_battle,
+            super_effective_only=self.super_effective_only,
         )
         self._battle_gym_idx = idx  # captured at entry — robust to action-space changes
         self._mode = "battle"

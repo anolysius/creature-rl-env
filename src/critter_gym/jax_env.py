@@ -107,6 +107,10 @@ class JaxEnvConfig(NamedTuple):
     # (< NEUTRAL effectiveness) hit deals 0 instead of the min-1 chip, both sides.
     # False (default) compiles to the exact prior damage expression (byte-identical).
     strict_battle: bool = False
+    # Opt-in super-effective-only (mirrors CritterEnv(super_effective_only=True)): a strict
+    # superset of strict_battle — only strictly super-effective (eff > NEUTRAL) hits deal
+    # damage, so NEUTRAL is zeroed too. False (default) is byte-identical.
+    super_effective_only: bool = False
 
 
 DEFAULT_CONFIG = JaxEnvConfig()
@@ -224,13 +228,18 @@ def make_jax_env(config: JaxEnvConfig = DEFAULT_CONFIG) -> JaxEnv:
     battle_max_turns = config.battle_max_turns
     family = config.family
     strict_battle = config.strict_battle
+    super_effective_only = config.super_effective_only
 
     def _gym_damage(power: jax.Array, atk: jax.Array, df: jax.Array, eff: jax.Array) -> jax.Array:
-        """Gym-battle damage honoring ``strict_battle`` (numpy ``Battle.damage`` mirror).
+        """Gym-battle damage honoring the economy flags (numpy ``Battle.damage`` mirror).
 
-        ``strict_battle`` is a compile-time constant: False keeps the exact legacy
-        expression (byte-identical jaxpr); True zeroes resisted (< NEUTRAL) hits.
+        Both flags are compile-time constants: False keeps the exact legacy expression
+        (byte-identical jaxpr). ``super_effective_only`` is a strict superset of
+        ``strict_battle`` — it zeroes NEUTRAL (eff <= 1.0) as well as resisted hits, so it
+        is checked first and dominates when both are set.
         """
+        if super_effective_only:
+            return jnp.where(eff <= 1.0, jnp.float32(0.0), _damage(power, atk, df, eff))
         if strict_battle:
             return jnp.where(eff < 1.0, jnp.float32(0.0), _damage(power, atk, df, eff))
         return _damage(power, atk, df, eff)
