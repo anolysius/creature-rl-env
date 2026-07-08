@@ -76,7 +76,7 @@ class SealedEvalSet:
         self, master_seed: int, n_worlds: int = 16, *, num_types: int = 8,
         commit_battles: bool = True, max_steps: int = 200,
         grid_size: int = 10, boss_hp: int = 120, boss_atk: int = 12, boss_def: int = 12,
-        patch_radius: int = 2, num_gyms: int = 3,
+        patch_radius: int = 2, num_gyms: int = 3, boss_pool_size: int | None = None,
     ) -> None:
         if n_worlds <= 0:
             raise ValueError("n_worlds must be positive")
@@ -106,6 +106,8 @@ class SealedEvalSet:
         # num_gyms is how many gyms must be cleared.
         self.patch_radius = int(patch_radius)
         self.num_gyms = int(num_gyms)
+        # Opt-in per-episode boss-type diversity (None = byte-identical; diversity-dial).
+        self.boss_pool_size = None if boss_pool_size is None else int(boss_pool_size)
 
     def _offset(self) -> int:
         """A secret, well-spread offset into the sealed region derived from ``master_seed``."""
@@ -121,11 +123,11 @@ class SealedEvalSet:
         """A fresh numpy ``CritterEnv`` (commit-v0) matching this set's config."""
         num_types, commit, steps = self.num_types, self.commit_battles, self.max_steps
         grid, b_hp, b_atk, b_def = self.grid_size, self.boss_hp, self.boss_atk, self.boss_def
-        patch, gyms = self.patch_radius, self.num_gyms
+        patch, gyms, pool = self.patch_radius, self.num_gyms, self.boss_pool_size
         return lambda: CritterEnv(
             commit_battles=commit, vary=True, num_types=num_types, max_steps=steps,
             grid_size=grid, boss_hp=b_hp, boss_atk=b_atk, boss_def=b_def,
-            patch_radius=patch, num_gyms=gyms,
+            patch_radius=patch, num_gyms=gyms, boss_pool_size=pool,
         )
 
 

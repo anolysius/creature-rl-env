@@ -70,6 +70,7 @@ def generate_region(
     super_mult: float = SUPER_EFFECTIVE,
     min_gyms: int | None = None,
     boss_secondary: bool = False,
+    boss_pool_size: int | None = None,
 ) -> Region:
     """Deterministically build a region from ``seed``.
 
@@ -139,7 +140,14 @@ def generate_region(
         # reused on later gyms of that type). It does NOT, on its own, make inference
         # load-bearing — a pilot showed switch-cost can dominate (DESIGN §3.1.1, future
         # work). Pool ≈ half the gym count → ~2 gyms per type.
-        pool_size = min(len(exploitable), max(2, n_gyms // 2))
+        # The recurrence pool caps per-episode boss-type *diversity*. Default (None) keeps the
+        # historical formula (byte-identical); an explicit ``boss_pool_size`` overrides it to
+        # sweep diversity at a fixed gym budget (diversity-dial: fewer types => more revisits =>
+        # easier for a first-sight inferrer; more types => harder). Clamped to the exploitable set.
+        if boss_pool_size is None:
+            pool_size = min(len(exploitable), max(2, n_gyms // 2))
+        else:
+            pool_size = min(len(exploitable), max(1, int(boss_pool_size)))
         pool_idx = rng.choice(len(exploitable), size=pool_size, replace=False)
         pool = [exploitable[int(i)] for i in pool_idx]
         boss_types = [pool[int(rng.integers(0, pool_size))] for _ in range(n_gyms)]
