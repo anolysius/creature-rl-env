@@ -100,6 +100,7 @@ class Battle:
         max_turns: int = DEFAULT_MAX_TURNS,
         commit_mode: bool = False,
         strict_battle: bool = False,
+        super_effective_only: bool = False,
     ) -> None:
         self.state = state
         self.chart = chart or TypeChart()
@@ -117,6 +118,15 @@ class Battle:
         # load-bearing (paper §5 limitation (i)). Default False keeps the historical
         # economy byte-identical. Mutual-zero stalemates end via the max_turns draw.
         self.strict_battle = strict_battle
+        # super-effective-only (opt-in): a STRICT SUPERSET of strict_battle — a hit deals 0
+        # unless it is strictly super-effective (eff > NEUTRAL), so NEUTRAL chip damage is
+        # zeroed too (strict only zeroed resisted < NEUTRAL). This closes the neutral-grinding
+        # attrition path the strict scout left open (§5 limitation (i)): landing the correct
+        # super-effective type becomes the ONLY route to a win. Default False keeps the
+        # economy byte-identical. Note single-type worlds stay winnable (matchup guarantee
+        # #15 gives eff == super_mult > NEUTRAL) but SE-only + a hidden secondary can yield
+        # an exact-NEUTRAL ceiling => a structurally unwinnable gym (measured Q2 caveat).
+        self.super_effective_only = super_effective_only
         self.terminated = False
         self.truncated = False
         self.winner: Side | None = None
@@ -127,6 +137,8 @@ class Battle:
         """Deterministic damage for a move (also used to score scripted choices)."""
         move = attacker.moves[move_index]
         eff = self.chart.multi_effectiveness(move.type, defender.types)
+        if self.super_effective_only and eff <= NEUTRAL:  # strict superset of strict_battle
+            return 0
         if self.strict_battle and eff < NEUTRAL:
             return 0
         return max(1, int(move.power * attacker.attack / defender.defense * eff))
