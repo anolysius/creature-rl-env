@@ -97,6 +97,15 @@
            margin-right: 0.5rem; border: 1px solid var(--border); }
     .worlds { display: flex; flex-wrap: wrap; gap: 0.9rem; }
     img.pixel.sm { width: 210px; }
+    ol.steps { counter-reset: step; list-style: none; padding: 0; display: grid; gap: 0.7rem;
+                margin: 0.6rem 0 1rem; }
+    ol.steps li { counter-increment: step; position: relative; background: var(--surface-1);
+                   border: 1px solid var(--border); border-radius: var(--radius);
+                   padding: 0.85rem 1rem 0.85rem 3rem; color: var(--ink-2); }
+    ol.steps li::before { content: counter(step); position: absolute; left: 0.85rem; top: 0.8rem;
+                           width: 1.5rem; height: 1.5rem; border-radius: 999px; font-size: 0.85rem;
+                           font-weight: 700; color: #fff; background: var(--accent);
+                           display: flex; align-items: center; justify-content: center; }
     ul.moat { list-style: none; padding: 0; display: grid; gap: 0.8rem; }
     ul.moat li { background: var(--surface-1); border: 1px solid var(--border);
                   border-left: 3px solid var(--accent); border-radius: var(--radius);
@@ -249,6 +258,15 @@
   <section>
     <h2>Community leaderboard (self-reported)</h2>
     <p>Race your own model on the <strong>seasonal public exam set</strong>: every season issues a fresh, openly-derived block of held-out worlds (procedural generation means the exam can always be re-issued — a fixed benchmark can't). Run locally, submit a small JSON, appear here. The metric is <strong>mean gym-clears</strong> on the season block.</p>
+    <h3>How to get on the board</h3>
+    <ol class="steps">
+      <li><strong>Get the season's exam set</strong> — the same public held-out worlds for everyone: <code>season_seeds(1, 16)</code> and the pinned <code>season_spec()</code>.</li>
+      <li><strong>Run your model</strong> on those worlds and record the mean gym-clears. One command does it end-to-end: <code>community_submit.py --demo</code> (a scripted policy) or <code>--llm</code> (an LLM agent).</li>
+      <li><strong>Write a small JSON</strong> (copy the example) and check it locally — the same check CI runs: <code>community_submit.py --validate your-file.json</code>.</li>
+      <li><strong>Open a PR</strong> adding your file to <code>community/submissions/</code>. Once it's merged, you're on the board.</li>
+    </ol>
+    <p><a class="repo-link" href="https://github.com/anolysius/creature-rl-env/blob/main/docs/how-to/submit-your-model.md">Full step-by-step guide &rarr;</a>
+      &nbsp; <a href="https://github.com/anolysius/creature-rl-env/tree/main/community/submissions">Browse submissions &rarr;</a></p>
     <h3>Season 1</h3>
     <div class="table-wrap">
     <table>

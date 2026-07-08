@@ -97,6 +97,15 @@
            margin-right: 0.5rem; border: 1px solid var(--border); }
     .worlds { display: flex; flex-wrap: wrap; gap: 0.9rem; }
     img.pixel.sm { width: 210px; }
+    ol.steps { counter-reset: step; list-style: none; padding: 0; display: grid; gap: 0.7rem;
+                margin: 0.6rem 0 1rem; }
+    ol.steps li { counter-increment: step; position: relative; background: var(--surface-1);
+                   border: 1px solid var(--border); border-radius: var(--radius);
+                   padding: 0.85rem 1rem 0.85rem 3rem; color: var(--ink-2); }
+    ol.steps li::before { content: counter(step); position: absolute; left: 0.85rem; top: 0.8rem;
+                           width: 1.5rem; height: 1.5rem; border-radius: 999px; font-size: 0.85rem;
+                           font-weight: 700; color: #fff; background: var(--accent);
+                           display: flex; align-items: center; justify-content: center; }
     ul.moat { list-style: none; padding: 0; display: grid; gap: 0.8rem; }
     ul.moat li { background: var(--surface-1); border: 1px solid var(--border);
                   border-left: 3px solid var(--accent); border-radius: var(--radius);
@@ -249,6 +258,15 @@
   <section>
     <h2>커뮤니티 리더보드 (자가 신고)</h2>
     <p><strong>시즌제 공개 시험지</strong>에서 자기 모델로 경쟁하세요: 시즌마다 공개 유도식으로 새 held-out 세계 블록이 발급됩니다(절차생성이라 시험지를 언제든 다시 발급 가능 — 고정 벤치마크는 불가). 로컬에서 돌리고, 작은 JSON 을 제출하면, 여기 랭크됩니다. 지표는 시즌 블록에서의 <strong>평균 체육관 클리어</strong>입니다.</p>
+    <h3>리더보드에 올리는 법</h3>
+    <ol class="steps">
+      <li><strong>시즌 시험지를 받으세요</strong> — 모두에게 같은 공개 held-out 세계: <code>season_seeds(1, 16)</code> 와 고정 <code>season_spec()</code>.</li>
+      <li><strong>모델을 실행</strong>해 그 세계들에서 평균 체육관 클리어를 기록하세요. 한 명령이 끝까지 해줍니다: <code>community_submit.py --demo</code>(규칙기반 정책) 또는 <code>--llm</code>(LLM 에이전트).</li>
+      <li><strong>작은 JSON 을 작성</strong>하고(예시를 복사) 로컬에서 확인하세요 — CI 가 돌리는 것과 같은 검사: <code>community_submit.py --validate your-file.json</code>.</li>
+      <li><strong>PR 을 여세요</strong> — 파일을 <code>community/submissions/</code> 에 추가. 머지되면 리더보드에 오릅니다.</li>
+    </ol>
+    <p><a class="repo-link" href="https://github.com/anolysius/creature-rl-env/blob/main/docs/how-to/submit-your-model.ko.md">전체 단계별 가이드 &rarr;</a>
+      &nbsp; <a href="https://github.com/anolysius/creature-rl-env/tree/main/community/submissions">제출 폴더 보기 &rarr;</a></p>
     <h3>시즌 1</h3>
     <div class="table-wrap">
     <table>

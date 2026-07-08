@@ -286,6 +286,32 @@ def test_render_site_community_honest_labels() -> None:
     assert "공지 후" in ko
 
 
+def test_render_site_community_howto_steps() -> None:
+    """AC1: the community section carries a 4-step 'how to submit' recipe with the key command
+    tokens, in both languages."""
+    for lang in ("en", "ko"):
+        page = build_site.render_site(_board(), generated_note="t", lang=lang, community=_subs())
+        assert page.count('<ol class="steps">') == 1
+        # exactly the four steps
+        steps_block = page.split('<ol class="steps">', 1)[1].split("</ol>", 1)[0]
+        assert steps_block.count("<li>") == 4
+        # the load-bearing command tokens a newcomer needs
+        assert "season_seeds" in page
+        assert "--validate" in page
+        assert "community/submissions/" in page
+
+
+def test_render_site_community_guide_links() -> None:
+    """AC2: the section links to the full guide (per language) and the submissions folder."""
+    en = build_site.render_site(_board(), generated_note="t", lang="en", community=_subs())
+    ko = build_site.render_site(_board(), generated_note="t", lang="ko", community=_subs())
+    base = "https://github.com/anolysius/creature-rl-env"
+    assert f'href="{base}/blob/main/docs/how-to/submit-your-model.md"' in en
+    assert f'href="{base}/blob/main/docs/how-to/submit-your-model.ko.md"' in ko
+    assert f'href="{base}/tree/main/community/submissions"' in en
+    assert f'href="{base}/tree/main/community/submissions"' in ko
+
+
 def test_render_site_community_backward_compatible() -> None:
     # Old call sites (no community arg) still render — the section shows the empty state.
     page = build_site.render_site(_board(), generated_note="t")
