@@ -66,15 +66,18 @@ _COPY: dict[str, dict[str, str]] = {
                  "generalization, not memorization of seen worlds.",
         "gap_alt": "Generalization-gap plot: held-in vs held-out mean per baseline",
         "demo_h": "The gameplay",
-        "demo_cleared": "A <strong>scripted baseline</strong> agent, dropped into an "
+        "demo_cleared": "A <strong>gym-seeking scripted demo</strong> agent, dropped into an "
                         "<strong>unseen held-out world</strong> (a new map and a new hidden "
                         "type-chart), navigates the map, battles at the gyms, and defeats the "
-                        "boss — no training on this world:",
-        "demo_uncleared": "A <strong>scripted baseline</strong> agent, dropped into an "
+                        "boss — no training on this world (demo-only policy; distinct from the "
+                        "ranked &ldquo;scripted&rdquo; baseline row):",
+        "demo_uncleared": "A <strong>gym-seeking scripted demo</strong> agent, dropped into an "
                           "<strong>unseen held-out world</strong> (a new map and a new hidden "
                           "type-chart), navigates the map and battles through the gyms — no "
-                          "training on this world:",
-        "demo_alt": "Gameplay: a scripted agent playing an unseen held-out world",
+                          "training on this world (demo-only policy; distinct from the ranked "
+                          "&ldquo;scripted&rdquo; baseline row):",
+        "demo_alt": "Gameplay: a gym-seeking scripted demo agent playing an unseen "
+                    "held-out world",
         "legend_h": "What the colors mean",
         "lg_agent": "the agent (you)", "lg_creature": "a catchable creature",
         "lg_gym_active": "an undefeated gym (a checkpoint to clear)",
@@ -185,13 +188,19 @@ _COPY: dict[str, dict[str, str]] = {
                  "아니라) 진짜 일반화라는 뜻입니다.",
         "gap_alt": "일반화 격차 플롯: baseline 별 held-in vs held-out 평균",
         "demo_h": "게임플레이",
-        "demo_cleared": "<strong>규칙기반(scripted) baseline</strong> 에이전트가 <strong>처음 보는 "
-                        "held-out 세계</strong>(새 맵 + 새 숨은 타입표)에 놓여 맵을 탐색하고, "
-                        "체육관에서 전투하며, 보스를 격파합니다 — 이 세계로 학습한 적 없음:",
-        "demo_uncleared": "<strong>규칙기반(scripted) baseline</strong> 에이전트가 "
-                          "<strong>처음 보는 held-out 세계</strong>(새 맵 + 새 숨은 타입표)에 놓여 "
-                          "맵을 탐색하고 체육관을 헤쳐 나갑니다 — 이 세계로 학습한 적 없음:",
-        "demo_alt": "게임플레이: 처음 보는 held-out 세계를 플레이하는 scripted 에이전트",
+        "demo_cleared": "<strong>체육관을 향해 움직이는 규칙기반(scripted) 데모</strong> "
+                        "에이전트가 "
+                        "<strong>처음 보는 held-out 세계</strong>(새 맵 + 새 숨은 타입표)에 놓여 "
+                        "맵을 탐색하고, 체육관에서 전투하며, 보스를 격파합니다 — 이 세계로 학습한 "
+                        "적 없음 (데모 전용 정책 — 랭킹표의 &ldquo;scripted&rdquo; 행과는 다른 "
+                        "정책):",
+        "demo_uncleared": "<strong>체육관을 향해 움직이는 규칙기반(scripted) 데모</strong> "
+                          "에이전트가 <strong>처음 보는 held-out 세계</strong>(새 맵 + 새 숨은 "
+                          "타입표)에 놓여 맵을 탐색하고 체육관을 헤쳐 나갑니다 — 이 세계로 학습한 "
+                          "적 없음 (데모 전용 정책 — 랭킹표의 &ldquo;scripted&rdquo; 행과는 다른 "
+                          "정책):",
+        "demo_alt": "게임플레이: 처음 보는 held-out 세계를 플레이하는 gym-seeking scripted "
+                    "데모 에이전트",
         "legend_h": "색깔의 의미",
         "lg_agent": "에이전트(플레이어)", "lg_creature": "잡을 수 있는 생물",
         "lg_gym_active": "안 깬 체육관(격파할 보스)",
@@ -778,10 +787,12 @@ def build_assets(out: Path, spec: BenchmarkSpec) -> tuple[Leaderboard, bool]:
     table = score_baselines(env_factory, _free_policies(spec), heldin, heldout)
     board = _LB.from_score_table(spec, table)
 
-    # gameplay GIF (imageio via demo.save_demo, lazy) — prefer a held-out seed it clears
+    # gameplay GIF (imageio via demo.save_demo, lazy) — prefer a held-out seed it clears.
+    # Uses demo_policy (gym-seeking, demo-only) so the clip walks TOWARD visible gyms;
+    # the ranked "scripted" row stays greedy_policy — published numbers untouched.
     cleared = False
     try:
-        from critter_gym.baselines import greedy_policy
+        from critter_gym.baselines import demo_policy
         from critter_gym.demo import record_episode, save_demo
         from critter_gym.envs.critter_env import CritterEnv
 
@@ -792,7 +803,7 @@ def build_assets(out: Path, spec: BenchmarkSpec) -> tuple[Leaderboard, bool]:
         rec = None
         for seed in heldout[:12]:
             r = record_episode(
-                render_env(), lambda o: greedy_policy(o, grid_size=8), seed=int(seed))
+                render_env(), lambda o: demo_policy(o, grid_size=8), seed=int(seed))
             if rec is None:
                 rec = r  # keep the first as a fallback
             if r.boss_defeated:
