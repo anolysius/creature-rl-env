@@ -58,3 +58,46 @@ def greedy_policy(obs: Obs, grid_size: int = 10) -> int:
     if r % 2 == 0:
         return MOVE_E if c < grid_size - 1 else MOVE_S
     return MOVE_W if c > 0 else MOVE_S
+
+
+def demo_policy(obs: Obs, grid_size: int = 10) -> int:
+    """Demo-only scripted policy for the site's gameplay GIF — NOT a ranked baseline.
+
+    ``greedy_policy`` (the ranked "scripted" baseline above — byte-identical, untouched)
+    only chases creatures (patch == 1), so its GIF kept lawnmower-sweeping even with a
+    gym on screen. This variant is *purposeful* for the demo: it also walks the shortest
+    path toward a visible LIVE gym (patch == 2; defeated gyms are hidden from the patch
+    by the env, so it cannot get stuck on a cleared one). Priorities:
+
+    1. In battle: press the attack (action 0 — moves are clamped to battle moves).
+    2. A creature on the agent's own tile: CATCH (one free step on the way).
+    3. Nearest visible live gym: step toward it (same Manhattan step as the chase).
+    4. Nearest visible creature: step toward it.
+    5. Nothing visible: the same deterministic boustrophedon sweep as ``greedy_policy``.
+
+    Stateless and deterministic. Ranked-baseline scores come from ``greedy_policy`` /
+    ``random_policy`` only; changing this function never moves a published number.
+    """
+    if "in_battle" in obs and int(obs["in_battle"][0]):
+        return 0
+    patch = obs["local_patch"]
+    side = patch.shape[0]
+    center = side // 2
+
+    if patch[center, center] == 1:
+        return CATCH
+
+    for target in (2, 1):  # live gym first, then creature — purposeful over opportunistic
+        visible = np.argwhere(patch == target)
+        if visible.size > 0:
+            rel = visible - center
+            nearest = rel[np.argmin(np.abs(rel).sum(axis=1))]
+            dr, dc = int(nearest[0]), int(nearest[1])
+            if abs(dr) >= abs(dc):
+                return MOVE_S if dr > 0 else MOVE_N
+            return MOVE_E if dc > 0 else MOVE_W
+
+    r, c = int(obs["agent_pos"][0]), int(obs["agent_pos"][1])
+    if r % 2 == 0:
+        return MOVE_E if c < grid_size - 1 else MOVE_S
+    return MOVE_W if c > 0 else MOVE_S
