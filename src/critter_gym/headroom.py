@@ -18,7 +18,7 @@ Verdict (on the PPO run-mean ``m`` and run-std ``s`` vs ``oracle``):
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import NamedTuple
 
 import numpy as np
@@ -59,6 +59,64 @@ def classify_headroom(
         verdict = "inconclusive"
     return HeadroomVerdict(
         verdict=verdict, ppo_mean=m, ppo_std=s, oracle=float(oracle), ratio=m / oracle,
+    )
+
+
+class ScaledHeadroomVerdict(NamedTuple):
+    """Output of :func:`classify_scaled_headroom` (plain floats / str / bool — serializable)."""
+
+    verdict: str  # classify_headroom verdict on the best-scaled config
+    strong_label: str  # the best NON-tiny config (the credible "materially stronger baseline")
+    strong_mean: float
+    strong_std: float
+    tiny_mean: float
+    oracle: float
+    ratio: float  # strong_mean / oracle
+    non_vacuous: bool  # strong_mean > tiny_mean (else the "robust" read is hollow)
+    exceeds: bool  # strong_mean > oracle (scripted oracle not a valid ceiling here)
+
+
+def classify_scaled_headroom(
+    sweep: Mapping[str, Sequence[float]], oracle: float, *,
+    tiny_label: str, frac: float = 0.75, k: float = 1.0,
+) -> ScaledHeadroomVerdict:
+    """Classify a capacity+budget *sweep* of the strongest arm vs the oracle (pre-registered).
+
+    ``sweep`` maps a config label to its per-run held-out gym-clear means; ``tiny_label`` is the
+    published/narrow baseline (e.g. #3's GRU h128) that is EXCLUDED from being the "strong"
+    config. The best NON-tiny config (highest run-mean) is taken as the credible materially
+    stronger baseline, and :func:`classify_headroom` (``frac``/``k`` frozen before data) is
+    applied to its runs. Two guard flags accompany the verdict:
+
+    - ``non_vacuous`` = ``strong_mean > tiny_mean`` — a scaled config that fails to beat the
+      narrow baseline is underfit; a "hard-and-learnable" read off it would be hollow.
+    - ``exceeds`` = ``strong_mean > oracle`` — the scaled arm outscores the scripted oracle, so
+      the oracle is not a valid ceiling for this config.
+
+    Best-config selection, ``frac``/``k`` and the sweep grid are meant to be frozen before the
+    data (the task's qa-checklist) so this is not a post-hoc pick of the flattering config.
+    Raises on an empty sweep, a missing ``tiny_label``, no non-tiny config, or a non-positive
+    oracle.
+    """
+    if not sweep:
+        raise ValueError("sweep must be non-empty")
+    if tiny_label not in sweep:
+        raise ValueError(f"tiny_label {tiny_label!r} not in sweep")
+    if oracle <= 0:
+        raise ValueError(f"oracle must be positive, got {oracle}")
+    non_tiny = {label: runs for label, runs in sweep.items() if label != tiny_label}
+    if not non_tiny:
+        raise ValueError("sweep has no non-tiny config to classify")
+
+    means = {label: float(np.mean(list(runs))) for label, runs in non_tiny.items()}
+    strong_label = max(means, key=lambda lb: means[lb])
+    strong_runs = non_tiny[strong_label]
+    hv = classify_headroom(strong_runs, oracle, frac=frac, k=k)
+    tiny_mean = float(np.mean(list(sweep[tiny_label])))
+    return ScaledHeadroomVerdict(
+        verdict=hv.verdict, strong_label=strong_label, strong_mean=hv.ppo_mean,
+        strong_std=hv.ppo_std, tiny_mean=tiny_mean, oracle=hv.oracle, ratio=hv.ratio,
+        non_vacuous=hv.ppo_mean > tiny_mean, exceeds=hv.ppo_mean > oracle,
     )
 
 
