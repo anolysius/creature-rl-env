@@ -316,3 +316,64 @@ def test_render_site_community_backward_compatible() -> None:
     # Old call sites (no community arg) still render — the section shows the empty state.
     page = build_site.render_site(_board(), generated_note="t")
     assert "Community leaderboard" in page
+
+
+# --- site-how-it-works: the "How the exam works" deep-dive page (en/ko) ----------
+
+
+def test_render_how_page_bilingual_and_deterministic() -> None:
+    en_a, en_b = build_site.render_how_page("en"), build_site.render_how_page("en")
+    ko = build_site.render_how_page("ko")
+    assert en_a == en_b                       # deterministic
+    assert "<html" in en_a and "<html" in ko
+    assert en_a != ko                          # actually localized
+
+
+def test_how_page_carries_mechanics_not_claims() -> None:
+    """The page explains mechanics (win condition, hidden chart, anti-grinding) but makes NO
+    measurement claims — publishing measured results on the sales page is a human gate."""
+    en = build_site.render_how_page("en").lower()
+    assert "hidden" in en and ("type chart" in en or "type-chart" in en)
+    assert "grind" in en                       # the anti-grinding rules table
+    assert "does not measure" in en or "not measure" in en  # honest scope
+    # no measurement claims sneak in:
+    assert "dial-visible" not in en
+    assert "0.68" not in en and "0.47" not in en
+
+
+def test_how_page_constants_match_engine() -> None:
+    """The quoted effectiveness multipliers are DERIVED from the engine constants, so a future
+    engine change makes this page's copy stale loudly (code-content drift guard)."""
+    from critter_gym.types import NOT_VERY_EFFECTIVE, SUPER_EFFECTIVE
+
+    for lang in ("en", "ko"):
+        page = build_site.render_how_page(lang)
+        assert f"×{SUPER_EFFECTIVE:g}" in page       # ×2
+        assert f"×{NOT_VERY_EFFECTIVE:g}" in page    # ×0.5
+        assert f"{SUPER_EFFECTIVE / NOT_VERY_EFFECTIVE:g}×" in page  # the 4× swing
+
+
+def test_landing_links_to_how_page_and_back() -> None:
+    en = build_site.render_site(_board(), generated_note="t", lang="en")
+    ko = build_site.render_site(_board(), generated_note="t", lang="ko")
+    assert 'href="how-it-works.html"' in en
+    assert 'href="how-it-works.ko.html"' in ko
+    how_en = build_site.render_how_page("en")
+    how_ko = build_site.render_how_page("ko")
+    assert 'href="index.html"' in how_en       # back to the landing
+    assert 'href="index.ko.html"' in how_ko
+
+
+def test_how_page_language_toggle() -> None:
+    assert 'href="how-it-works.ko.html"' in build_site.render_how_page("en")
+    assert 'href="how-it-works.html"' in build_site.render_how_page("ko")
+
+
+def test_landing_carries_catch_clarification_and_scope_box() -> None:
+    """The legend clarifies that catching never changes battle strength (a fixed starter party
+    fights), and a landing box states what the exam measures / deliberately does NOT measure."""
+    en = build_site.render_site(_board(), generated_note="t", lang="en").lower()
+    ko = build_site.render_site(_board(), generated_note="t", lang="ko")
+    assert "battle strength" in en and "starter party" in en
+    assert "전투력" in ko
+    assert "does not measure" in en or "not measure" in en

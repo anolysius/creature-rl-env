@@ -166,6 +166,103 @@ _COPY: dict[str, dict[str, str]] = {
                   "sandbox). The gameplay clip is a <em>scripted</em> baseline (not a trained or "
                   "LLM agent); leaderboard numbers are the free baselines via "
                   "<code>scripts/build_site.py</code>. Publishing this page is a human decision.",
+        # -- landing: exam-scope box + catch clarification + deep-dive links --
+        "hiw_href": "how-it-works.html",
+        "demo_more": "How does a gym battle actually work? Read the exam mechanics &rarr;",
+        "lg_catch_note": "Catching (C) is a separate scoring subgoal — battles are fought by a "
+                         "fixed starter party, and a caught creature never changes battle "
+                         "strength (this closes the collect-to-win grinding shortcut).",
+        "scope_h": "What this exam measures — and deliberately does NOT",
+        "scope_does": "<strong>Measures:</strong> long-horizon planning under a small egocentric "
+                      "view, inferring a <strong>hidden, per-world type chart</strong> from "
+                      "observed damage (experiment &rarr; observe &rarr; remember &rarr; reuse), "
+                      "and generalization to unseen worlds.",
+        "scope_doesnt": "<strong>Deliberately does not measure:</strong> RPG-style resource and "
+                        "progression management. There is no wild grinding, catching never adds "
+                        "battle strength, and levels only come from winning — every "
+                        "&ldquo;win without understanding&rdquo; shortcut is closed on purpose, "
+                        "like banning calculators in a math exam.",
+        "scope_more": "Read how the exam works &rarr;",
+        # -- how-it-works page (mechanics only; no measured claims — human gate) --
+        "hiw_title": "CritterGym — How the exam works",
+        "hiw_other_href": "how-it-works.ko.html",
+        "hiw_subtitle": "The mechanics behind the leaderboard — the win condition, the hidden "
+                        "type chart, and why there is no grinding. Engine facts only; measured "
+                        "results (and their caveats) live in the repository.",
+        "hiw_back": "&larr; Back to the leaderboard",
+        "hiw_win_h": "What does it take to beat a gym?",
+        "hiw_win_p1": "Step onto a gym tile and a boss battle starts (your party enters fully "
+                      "healed). The win condition is simple: <strong>reduce the boss's HP to 0 "
+                      "before your whole party faints</strong> (a turn cap ends stalemates as a "
+                      "draw). Both sides act every turn, the faster side hits first, and there "
+                      "are <strong>no dice</strong> — the same choices always produce the same "
+                      "battle.",
+        "hiw_win_p2": "Per-turn damage is roughly <code>move power &times; (attack &divide; "
+                      "defense) &times; matchup</code>, and the matchup multiplier is "
+                      "<strong>{mult}</strong> (super-effective / neutral / resisted) — a "
+                      "<strong>{swing} swing</strong> between the right and wrong pick. Bosses "
+                      "are tuned tanky, so that multiplier effectively decides the damage race: "
+                      "the right creature wins it, the wrong one loses it.",
+        "hiw_chart_h": "The type chart is hidden — and re-rolled every world",
+        "hiw_chart_p": "You can see the boss's type <em>id</em>, but <strong>what beats it is "
+                       "re-rolled per world seed</strong> and never shown. Memorizing a fixed "
+                       "FIRE&gt;GRASS&gt;WATER meta is useless here — the only route is to "
+                       "attack, watch how much HP actually drops, and infer the matchup from "
+                       "the observation. World generation guarantees every boss has at least "
+                       "one counter in your starter party — in the default exam; the hidden-"
+                       "secondary knob can weaken this — so the exam stays solvable in "
+                       "principle.",
+        "hiw_cx_h": "How hard is finding the counter?",
+        "hiw_cx_p": "The raw search is deliberately <strong>small</strong>: three starters, one "
+                    "move each, and a single hit reveals one cell of the answer (the damage "
+                    "number tells you super / neutral / resisted). Worst case, two or three "
+                    "probes solve one boss type. The difficulty is engineered into the "
+                    "<strong>cost structure of those experiments</strong> instead:",
+        "hiw_cx_th1": "Difficulty axis",
+        "hiw_cx_th2": "What it does",
+        "hiw_cx_rows": "<tr><td>Probing is not free</td><td class=\"note-cell\">While you test "
+                       "a wrong creature, the boss is hitting back — and every step of the "
+                       "episode budget you spend probing is a step not spent exploring.</td>"
+                       "</tr><tr><td>The ledger grows</td><td class=\"note-cell\">What you must "
+                       "remember scales with the number of distinct boss types in the world "
+                       "&times; your party — from trivial (one recurring type) to real "
+                       "bookkeeping (many).</td></tr><tr><td>Commit mode (opt-in knob)</td>"
+                       "<td class=\"note-cell\">No switching once the fight starts — you must "
+                       "pick your champion <em>before</em> the battle, from memory alone. "
+                       "In-battle probing is gone.</td></tr><tr><td>Hidden secondary types "
+                       "(opt-in knob)</td><td class=\"note-cell\">A boss may carry a hidden "
+                       "second type; multipliers multiply, so one observation no longer "
+                       "cleanly identifies the matchup.</td></tr><tr><td>Strict economies "
+                       "(opt-in knobs)</td><td class=\"note-cell\">Variants zero out resisted "
+                       "(or even neutral) damage — the wrong answer stops chipping and the "
+                       "right pick becomes the only path to a win.</td></tr>",
+        "hiw_rules_h": "Why you can't grind your way to a win",
+        "hiw_rules_p": "Several rules look odd if you expect a creature-collection RPG. They "
+                       "are not arbitrary — each one closes a specific &ldquo;win without "
+                       "understanding&rdquo; shortcut, the way a math exam bans calculators "
+                       "and open books. One principle: <strong>the only reliable way to win "
+                       "is to infer the hidden chart.</strong>",
+        "hiw_rules_th1": "Rule",
+        "hiw_rules_th2": "Shortcut it closes",
+        "hiw_rules_rows": "<tr><td>No wild battles / no XP farming</td><td class=\"note-cell\">"
+                          "Out-leveling the problem instead of out-thinking it.</td></tr>"
+                          "<tr><td>Catching never adds battle strength</td><td class=\"note-"
+                          "cell\">Collect-to-win — patience substituting for inference.</td>"
+                          "</tr><tr><td>Levels come only from winning</td><td class=\"note-"
+                          "cell\">Pre-grinding before a challenge; strength is a consequence "
+                          "of solving, never a substitute.</td></tr><tr><td>Rematches are free "
+                          "but deterministic</td><td class=\"note-cell\">Retry-until-lucky — a "
+                          "rematch only helps if you <em>change your strategy</em>.</td></tr>",
+        "hiw_scope_why": "This scope is a choice, not an accident: adding an RPG economy "
+                         "(resources, preparation, grinding decisions) would reopen the very "
+                         "attrition shortcuts the rules above close. Harder variants exist as "
+                         "opt-in knobs instead, so the default exam stays a clean measure of "
+                         "inference.",
+        "hiw_honest": "<strong>Honest scope.</strong> This page documents engine mechanics "
+                      "only — the multipliers above are derived from the engine constants at "
+                      "build time, and no measured result is claimed here. Measurements and "
+                      "their caveats live in the repository; publishing any measured claim on "
+                      "this site is a human decision.",
     },
     "ko": {
         "lang_name": "한국어",
@@ -288,6 +385,89 @@ _COPY: dict[str, dict[str, str]] = {
                   "리더보드 수치는 <code>scripts/build_site.py</code> 의 무료 baseline 입니다. "
                   "이 페이지의 공개는 "
                   "사람의 결정입니다.",
+        # -- landing: exam-scope box + catch clarification + deep-dive links --
+        "hiw_href": "how-it-works.ko.html",
+        "demo_more": "체육관 전투는 실제로 어떻게 이길까요? 시험지 작동 원리 보기 &rarr;",
+        "lg_catch_note": "잡기(C)는 별도 점수 과제입니다 — 전투는 고정 스타터 파티로 하며, 잡은 "
+                         "생물은 전투력을 바꾸지 않습니다(“모아서 이기기” 우회로 차단).",
+        "scope_h": "이 시험지가 재는 것 — 그리고 일부러 재지 않는 것",
+        "scope_does": "<strong>재는 것:</strong> 좁은 시야에서의 장기 계획, <strong>세계마다 "
+                      "재추첨되는 숨은 상성표</strong>를 관찰 데미지로부터 추론(실험 &rarr; 관찰 "
+                      "&rarr; 기억 &rarr; 재활용)하는 능력, 처음 보는 세계로의 일반화.",
+        "scope_doesnt": "<strong>일부러 재지 않는 것:</strong> RPG식 자원·성장 관리. 야생 파밍이 "
+                        "없고, 잡아도 전투력이 늘지 않으며, 레벨은 승리로만 오릅니다 — "
+                        "“이해 없이 이기는” 우회로를 전부 의도적으로 막았습니다. 수학 "
+                        "시험장에서 계산기를 금지하는 것과 같은 이유입니다.",
+        "scope_more": "시험지 작동 원리 읽기 &rarr;",
+        # -- how-it-works page (mechanics only; no measured claims — human gate) --
+        "hiw_title": "CritterGym — 시험지 작동 원리",
+        "hiw_other_href": "how-it-works.html",
+        "hiw_subtitle": "리더보드 뒤의 역학 — 승리 조건, 숨은 상성표, 그리고 왜 파밍이 없는가. "
+                        "엔진 사실만 다룹니다. 측정 결과(와 그 한계)는 저장소에 있습니다.",
+        "hiw_back": "&larr; 리더보드로 돌아가기",
+        "hiw_win_h": "체육관을 이기려면 무엇이 필요한가?",
+        "hiw_win_p1": "체육관 타일을 밟으면 보스전이 시작됩니다(파티는 풀피로 입장). 승리 조건은 "
+                      "단순합니다: <strong>파티가 전멸하기 전에 보스 HP를 0으로</strong> 만들면 "
+                      "됩니다(턴 제한을 넘기면 무승부). 매 턴 양쪽이 행동하고 빠른 쪽이 먼저 "
+                      "때리며, <strong>주사위는 없습니다</strong> — 같은 선택은 항상 같은 결과를 "
+                      "냅니다.",
+        "hiw_win_p2": "턴당 데미지는 대략 <code>기술 위력 &times; (공격 &divide; 방어) &times; "
+                      "상성</code>이고, 상성 배수는 <strong>{mult}</strong>(유리/보통/불리) — "
+                      "정답과 오답 사이 <strong>{swing} 스윙</strong>입니다. 보스는 일부러 맷집 "
+                      "좋게 튜닝돼 있어 이 배수가 사실상 데미지 경주의 승패를 가릅니다: 맞는 "
+                      "크리처는 이기고, 틀린 크리처는 집니다.",
+        "hiw_chart_h": "상성표는 숨겨져 있고 — 세계마다 재추첨됩니다",
+        "hiw_chart_p": "보스의 타입 <em>번호</em>는 보이지만 <strong>그걸 뭐가 이기는지는 세계 "
+                       "seed마다 재추첨</strong>되고 절대 표시되지 않습니다. 고정된 "
+                       "물&gt;불&gt;풀 메타 암기는 여기서 무용지물 — 직접 때려보고, 실제로 깎인 "
+                       "HP를 관찰하고, 그 관찰로 상성을 추론하는 것이 유일한 경로입니다. 세계 "
+                       "생성이 모든 보스에 스타터 파티 내 카운터 1개 이상을 보장하므로(기본 "
+                       "시험지 기준 — 숨은 2차 타입 손잡이는 이 보장을 약화시킬 수 있음) "
+                       "시험은 원리적으로 풀 수 있습니다.",
+        "hiw_cx_h": "카운터 찾기는 얼마나 어려운가?",
+        "hiw_cx_p": "탐색 자체는 일부러 <strong>작게</strong> 설계했습니다: 스타터 3마리, 기술 "
+                    "각 1개, 한 대 치면 정답 한 칸이 드러납니다(데미지 크기가 유리/보통/불리를 "
+                    "말해줌). 최악이어도 두세 번의 실험이면 보스 타입 하나가 풀립니다. 난이도는 "
+                    "대신 <strong>그 실험의 비용 구조</strong>에 심어져 있습니다:",
+        "hiw_cx_th1": "난이도 축",
+        "hiw_cx_th2": "무슨 일이 벌어지나",
+        "hiw_cx_rows": "<tr><td>실험이 공짜가 아님</td><td class=\"note-cell\">틀린 크리처를 "
+                       "시험하는 동안 보스가 반격하고, 찔러보기에 쓴 걸음은 탐사에 못 쓴 "
+                       "걸음입니다.</td></tr><tr><td>장부가 커짐</td><td class=\"note-cell\">"
+                       "기억할 양 = 세계에 등장하는 보스 타입 수 &times; 파티 — 한 타입만 "
+                       "반복되면 암기가 껌이지만, 여러 타입이 섞이면 진짜 장부 관리가 "
+                       "됩니다.</td></tr><tr><td>커밋 모드(opt-in 손잡이)</td><td class=\"note-"
+                       "cell\">전투 시작 후 교체 금지 — 싸우기 <em>전에</em> 기억만으로 챔피언을 "
+                       "골라야 합니다. 전투 중 찔러보기가 사라집니다.</td></tr><tr><td>숨은 2차 "
+                       "타입(opt-in 손잡이)</td><td class=\"note-cell\">보스가 숨은 두 번째 "
+                       "타입을 가질 수 있고 배수는 곱해지므로, 관찰 한 번으로는 상성이 깔끔히 "
+                       "판별되지 않습니다.</td></tr><tr><td>엄격 경제(opt-in 손잡이)</td><td "
+                       "class=\"note-cell\">불리(또는 보통) 타격의 데미지를 0으로 만드는 변형 — "
+                       "오답은 아예 깎지 못하고, 정답이 승리의 유일한 경로가 됩니다.</td></tr>",
+        "hiw_rules_h": "왜 갈아서(grinding) 이길 수 없는가",
+        "hiw_rules_p": "크리처 수집 RPG를 기대하고 보면 이상해 보이는 룰이 몇 개 있습니다. "
+                       "제각각이 아닙니다 — 각각이 “이해 없이 이기는” 특정 우회로를 "
+                       "막습니다. 수학 시험장이 계산기와 오픈북을 금지하는 것과 같은 원리, 즉 "
+                       "<strong>이기는 유일한 확실한 길이 숨은 상성표의 추론이 되도록</strong> "
+                       "하는 하나의 원칙입니다.",
+        "hiw_rules_th1": "룰",
+        "hiw_rules_th2": "막는 우회로",
+        "hiw_rules_rows": "<tr><td>야생 전투/경험치 파밍 없음</td><td class=\"note-cell\">"
+                          "생각 대신 레벨로 문제를 눌러버리기.</td></tr><tr><td>잡아도 전투력 "
+                          "불변</td><td class=\"note-cell\">모아서 이기기 — 추론을 인내로 "
+                          "대체하기.</td></tr><tr><td>레벨은 승리로만</td><td class=\"note-"
+                          "cell\">도전 전에 미리 갈아서 세지고 오기 — 강함은 풀이의 결과이지 "
+                          "대체물이 아닙니다.</td></tr><tr><td>재도전 무한·단 결정론</td><td "
+                          "class=\"note-cell\">될 때까지 반복 — 재도전은 <em>전략을 바꿀 때만</em> "
+                          "의미가 있습니다.</td></tr>",
+        "hiw_scope_why": "이 범위는 사고가 아니라 선택입니다: RPG 경제(자원·준비·파밍 결정)를 "
+                         "넣으면 위 룰들이 막아놓은 소모전 우회로가 도로 열립니다. 그래서 더 "
+                         "어려운 변형은 opt-in 손잡이로 두고, 기본 시험지는 추론의 깨끗한 측정으로 "
+                         "유지합니다.",
+        "hiw_honest": "<strong>정직한 범위.</strong> 이 페이지는 엔진 역학만 다룹니다 — 위의 "
+                      "배수들은 빌드 시점에 엔진 상수에서 유도되며, 여기서 어떤 측정 결과도 "
+                      "주장하지 않습니다. 측정과 그 한계는 저장소에 있고, 이 사이트에 측정 주장을 "
+                      "싣는 것은 사람의 결정입니다.",
     },
 }
 
@@ -673,10 +853,21 @@ def render_site(
     <h2>{c['demo_h']}</h2>
     <p>{demo_caption}</p>
     <img class="pixel" src="{_GAMEPLAY_GIF}" alt="{c['demo_alt']}">
+    <p class="note"><a href="{c['hiw_href']}">{c['demo_more']}</a></p>
     <h3>{c['legend_h']}</h3>
     <ul class="legend">
 {legend}
     </ul>
+    <p class="note">{c['lg_catch_note']}</p>
+  </section>
+
+  <section>
+    <h2>{c['scope_h']}</h2>
+    <div class="card">
+      <p>{c['scope_does']}</p>
+      <p>{c['scope_doesnt']}</p>
+      <p style="margin-bottom:0"><a href="{c['hiw_href']}">{c['scope_more']}</a></p>
+    </div>
   </section>
 
   <section>
@@ -729,6 +920,160 @@ def render_site(
 
   <hr>
   <p class="note">{c['honest']} Generated: {note}.</p>
+  <script>
+  (function() {{
+    var root = document.documentElement, key = "crittergym-theme";
+    try {{ var s = localStorage.getItem(key); if (s) root.setAttribute("data-theme", s); }}
+    catch (e) {{}}
+    window.__toggleTheme = function() {{
+      var cur = root.getAttribute("data-theme")
+        || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var next = cur === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try {{ localStorage.setItem(key, next); }} catch (e) {{}}
+    }};
+  }})();
+  </script>
+</body>
+</html>
+"""
+
+
+def render_how_page(lang: str = "en") -> str:
+    """Render the "How the exam works" deep-dive page (mechanics only, ``en``/``ko``).
+
+    Documents the win condition, the hidden per-world type chart, the counter-finding cost
+    structure, and the anti-grinding rules — the questions a visitor actually asks at the
+    gameplay GIF. Engine constants (the effectiveness multipliers) are interpolated from
+    ``critter_gym.types`` at build time so the copy can never drift from the code. NO measured
+    result is claimed here — publishing measured claims on the site is a human decision.
+    Deterministic and framework-free; keeps its own compact stylesheet (same design tokens as
+    the landing, duplicated on purpose so the landing's CSS bytes stay untouched)."""
+    from critter_gym.types import NOT_VERY_EFFECTIVE, SUPER_EFFECTIVE
+
+    c = _COPY[lang]
+    mult = f"×{SUPER_EFFECTIVE:g} / ×1 / ×{NOT_VERY_EFFECTIVE:g}"
+    swing = f"{SUPER_EFFECTIVE / NOT_VERY_EFFECTIVE:g}×"
+    win_p2 = c["hiw_win_p2"].format(mult=mult, swing=swing)
+    return f"""<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(c['hiw_title'])}</title>
+  <style>
+    :root {{
+      --surface-0: #ffffff; --surface-1: #fcfcfb; --surface-2: #f3f4f6;
+      --border: #e5e6ea; --ink-1: #0b0b0b; --ink-2: #52514e; --ink-3: #8a8a80;
+      --accent: #2a78d6; --radius: 12px; --shadow: 0 8px 30px rgba(20,30,60,0.10);
+      --maxw: 880px;
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root:not([data-theme="light"]) {{
+        --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+        --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+        --accent: #6da7ec; --shadow: 0 8px 30px rgba(0,0,0,0.45);
+      }}
+    }}
+    :root[data-theme="dark"] {{
+      --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+      --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+      --accent: #6da7ec; --shadow: 0 8px 30px rgba(0,0,0,0.45);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            max-width: var(--maxw); margin: 0 auto; padding: 0 1rem 4rem; line-height: 1.65;
+            color: var(--ink-1); background: var(--surface-0);
+            transition: background 0.3s ease, color 0.3s ease; }}
+    .topbar {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+               padding: 0.7rem 0; font-size: 0.9rem; }}
+    .topbar a {{ text-decoration: none; color: var(--accent); }}
+    .topbar .right {{ display: flex; align-items: center; gap: 0.5rem; }}
+    .theme-btn {{ font: inherit; cursor: pointer; border: 1px solid var(--border);
+                  background: var(--surface-1); color: var(--ink-2); border-radius: 999px;
+                  width: 2rem; height: 2rem; line-height: 1; font-size: 1rem; }}
+    .hero {{ margin: 0 -1rem 2rem; padding: 2.4rem 1.6rem 2rem; color: #fff;
+             background: linear-gradient(120deg, #2a78d6, #6d5bd6, #1baf7a); }}
+    .hero h1 {{ margin: 0; font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 800; }}
+    .hero p {{ margin: 0.5rem 0 0; opacity: 0.96; max-width: 46rem; }}
+    section {{ margin-top: 2.2rem; }}
+    h2 {{ font-size: 1.4rem; margin: 0 0 0.4rem; padding-bottom: 0.4rem;
+          border-bottom: 2px solid var(--border); }}
+    p {{ margin: 0.5rem 0 1rem; color: var(--ink-2); }}
+    p strong, li strong, td strong {{ color: var(--ink-1); }}
+    code {{ background: var(--surface-2); border-radius: 6px; padding: 0.1rem 0.35rem; }}
+    .card {{ background: var(--surface-1); border: 1px solid var(--border);
+             border-radius: var(--radius); padding: 1rem 1.2rem; box-shadow: var(--shadow); }}
+    .table-wrap {{ overflow-x: auto; border-radius: var(--radius); }}
+    table {{ border-collapse: collapse; width: 100%; margin: 0.6rem 0 0.4rem; }}
+    th, td {{ padding: 0.55rem 0.8rem; text-align: left;
+              border-bottom: 1px solid var(--border); }}
+    thead th {{ background: var(--surface-2); color: var(--ink-2); font-size: 0.82rem;
+                text-transform: uppercase; letter-spacing: 0.03em; }}
+    .note-cell {{ font-size: 0.9rem; color: var(--ink-2); }}
+    .note {{ color: var(--ink-3); font-size: 0.88rem; }}
+    a {{ color: var(--accent); }}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="{'index.html' if lang == 'en' else 'index.ko.html'}">{c['hiw_back']}</a>
+    <div class="right">
+      <a href="{c['hiw_other_href']}">{c['other_label']} &rarr;</a>
+      <button class="theme-btn" type="button" onclick="__toggleTheme()"
+              aria-label="{html.escape(c['theme_label'])}"
+              title="{html.escape(c['theme_label'])}">&#9680;</button>
+    </div>
+  </div>
+  <div class="hero">
+    <h1>{c['hiw_title'].split(' — ', 1)[-1] if ' — ' in c['hiw_title'] else c['hiw_title']}</h1>
+    <p>{c['hiw_subtitle']}</p>
+  </div>
+
+  <section>
+    <h2>{c['hiw_win_h']}</h2>
+    <p>{c['hiw_win_p1']}</p>
+    <div class="card"><p style="margin:0">{win_p2}</p></div>
+  </section>
+
+  <section>
+    <h2>{c['hiw_chart_h']}</h2>
+    <p>{c['hiw_chart_p']}</p>
+  </section>
+
+  <section>
+    <h2>{c['hiw_cx_h']}</h2>
+    <p>{c['hiw_cx_p']}</p>
+    <div class="table-wrap card">
+    <table>
+      <thead><tr><th>{c['hiw_cx_th1']}</th><th>{c['hiw_cx_th2']}</th></tr></thead>
+      <tbody>{c['hiw_cx_rows']}</tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>{c['hiw_rules_h']}</h2>
+    <p>{c['hiw_rules_p']}</p>
+    <div class="table-wrap card">
+    <table>
+      <thead><tr><th>{c['hiw_rules_th1']}</th><th>{c['hiw_rules_th2']}</th></tr></thead>
+      <tbody>{c['hiw_rules_rows']}</tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>{c['scope_h']}</h2>
+    <div class="card">
+      <p>{c['scope_does']}</p>
+      <p>{c['scope_doesnt']}</p>
+      <p style="margin-bottom:0">{c['hiw_scope_why']}</p>
+    </div>
+  </section>
+
+  <hr>
+  <p class="note">{c['hiw_honest']}</p>
   <script>
   (function() {{
     var root = document.documentElement, key = "crittergym-theme";
@@ -879,6 +1224,9 @@ def main() -> None:
             render_site(board, generated_note=a.note, lang=lang, demo_cleared=demo_cleared,
                         community=tuple(community)))
         print(f"wrote {out / name}")
+        how_name = "how-it-works.html" if lang == "en" else "how-it-works.ko.html"
+        (out / how_name).write_text(render_how_page(lang))
+        print(f"wrote {out / how_name}")
 
     print(f"local preview:  python -m http.server -d {out}   # then open http://localhost:8000")
     print("public deploy (GitHub Pages / making it public) is a human decision — not done here.")

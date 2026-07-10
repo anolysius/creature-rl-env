@@ -183,6 +183,7 @@
     <h2>The gameplay</h2>
     <p>A <strong>gym-seeking scripted demo</strong> agent, dropped into an <strong>unseen held-out world</strong> (a new map and a new hidden type-chart), navigates the map, battles at the gyms, and defeats the boss — no training on this world (demo-only policy; distinct from the ranked &ldquo;scripted&rdquo; baseline row):</p>
     <img class="pixel" src="gameplay.gif" alt="Gameplay: a gym-seeking scripted demo agent playing an unseen held-out world">
+    <p class="note"><a href="how-it-works.html">How does a gym battle actually work? Read the exam mechanics &rarr;</a></p>
     <h3>What the colors mean</h3>
     <ul class="legend">
       <li><span class="sw" style="background:rgb(80,140,230)"></span>the agent (you)</li>
@@ -191,6 +192,16 @@
       <li><span class="sw" style="background:rgb(110,110,110)"></span>a cleared gym</li>
       <li><span class="sw" style="background:rgb(30,30,40)"></span>empty tile</li>
     </ul>
+    <p class="note">Catching (C) is a separate scoring subgoal — battles are fought by a fixed starter party, and a caught creature never changes battle strength (this closes the collect-to-win grinding shortcut).</p>
+  </section>
+
+  <section>
+    <h2>What this exam measures — and deliberately does NOT</h2>
+    <div class="card">
+      <p><strong>Measures:</strong> long-horizon planning under a small egocentric view, inferring a <strong>hidden, per-world type chart</strong> from observed damage (experiment &rarr; observe &rarr; remember &rarr; reuse), and generalization to unseen worlds.</p>
+      <p><strong>Deliberately does not measure:</strong> RPG-style resource and progression management. There is no wild grinding, catching never adds battle strength, and levels only come from winning — every &ldquo;win without understanding&rdquo; shortcut is closed on purpose, like banning calculators in a math exam.</p>
+      <p style="margin-bottom:0"><a href="how-it-works.html">Read how the exam works &rarr;</a></p>
+    </div>
   </section>
 
   <section>

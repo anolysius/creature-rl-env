@@ -183,6 +183,7 @@
     <h2>게임플레이</h2>
     <p><strong>체육관을 향해 움직이는 규칙기반(scripted) 데모</strong> 에이전트가 <strong>처음 보는 held-out 세계</strong>(새 맵 + 새 숨은 타입표)에 놓여 맵을 탐색하고, 체육관에서 전투하며, 보스를 격파합니다 — 이 세계로 학습한 적 없음 (데모 전용 정책 — 랭킹표의 &ldquo;scripted&rdquo; 행과는 다른 정책):</p>
     <img class="pixel" src="gameplay.gif" alt="게임플레이: 처음 보는 held-out 세계를 플레이하는 gym-seeking scripted 데모 에이전트">
+    <p class="note"><a href="how-it-works.ko.html">체육관 전투는 실제로 어떻게 이길까요? 시험지 작동 원리 보기 &rarr;</a></p>
     <h3>색깔의 의미</h3>
     <ul class="legend">
       <li><span class="sw" style="background:rgb(80,140,230)"></span>에이전트(플레이어)</li>
@@ -191,6 +192,16 @@
       <li><span class="sw" style="background:rgb(110,110,110)"></span>깬 체육관</li>
       <li><span class="sw" style="background:rgb(30,30,40)"></span>빈 칸</li>
     </ul>
+    <p class="note">잡기(C)는 별도 점수 과제입니다 — 전투는 고정 스타터 파티로 하며, 잡은 생물은 전투력을 바꾸지 않습니다(“모아서 이기기” 우회로 차단).</p>
+  </section>
+
+  <section>
+    <h2>이 시험지가 재는 것 — 그리고 일부러 재지 않는 것</h2>
+    <div class="card">
+      <p><strong>재는 것:</strong> 좁은 시야에서의 장기 계획, <strong>세계마다 재추첨되는 숨은 상성표</strong>를 관찰 데미지로부터 추론(실험 &rarr; 관찰 &rarr; 기억 &rarr; 재활용)하는 능력, 처음 보는 세계로의 일반화.</p>
+      <p><strong>일부러 재지 않는 것:</strong> RPG식 자원·성장 관리. 야생 파밍이 없고, 잡아도 전투력이 늘지 않으며, 레벨은 승리로만 오릅니다 — “이해 없이 이기는” 우회로를 전부 의도적으로 막았습니다. 수학 시험장에서 계산기를 금지하는 것과 같은 이유입니다.</p>
+      <p style="margin-bottom:0"><a href="how-it-works.ko.html">시험지 작동 원리 읽기 &rarr;</a></p>
+    </div>
   </section>
 
   <section>

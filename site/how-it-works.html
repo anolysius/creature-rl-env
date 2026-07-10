@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CritterGym — How the exam works</title>
+  <style>
+    :root {
+      --surface-0: #ffffff; --surface-1: #fcfcfb; --surface-2: #f3f4f6;
+      --border: #e5e6ea; --ink-1: #0b0b0b; --ink-2: #52514e; --ink-3: #8a8a80;
+      --accent: #2a78d6; --radius: 12px; --shadow: 0 8px 30px rgba(20,30,60,0.10);
+      --maxw: 880px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+        --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+        --accent: #6da7ec; --shadow: 0 8px 30px rgba(0,0,0,0.45);
+      }
+    }
+    :root[data-theme="dark"] {
+      --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232322;
+      --border: #33332f; --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #8a8a80;
+      --accent: #6da7ec; --shadow: 0 8px 30px rgba(0,0,0,0.45);
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            max-width: var(--maxw); margin: 0 auto; padding: 0 1rem 4rem; line-height: 1.65;
+            color: var(--ink-1); background: var(--surface-0);
+            transition: background 0.3s ease, color 0.3s ease; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+               padding: 0.7rem 0; font-size: 0.9rem; }
+    .topbar a { text-decoration: none; color: var(--accent); }
+    .topbar .right { display: flex; align-items: center; gap: 0.5rem; }
+    .theme-btn { font: inherit; cursor: pointer; border: 1px solid var(--border);
+                  background: var(--surface-1); color: var(--ink-2); border-radius: 999px;
+                  width: 2rem; height: 2rem; line-height: 1; font-size: 1rem; }
+    .hero { margin: 0 -1rem 2rem; padding: 2.4rem 1.6rem 2rem; color: #fff;
+             background: linear-gradient(120deg, #2a78d6, #6d5bd6, #1baf7a); }
+    .hero h1 { margin: 0; font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 800; }
+    .hero p { margin: 0.5rem 0 0; opacity: 0.96; max-width: 46rem; }
+    section { margin-top: 2.2rem; }
+    h2 { font-size: 1.4rem; margin: 0 0 0.4rem; padding-bottom: 0.4rem;
+          border-bottom: 2px solid var(--border); }
+    p { margin: 0.5rem 0 1rem; color: var(--ink-2); }
+    p strong, li strong, td strong { color: var(--ink-1); }
+    code { background: var(--surface-2); border-radius: 6px; padding: 0.1rem 0.35rem; }
+    .card { background: var(--surface-1); border: 1px solid var(--border);
+             border-radius: var(--radius); padding: 1rem 1.2rem; box-shadow: var(--shadow); }
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); }
+    table { border-collapse: collapse; width: 100%; margin: 0.6rem 0 0.4rem; }
+    th, td { padding: 0.55rem 0.8rem; text-align: left;
+              border-bottom: 1px solid var(--border); }
+    thead th { background: var(--surface-2); color: var(--ink-2); font-size: 0.82rem;
+                text-transform: uppercase; letter-spacing: 0.03em; }
+    .note-cell { font-size: 0.9rem; color: var(--ink-2); }
+    .note { color: var(--ink-3); font-size: 0.88rem; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="index.html">&larr; Back to the leaderboard</a>
+    <div class="right">
+      <a href="how-it-works.ko.html">한국어 &rarr;</a>
+      <button class="theme-btn" type="button" onclick="__toggleTheme()"
+              aria-label="Toggle light / dark theme"
+              title="Toggle light / dark theme">&#9680;</button>
+    </div>
+  </div>
+  <div class="hero">
+    <h1>How the exam works</h1>
+    <p>The mechanics behind the leaderboard — the win condition, the hidden type chart, and why there is no grinding. Engine facts only; measured results (and their caveats) live in the repository.</p>
+  </div>
+
+  <section>
+    <h2>What does it take to beat a gym?</h2>
+    <p>Step onto a gym tile and a boss battle starts (your party enters fully healed). The win condition is simple: <strong>reduce the boss's HP to 0 before your whole party faints</strong> (a turn cap ends stalemates as a draw). Both sides act every turn, the faster side hits first, and there are <strong>no dice</strong> — the same choices always produce the same battle.</p>
+    <div class="card"><p style="margin:0">Per-turn damage is roughly <code>move power &times; (attack &divide; defense) &times; matchup</code>, and the matchup multiplier is <strong>×2 / ×1 / ×0.5</strong> (super-effective / neutral / resisted) — a <strong>4× swing</strong> between the right and wrong pick. Bosses are tuned tanky, so that multiplier effectively decides the damage race: the right creature wins it, the wrong one loses it.</p></div>
+  </section>
+
+  <section>
+    <h2>The type chart is hidden — and re-rolled every world</h2>
+    <p>You can see the boss's type <em>id</em>, but <strong>what beats it is re-rolled per world seed</strong> and never shown. Memorizing a fixed FIRE&gt;GRASS&gt;WATER meta is useless here — the only route is to attack, watch how much HP actually drops, and infer the matchup from the observation. World generation guarantees every boss has at least one counter in your starter party — in the default exam; the hidden-secondary knob can weaken this — so the exam stays solvable in principle.</p>
+  </section>
+
+  <section>
+    <h2>How hard is finding the counter?</h2>
+    <p>The raw search is deliberately <strong>small</strong>: three starters, one move each, and a single hit reveals one cell of the answer (the damage number tells you super / neutral / resisted). Worst case, two or three probes solve one boss type. The difficulty is engineered into the <strong>cost structure of those experiments</strong> instead:</p>
+    <div class="table-wrap card">
+    <table>
+      <thead><tr><th>Difficulty axis</th><th>What it does</th></tr></thead>
+      <tbody><tr><td>Probing is not free</td><td class="note-cell">While you test a wrong creature, the boss is hitting back — and every step of the episode budget you spend probing is a step not spent exploring.</td></tr><tr><td>The ledger grows</td><td class="note-cell">What you must remember scales with the number of distinct boss types in the world &times; your party — from trivial (one recurring type) to real bookkeeping (many).</td></tr><tr><td>Commit mode (opt-in knob)</td><td class="note-cell">No switching once the fight starts — you must pick your champion <em>before</em> the battle, from memory alone. In-battle probing is gone.</td></tr><tr><td>Hidden secondary types (opt-in knob)</td><td class="note-cell">A boss may carry a hidden second type; multipliers multiply, so one observation no longer cleanly identifies the matchup.</td></tr><tr><td>Strict economies (opt-in knobs)</td><td class="note-cell">Variants zero out resisted (or even neutral) damage — the wrong answer stops chipping and the right pick becomes the only path to a win.</td></tr></tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why you can't grind your way to a win</h2>
+    <p>Several rules look odd if you expect a creature-collection RPG. They are not arbitrary — each one closes a specific &ldquo;win without understanding&rdquo; shortcut, the way a math exam bans calculators and open books. One principle: <strong>the only reliable way to win is to infer the hidden chart.</strong></p>
+    <div class="table-wrap card">
+    <table>
+      <thead><tr><th>Rule</th><th>Shortcut it closes</th></tr></thead>
+      <tbody><tr><td>No wild battles / no XP farming</td><td class="note-cell">Out-leveling the problem instead of out-thinking it.</td></tr><tr><td>Catching never adds battle strength</td><td class="note-cell">Collect-to-win — patience substituting for inference.</td></tr><tr><td>Levels come only from winning</td><td class="note-cell">Pre-grinding before a challenge; strength is a consequence of solving, never a substitute.</td></tr><tr><td>Rematches are free but deterministic</td><td class="note-cell">Retry-until-lucky — a rematch only helps if you <em>change your strategy</em>.</td></tr></tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this exam measures — and deliberately does NOT</h2>
+    <div class="card">
+      <p><strong>Measures:</strong> long-horizon planning under a small egocentric view, inferring a <strong>hidden, per-world type chart</strong> from observed damage (experiment &rarr; observe &rarr; remember &rarr; reuse), and generalization to unseen worlds.</p>
+      <p><strong>Deliberately does not measure:</strong> RPG-style resource and progression management. There is no wild grinding, catching never adds battle strength, and levels only come from winning — every &ldquo;win without understanding&rdquo; shortcut is closed on purpose, like banning calculators in a math exam.</p>
+      <p style="margin-bottom:0">This scope is a choice, not an accident: adding an RPG economy (resources, preparation, grinding decisions) would reopen the very attrition shortcuts the rules above close. Harder variants exist as opt-in knobs instead, so the default exam stays a clean measure of inference.</p>
+    </div>
+  </section>
+
+  <hr>
+  <p class="note"><strong>Honest scope.</strong> This page documents engine mechanics only — the multipliers above are derived from the engine constants at build time, and no measured result is claimed here. Measurements and their caveats live in the repository; publishing any measured claim on this site is a human decision.</p>
+  <script>
+  (function() {
+    var root = document.documentElement, key = "crittergym-theme";
+    try { var s = localStorage.getItem(key); if (s) root.setAttribute("data-theme", s); }
+    catch (e) {}
+    window.__toggleTheme = function() {
+      var cur = root.getAttribute("data-theme")
+        || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var next = cur === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(key, next); } catch (e) {}
+    };
+  })();
+  </script>
+</body>
+</html>
