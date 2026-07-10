@@ -1,0 +1,131 @@
+{
+  "gates": [
+    {
+      "avg_seconds_per_call": 9.21,
+      "band_degenerate": true,
+      "calls_this_point": 65,
+      "calls_total": 65,
+      "gate": "G-0",
+      "llm_battle_moves": 22,
+      "llm_score": 0.0,
+      "llm_se_rate": 1.0,
+      "mean_distinct_types": 1.0,
+      "oracle_se": 1.0,
+      "pool": 1,
+      "type_blind_se": 1.0,
+      "unparseable_replies": 0,
+      "worlds": 1
+    },
+    {
+      "avg_seconds_per_call": 8.52,
+      "band_degenerate": false,
+      "calls_this_point": 257,
+      "calls_total": 322,
+      "gate": "G-1",
+      "llm_battle_moves": 68,
+      "llm_score": 0.6841432225063939,
+      "llm_se_rate": 0.8088235294117647,
+      "mean_distinct_types": 1.0,
+      "oracle_se": 1.0,
+      "pool": 1,
+      "type_blind_se": 0.39473684210526316,
+      "unparseable_replies": 0,
+      "worlds": 4
+    },
+    {
+      "avg_seconds_per_call": 8.82,
+      "band_degenerate": false,
+      "calls_this_point": 318,
+      "calls_total": 640,
+      "gate": "G-2",
+      "llm_battle_moves": 102,
+      "llm_score": 0.47472924187725635,
+      "llm_se_rate": 0.5,
+      "mean_distinct_types": 5.75,
+      "oracle_se": 1.0,
+      "pool": 8,
+      "type_blind_se": 0.048109965635738834,
+      "unparseable_replies": 0,
+      "worlds": 4
+    },
+    {
+      "avg_seconds_per_call": 5.53,
+      "band_degenerate": false,
+      "calls_this_point": 560,
+      "calls_total": 1200,
+      "gate": "G-3",
+      "llm_battle_moves": 22,
+      "llm_score": 1.0,
+      "llm_se_rate": 1.0,
+      "mean_distinct_types": 3.25,
+      "oracle_se": 1.0,
+      "pool": 4,
+      "type_blind_se": 0.2777777777777778,
+      "unparseable_replies": 0,
+      "worlds": 4
+    }
+  ],
+  "model_label": "claude-fable-5 (claude-cli default)",
+  "points": [
+    {
+      "band_degenerate": false,
+      "calls_this_point": 257,
+      "llm_battle_moves": 68,
+      "llm_score": 0.6841432225063939,
+      "llm_se_rate": 0.8088235294117647,
+      "mean_distinct_types": 1.0,
+      "oracle_se": 1.0,
+      "pool": 1,
+      "type_blind_se": 0.39473684210526316,
+      "worlds": 4
+    },
+    {
+      "band_degenerate": false,
+      "calls_this_point": 318,
+      "llm_battle_moves": 102,
+      "llm_score": 0.47472924187725635,
+      "llm_se_rate": 0.5,
+      "mean_distinct_types": 5.75,
+      "oracle_se": 1.0,
+      "pool": 8,
+      "type_blind_se": 0.048109965635738834,
+      "worlds": 4
+    },
+    {
+      "band_degenerate": false,
+      "calls_this_point": 560,
+      "llm_battle_moves": 22,
+      "llm_score": 1.0,
+      "llm_se_rate": 1.0,
+      "mean_distinct_types": 3.25,
+      "oracle_se": 1.0,
+      "pool": 4,
+      "type_blind_se": 0.2777777777777778,
+      "worlds": 4
+    }
+  ],
+  "protocol": {
+    "agent": "BattleMemoryLLMAgent(window=8)",
+    "budget_total": 1820,
+    "floor": 0.1,
+    "margin": 0.15,
+    "pools": {
+      "anchor": 1,
+      "max": 8,
+      "mid": 4
+    },
+    "sealed_kwargs": {
+      "boss_atk": 6,
+      "boss_def": 18,
+      "boss_hp": 140,
+      "grid_size": 8,
+      "master_seed": 20260708,
+      "max_steps": 140,
+      "num_gyms": 8,
+      "num_types": 12
+    },
+    "worlds_per_point": 4
+  },
+  "verdict": "DIAL-VISIBLE",
+  "verdict_detail": "delta +0.21 >= 0.15 \u2014 per-episode type diversity IS a difficulty dial for this imperfect reasoner (SIGNAL; this model/setting only)."
+}
