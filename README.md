@@ -11,6 +11,10 @@ rule inference, generalization), not a game. Rewards are **verifiable** (RLVR �
 subgoal completion, not hand-tuned shaping), and a **procedural-generation seed split** lets
 you *measure* generalization instead of asserting it.
 
+**Live:** [leaderboard & gameplay](https://anolysius.github.io/creature-rl-env/) ·
+[how the exam works](https://anolysius.github.io/creature-rl-env/how-it-works.html)
+(win condition, the hidden type chart, and why there is no grinding)
+
 ## Install
 
 ```bash
@@ -148,13 +152,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup and the task lifecycle.
 - **Version:** `1.0.0rc1` — a **release candidate**. The free open-source env is feature-complete
   (M0–M2 ✅; M3 launch-readiness mostly ✅; M4 throughput ✅ on CPU), and the headline results are
   parity-proven and reproducible.
+- **Public since July 2026:** the repository is open and the
+  [live site](https://anolysius.github.io/creature-rl-env/) (leaderboard, gameplay, community
+  submission track) is up.
 - **Remaining before a `1.0.0` tag (each an explicit gate):** the **≥10M steps/s GPU** measurement
   (M4-EC3; CPU vmap already clears it on the pure slices), the **arXiv writeup** (M3-EC4, draft in
-  `docs/paper/`), and the **public OSS release** itself.
+  `docs/paper/`), and the **version tag / eval-hub listing** — each a maintainer (human) decision.
 - **License:** MIT (see [`LICENSE`](LICENSE)).
-- **Open-source publication** (listing on a model/eval hub, making the repository public, pushing a
-  version tag) is a **maintainer action, deliberately not performed** — these local artifacts prepare
-  the release; the actual publish is a human decision.
 
 ## License
 
