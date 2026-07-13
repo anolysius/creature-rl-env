@@ -73,7 +73,7 @@ def _build_llm_agent(a):
     )
 
     if a.provider == "claude-cli":
-        complete = claude_cli_complete()
+        complete = claude_cli_complete(a.cli_bin, model=a.cli_model)
     else:
         complete = anthropic_complete(model=a.model)
     if a.battle_memory:
@@ -107,6 +107,8 @@ def _run_llm_entry(a) -> int:
         "claude-cli (subscription default model)" if a.provider == "claude-cli" else a.model
     )
     reproduce = (f"python scripts/community_submit.py --llm --provider {a.provider}"
+                 + (f" --cli-model {a.cli_model}"
+                    if a.provider == "claude-cli" and a.cli_model else "")
                  + (" --battle-memory" if a.battle_memory else "")
                  + (" --stateful" if a.stateful and not a.battle_memory else "")
                  + f" --season {a.season} --n-worlds {a.n_worlds}")
@@ -140,6 +142,13 @@ def main() -> int:
                         "anthropic=API (ANTHROPIC_API_KEY)")
     p.add_argument("--model", default="claude-opus-4-8",
                    help="llm only: Anthropic model id (--provider anthropic)")
+    p.add_argument("--cli-model", default=None,
+                   help="llm only: model id for --provider claude-cli (None = the CLI's "
+                        "login default; e.g. claude-haiku-4-5-20251001 rides the same "
+                        "subscription auth)")
+    p.add_argument("--cli-bin", default="claude",
+                   help="llm only: claude CLI binary for --provider claude-cli (pass a real "
+                        "binary path to avoid shell shims)")
     p.add_argument("--model-name", default=None,
                    help="llm only: the model label written into the submission JSON "
                         "(e.g. 'claude-fable-5 (claude-cli)')")

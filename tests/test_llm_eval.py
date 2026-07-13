@@ -575,3 +575,46 @@ def test_cli_complete_raises_after_retries_exhausted(monkeypatch) -> None:
     with pytest.raises(_sp.TimeoutExpired):
         complete("prompt")                 # never silently substitutes an action
     assert calls["n"] == 3                 # all 3 attempts consumed, then raise
+
+
+# -- claude_cli_complete model selection (board-haiku-seed) -------------------------
+
+
+def _capture_run(reply: str = "2"):
+    """A fake subprocess.run that records the argv it was called with."""
+    from types import SimpleNamespace
+
+    seen = {"cmd": None}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        return SimpleNamespace(stdout=reply, stderr="")
+
+    return fake_run, seen
+
+
+def test_cli_complete_default_argv_has_no_model_flag(monkeypatch) -> None:
+    """model=None (the default) keeps the historical argv byte-identical — no --model."""
+    import subprocess as _sp
+
+    from critter_gym import llm_eval
+
+    fake_run, seen = _capture_run()
+    monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda b: "/usr/bin/claude")
+    assert llm_eval.claude_cli_complete()("hi") == "2"
+    assert seen["cmd"] == ["/usr/bin/claude", "-p", "hi"]
+
+
+def test_cli_complete_threads_model_flag(monkeypatch) -> None:
+    """model=<id> appends --model <id>, so a subscription CLI can run e.g. Haiku."""
+    import subprocess as _sp
+
+    from critter_gym import llm_eval
+
+    fake_run, seen = _capture_run()
+    monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda b: "/usr/bin/claude")
+    complete = llm_eval.claude_cli_complete(model="claude-haiku-4-5-20251001")
+    assert complete("hi") == "2"
+    assert seen["cmd"] == ["/usr/bin/claude", "-p", "hi", "--model", "claude-haiku-4-5-20251001"]
