@@ -18,6 +18,8 @@ you *measure* generalization instead of asserting it.
 ## Install
 
 ```bash
+python -m pip install -U pip    # old bundled pips (e.g. macOS 21.2.4) can't editable-install
+                                # a pyproject-only package (PEP 660 needs pip >= 21.3)
 pip install -e .                # core (numpy-only engine + Gymnasium API)
 pip install -e ".[rl]"          # + PPO training scripts (stable-baselines3)
 pip install -e ".[viz]"         # + matplotlib metric plots

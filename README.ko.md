@@ -19,6 +19,8 @@ CritterGym은 게임이 아니라 *에이전트 능력을 측정하는 계측기
 ## 설치
 
 ```bash
+python -m pip install -U pip    # 구식 동봉 pip(예: macOS 21.2.4)은 pyproject 전용 패키지의
+                                # editable 설치 불가 (PEP 660은 pip >= 21.3 필요)
 pip install -e .                # 코어 (numpy 엔진 + Gymnasium API)
 pip install -e ".[rl]"          # + PPO 학습 스크립트 (stable-baselines3)
 pip install -e ".[viz]"         # + matplotlib 메트릭 플롯
