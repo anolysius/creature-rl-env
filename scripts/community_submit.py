@@ -109,6 +109,8 @@ def _run_llm_entry(a) -> int:
     reproduce = (f"python scripts/community_submit.py --llm --provider {a.provider}"
                  + (f" --cli-model {a.cli_model}"
                     if a.provider == "claude-cli" and a.cli_model else "")
+                 + (f" --cli-bin {a.cli_bin}"
+                    if a.provider == "claude-cli" and a.cli_bin != "claude" else "")
                  + (" --battle-memory" if a.battle_memory else "")
                  + (" --stateful" if a.stateful and not a.battle_memory else "")
                  + f" --season {a.season} --n-worlds {a.n_worlds}")
