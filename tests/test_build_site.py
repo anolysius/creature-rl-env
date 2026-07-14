@@ -377,3 +377,19 @@ def test_landing_carries_catch_clarification_and_scope_box() -> None:
     assert "battle strength" in en and "starter party" in en
     assert "전투력" in ko
     assert "does not measure" in en or "not measure" in en
+
+
+# --- board-discoverability: the baseline table no longer masquerades as THE leaderboard ---
+
+
+def test_baseline_section_renamed_and_links_to_community() -> None:
+    """Sect. 1 is titled 'built-in baselines' (no 'Leaderboard' word-collision) and carries a
+    jump link to the #community anchor, so visitors find submitted-model rows."""
+    en = build_site.render_site(_board(), generated_note="t", lang="en")
+    ko = build_site.render_site(_board(), generated_note="t", lang="ko")
+    assert "Built-in baselines" in en
+    assert "내장 baseline" in ko
+    assert 'href="#community"' in en and 'href="#community"' in ko
+    assert '<section id="community">' in en and '<section id="community">' in ko
+    # the community heading itself is unchanged (backward-compat test relies on it)
+    assert "Community leaderboard" in en

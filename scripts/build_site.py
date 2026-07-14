@@ -54,7 +54,9 @@ _COPY: dict[str, dict[str, str]] = {
         "other_label": "한국어",
         "subtitle": "A procedurally-generated creature-collection RL environment for measuring "
                     "long-horizon agency and in-context rule inference.",
-        "board_h": "Leaderboard — ranked by held-out generalization",
+        "board_h": "Built-in baselines — generalization check",
+        "board_models_link": "Looking for submitted models (LLMs)? &rarr; Community leaderboard "
+                             "&darr;",
         "board_p": "Each baseline is scored on <strong>held-out</strong> seeds (unseen maps "
                    "<em>and</em> a new hidden type-chart) it never trained on. The rank is by "
                    "held-out mean — the benchmark rewards generalization to worlds never seen.",
@@ -273,7 +275,8 @@ _COPY: dict[str, dict[str, str]] = {
         "other_label": "English",
         "subtitle": "장기 호라이즌 행위성과 맥락 내 규칙 추론을 측정하는 절차생성 "
                     "creature-collection 강화학습 환경.",
-        "board_h": "리더보드 — held-out 일반화 순위",
+        "board_h": "내장 baseline — 일반화 검증",
+        "board_models_link": "제출된 모델(LLM) 점수를 찾으세요? &rarr; 커뮤니티 리더보드 &darr;",
         "board_p": "각 baseline 은 학습한 적 없는 <strong>held-out</strong> 시드(처음 보는 맵 "
                    "<em>과</em> 새로운 숨은 타입표)에서 채점됩니다. 순위는 held-out 평균 기준 — "
                    "이 벤치마크는 처음 보는 세계로의 일반화를 보상합니다.",
@@ -839,6 +842,7 @@ def render_site(
     </table>
     </div>
     <p class="note">{c['spec_label']} <code>{spec}</code></p>
+    <p class="note"><a href="#community">{c['board_models_link']}</a></p>
   </section>
 
   <section>
@@ -910,7 +914,7 @@ def render_site(
     <p class="note">{c['tiers_honest']}</p>
   </section>
 
-  <section>
+  <section id="community">
     <h2>{c['comm_h']}</h2>
     <p>{c['comm_p']}</p>
 {howto}
