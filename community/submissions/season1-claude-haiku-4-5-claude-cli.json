@@ -1,0 +1,20 @@
+{
+  "date": "2026-07-13",
+  "heldout_mean": 1.0,
+  "model": "claude-haiku-4.5 (claude-cli)",
+  "n_worlds": 8,
+  "reproduce": "python scripts/community_submit.py --llm --provider claude-cli --cli-model claude-haiku-4-5-20251001 --cli-bin ~/.local/bin/claude --battle-memory --season 1 --n-worlds 8",
+  "schema_version": 1,
+  "season": 1,
+  "self_reported": true,
+  "spec": {
+    "grid_size": 10,
+    "max_steps": 200,
+    "n_heldin": 100,
+    "n_heldout": 100,
+    "num_creatures": 5,
+    "num_gyms": 3,
+    "patch_radius": 2
+  },
+  "submitter": "anolysius"
+}

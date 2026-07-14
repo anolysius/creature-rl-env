@@ -450,7 +450,7 @@ def anthropic_complete(
 
 def claude_cli_complete(
     binary: str = "claude", *, cwd: str | None = None, timeout: float = 120.0,
-    retries: int = 2,
+    retries: int = 2, model: str | None = None,
 ) -> Callable[[str], str]:
     """Build a ``complete(prompt) -> reply`` backed by the local **Claude Code** CLI (print mode).
 
@@ -481,13 +481,16 @@ def claude_cli_complete(
             "anthropic_complete() / inject your own complete(prompt)->reply."
         )
     work = cwd or tempfile.mkdtemp()
+    # model=None keeps the historical argv byte-identical (the CLI's login default model);
+    # a model id (e.g. a small Haiku) rides the SAME subscription auth — no API billing.
+    argv_tail = ["--model", model] if model else []
 
     def complete(prompt: str) -> str:
         for attempt in range(retries + 1):
             try:
                 result = subprocess.run(
-                    [resolved, "-p", prompt], cwd=work, capture_output=True, text=True,
-                    timeout=timeout,
+                    [resolved, "-p", prompt, *argv_tail], cwd=work, capture_output=True,
+                    text=True, timeout=timeout,
                 )
                 return result.stdout.strip()
             except subprocess.TimeoutExpired:
