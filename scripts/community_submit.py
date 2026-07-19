@@ -93,6 +93,21 @@ def _run_llm_entry(a) -> int:
           f"({a.n_worlds} public worlds, provider={a.provider}, memory={memory})")
     print(f"  ⚠️  QUOTA: up to ~{projected} LLM calls (1 per env step, worst case "
           f"{a.n_worlds} x {spec['max_steps']}). Ctrl-C now if that spend is not approved.")
+    print("  tip: on macOS run under `caffeinate -i` so the machine cannot sleep mid-run.")
+
+    model_name = a.model_name or (
+        "claude-cli (subscription default model)" if a.provider == "claude-cli" else a.model
+    )
+    slug = re.sub(r"[^a-z0-9]+", "-", model_name.lower()).strip("-")[:40]
+    out = a.out if a.out != _DEFAULT_OUT else _SUBMISSIONS_DIR / f"season{a.season}-{slug}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Resumable long runs: per-world checkpoint next to the output artifact. If a previous
+    # run died mid-way (sleep, quota, crash), completed worlds are skipped on restart —
+    # semantically identical to one uninterrupted run (per-world reset + deterministic seeds).
+    ckpt = out.parent / (out.name + ".checkpoint.json")
+    if ckpt.exists():
+        n_done = len(json.loads(ckpt.read_text()))
+        print(f"  ▶ resuming: {n_done}/{a.n_worlds} worlds already completed in {ckpt.name}")
 
     agent = _build_llm_agent(a)
 
@@ -100,11 +115,7 @@ def _run_llm_entry(a) -> int:
         print(f"  [{i + 1}/{a.n_worlds}] seed={seed} clears={clears}", flush=True)
 
     mean = score_submission_on_season(
-        agent, season=a.season, n_worlds=a.n_worlds, on_world=_progress
-    )
-
-    model_name = a.model_name or (
-        "claude-cli (subscription default model)" if a.provider == "claude-cli" else a.model
+        agent, season=a.season, n_worlds=a.n_worlds, on_world=_progress, checkpoint=ckpt
     )
     reproduce = (f"python scripts/community_submit.py --llm --provider {a.provider}"
                  + (f" --cli-model {a.cli_model}"
@@ -118,10 +129,8 @@ def _run_llm_entry(a) -> int:
         model=model_name, submitter=a.submitter, heldout_mean=mean, n_worlds=a.n_worlds,
         season=a.season, reproduce=reproduce, date=a.date,
     )
-    slug = re.sub(r"[^a-z0-9]+", "-", model_name.lower()).strip("-")[:40]
-    out = a.out if a.out != _DEFAULT_OUT else _SUBMISSIONS_DIR / f"season{a.season}-{slug}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(sub, indent=2, sort_keys=True) + "\n")
+    ckpt.unlink(missing_ok=True)  # final artifact written — the checkpoint has served its job
     print(f"wrote {out}  (heldout_mean={sub['heldout_mean']} mean gym-clears, "
           f"self_reported=true)")
     print("entering the board = committing this file under community/submissions/ — that "
