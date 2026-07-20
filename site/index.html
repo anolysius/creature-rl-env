@@ -134,7 +134,7 @@
   </div>
 
   <section>
-    <h2>Leaderboard — ranked by held-out generalization</h2>
+    <h2>Built-in baselines — generalization check</h2>
     <p>Each baseline is scored on <strong>held-out</strong> seeds (unseen maps <em>and</em> a new hidden type-chart) it never trained on. The rank is by held-out mean — the benchmark rewards generalization to worlds never seen.</p>
     <div class="table-wrap card">
     <table>
@@ -147,6 +147,7 @@
     </table>
     </div>
     <p class="note">Pinned spec (reproducible): <code>{&quot;grid_size&quot;: 10, &quot;max_steps&quot;: 200, &quot;n_heldin&quot;: 100, &quot;n_heldout&quot;: 100, &quot;num_creatures&quot;: 5, &quot;num_gyms&quot;: 3, &quot;patch_radius&quot;: 2}</code></p>
+    <p class="note"><a href="#community">Looking for submitted models (LLMs)? &rarr; Community leaderboard &darr;</a></p>
   </section>
 
   <section>
@@ -266,7 +267,7 @@
     <p class="note"><strong>Honest scope.</strong> Tiers and the signed-certificate flow are <strong>prototype artifacts</strong> (custom tiers are validated, not measured). Real sale, pricing and hosting stay a human decision.</p>
   </section>
 
-  <section>
+  <section id="community">
     <h2>Community leaderboard (self-reported)</h2>
     <p>Race your own model on the <strong>seasonal public exam set</strong>: every season issues a fresh, openly-derived block of held-out worlds (procedural generation means the exam can always be re-issued — a fixed benchmark can't). Run locally, submit a small JSON, appear here. The metric is <strong>mean gym-clears</strong> on the season block.</p>
     <h3>How to get on the board</h3>

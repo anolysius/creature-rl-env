@@ -262,3 +262,63 @@ def test_llm_progress_line_format(capsys):
     import re
     assert len(out) == n
     assert all(re.fullmatch(r"  \[\d/2\] seed=\d+ clears=\d", line) for line in out)
+
+
+# --- season-checkpoint: resumable multi-hour LLM season runs -----------------------
+
+
+class _CountingAgent:
+    """Deterministic stub agent: counts act/reset calls so resume-skipping is provable."""
+
+    def __init__(self):
+        self.acts = 0
+        self.resets = 0
+
+    def act(self, obs):
+        self.acts += 1
+        return 0  # deterministic (always north) — same trajectory every run
+
+    def reset(self):
+        self.resets += 1
+
+
+def test_checkpoint_none_keeps_default_path_identical():
+    from critter_gym.community import score_submission_on_season
+
+    a, b = _CountingAgent(), _CountingAgent()
+    m1 = score_submission_on_season(a, season=1, n_worlds=2)
+    m2 = score_submission_on_season(b, season=1, n_worlds=2, checkpoint=None)
+    assert m1 == m2 and a.acts == b.acts and a.resets == b.resets == 2
+
+
+def test_checkpoint_flushes_per_world(tmp_path):
+    import json
+
+    from critter_gym.community import score_submission_on_season, season_seeds
+
+    ckpt = tmp_path / "run.checkpoint.json"
+    score_submission_on_season(_CountingAgent(), season=1, n_worlds=2, checkpoint=ckpt)
+    data = json.loads(ckpt.read_text())  # file survives the run (caller deletes on success)
+    assert set(data.keys()) == {str(int(s)) for s in season_seeds(1, 2)}
+    assert all(isinstance(v, int) for v in data.values())
+
+
+def test_resume_skips_completed_worlds_and_mean_is_identical(tmp_path):
+    from critter_gym.community import score_submission_on_season
+
+    # Ground truth: one uninterrupted 3-world run.
+    full_agent = _CountingAgent()
+    full_mean = score_submission_on_season(full_agent, season=1, n_worlds=3)
+
+    # Interrupted run: world 1 completes, then "the computer dies".
+    ckpt = tmp_path / "run.checkpoint.json"
+    score_submission_on_season(_CountingAgent(), season=1, n_worlds=1, checkpoint=ckpt)
+
+    # Resume with a FRESH agent for the remaining worlds.
+    resumed_agent = _CountingAgent()
+    resumed_mean = score_submission_on_season(
+        resumed_agent, season=1, n_worlds=3, checkpoint=ckpt)
+
+    assert resumed_mean == full_mean            # semantics identical (per-world isolation)
+    assert resumed_agent.resets == 2            # only worlds 2 & 3 actually ran
+    assert resumed_agent.acts < full_agent.acts  # world 1 was skipped, not re-driven

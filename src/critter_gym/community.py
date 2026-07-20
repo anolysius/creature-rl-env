@@ -119,7 +119,7 @@ def validate_submission(sub: dict[str, Any]) -> list[str]:
 
 def score_submission_on_season(
     agent: Any, *, season: int = 1, n_worlds: int = 16,
-    on_world: Any = None,
+    on_world: Any = None, checkpoint: Path | None = None,
 ) -> float:
     """Mean gym-clears of ``agent`` on the season's public block — THE community metric.
 
@@ -130,13 +130,28 @@ def score_submission_on_season(
     hook is called before each world — memory isolation between worlds, the same rule the
     sealed track applies to stateful submissions. ``on_world`` (optional) is called after
     each world as ``on_world(world_index, seed, clears)`` — progress visibility for long
-    (per-step-LLM) runs; ``None`` (default) is byte-identical to the prior behavior."""
+    (per-step-LLM) runs; ``None`` (default) is byte-identical to the prior behavior.
+
+    ``checkpoint`` (optional) makes a multi-hour per-step-LLM run **resumable**: after every
+    world the ``{seed: clears}`` map is flushed to that path (atomic temp+rename), and on
+    start any seed already present is skipped (its recorded clears count toward the mean).
+    Resuming is semantically identical to one uninterrupted run because worlds are already
+    isolated — ``reset()`` fires before each world and seeds are deterministic. The file is
+    left in place on completion (the caller deletes it once the final artifact is written);
+    ``on_world`` fires only for freshly-executed worlds. ``None`` = no files touched."""
     spec = BenchmarkSpec()
     policy = agent.act if hasattr(agent, "act") else agent
     reset_fn = getattr(agent, "reset", None)
     factory = spec.env_factory()
+    done_map: dict[str, int] = {}
+    if checkpoint is not None and checkpoint.exists():
+        done_map = {str(k): int(v) for k, v in json.loads(checkpoint.read_text()).items()}
     clears: list[int] = []
     for seed in season_seeds(season, n_worlds):
+        key = str(int(seed))
+        if key in done_map:
+            clears.append(done_map[key])
+            continue
         if reset_fn is not None:
             reset_fn()
         env = factory()
@@ -146,6 +161,11 @@ def score_submission_on_season(
             obs, _r, term, trunc, _info = env.step(int(policy(obs)))
             done = bool(term or trunc)
         clears.append(int(sum(env._gym_defeated)))
+        if checkpoint is not None:
+            done_map[key] = clears[-1]
+            tmp = checkpoint.with_suffix(checkpoint.suffix + ".tmp")
+            tmp.write_text(json.dumps(done_map, indent=2, sort_keys=True) + "\n")
+            tmp.replace(checkpoint)
         if on_world is not None:
             on_world(len(clears) - 1, int(seed), clears[-1])
     return float(sum(clears) / len(clears))

@@ -134,7 +134,7 @@
   </div>
 
   <section>
-    <h2>리더보드 — held-out 일반화 순위</h2>
+    <h2>내장 baseline — 일반화 검증</h2>
     <p>각 baseline 은 학습한 적 없는 <strong>held-out</strong> 시드(처음 보는 맵 <em>과</em> 새로운 숨은 타입표)에서 채점됩니다. 순위는 held-out 평균 기준 — 이 벤치마크는 처음 보는 세계로의 일반화를 보상합니다.</p>
     <div class="table-wrap card">
     <table>
@@ -147,6 +147,7 @@
     </table>
     </div>
     <p class="note">고정 spec (재현 가능): <code>{&quot;grid_size&quot;: 10, &quot;max_steps&quot;: 200, &quot;n_heldin&quot;: 100, &quot;n_heldout&quot;: 100, &quot;num_creatures&quot;: 5, &quot;num_gyms&quot;: 3, &quot;patch_radius&quot;: 2}</code></p>
+    <p class="note"><a href="#community">제출된 모델(LLM) 점수를 찾으세요? &rarr; 커뮤니티 리더보드 &darr;</a></p>
   </section>
 
   <section>
@@ -266,7 +267,7 @@
     <p class="note"><strong>정직한 범위.</strong> 티어와 서명-인증서 흐름은 <strong>프로토타입 artifact</strong>입니다(커스텀 티어는 검증만 되고 측정되지 않음). 실제 판매·가격·hosting 은 사람의 결정입니다.</p>
   </section>
 
-  <section>
+  <section id="community">
     <h2>커뮤니티 리더보드 (자가 신고)</h2>
     <p><strong>시즌제 공개 시험지</strong>에서 자기 모델로 경쟁하세요: 시즌마다 공개 유도식으로 새 held-out 세계 블록이 발급됩니다(절차생성이라 시험지를 언제든 다시 발급 가능 — 고정 벤치마크는 불가). 로컬에서 돌리고, 작은 JSON 을 제출하면, 여기 랭크됩니다. 지표는 시즌 블록에서의 <strong>평균 체육관 클리어</strong>입니다.</p>
     <h3>리더보드에 올리는 법</h3>
